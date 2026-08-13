@@ -42,10 +42,24 @@ html {
   scroll-behavior: smooth;
 }
 
+/* Respeita quem desativou animações no sistema. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
+  /* dvh acompanha a barra de endereço do navegador no celular; 100vh fica
+     maior que a área visível e cria rolagem fantasma. */
+  min-height: 100dvh;
   background:
     linear-gradient(135deg, rgba(20, 184, 111, 0.14), transparent 30%),
     linear-gradient(225deg, rgba(14, 139, 143, 0.14), transparent 34%),
@@ -82,7 +96,7 @@ p {
   grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
   gap: 18px;
   width: min(1440px, 100%);
-  min-height: 100vh;
+  min-height: 100dvh;
   margin: 0 auto;
   padding: clamp(16px, 3vw, 32px);
 }
@@ -1398,15 +1412,76 @@ th:last-child {
     font-size: 2rem;
   }
 
+  /* .dashboard-menu e .account-mini ficam de fora: empilhá-los em 1 coluna
+     acrescentava ~150px acima do conteúdo justamente na tela menor. */
   .metric-row,
-  .dashboard-menu,
   .input-row,
   .assistant-form,
   .product-header,
   .allergy-page-grid,
-  .auth-tabs,
-  .account-mini {
+  .auth-tabs {
     grid-template-columns: 1fr;
+  }
+
+  /* O app é usado em pé no supermercado: a navegação vai para o rodapé, ao
+     alcance do polegar, e o conteúdo da página passa a começar no topo. */
+  /* Reserva a altura da barra fixa para ela nunca cobrir o conteúdo. */
+  .app-shell {
+    padding-bottom: 78px;
+  }
+
+  .sidebar {
+    display: contents;
+  }
+
+  /* Uma única linha, rolável na horizontal: sete itens em duas linhas
+     ocupariam 121px e cobririam o botão principal da tela de Scan. */
+  .dashboard-menu {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 50;
+    display: flex;
+    gap: 4px;
+    margin: 0;
+    padding: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    border-top: 1px solid var(--line-blue);
+    background: #ffffff;
+    box-shadow: 0 -6px 20px rgba(12, 37, 25, 0.1);
+  }
+
+  .dashboard-menu::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dashboard-menu button {
+    flex: 0 0 auto;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    min-width: 68px;
+    min-height: 56px;
+    padding: 6px 8px;
+    border: 0;
+    font-size: 0.66rem;
+    line-height: 1.15;
+    text-align: center;
+  }
+
+  /* Banner institucional e chips de exemplo não precisam vir antes do scanner. */
+  .dashboard-summary,
+  .quick-panel {
+    display: none;
+  }
+
+  .brand-block {
+    order: -2;
+  }
+
+  .account-mini {
+    order: -1;
+    grid-template-columns: 24px minmax(0, 1fr) auto;
   }
 
   .input-row button,

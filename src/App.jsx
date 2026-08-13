@@ -1,6 +1,6 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BrowserMultiFormatReader } from "@zxing/browser";
-import { BarcodeFormat, DecodeHintType, NotFoundException } from "@zxing/library";
+// O ZXing é carregado sob demanda (ver loadScannerLib). São ~430 kB que só
+// fazem sentido baixar quando o usuário realmente vai ligar a câmera.
 import {
   AlertCircle,
   Barcode,
@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 
 const API_BASE = "https://world.openfoodfacts.org/api/v3/product";
+const SEARCH_BASE = "https://world.openfoodfacts.org/api/v2/search";
 const PRODUCT_FIELDS = [
   "code",
   "product_name",
@@ -368,22 +369,37 @@ const USERS_STORAGE_KEY = "nutriscan:users";
 const SESSION_STORAGE_KEY = "nutriscan:session";
 const GUEST_ALLERGIES_KEY = "nutriscan:guest-allergies";
 
-const hints = new Map([
-  [
-    DecodeHintType.POSSIBLE_FORMATS,
-    [
-      BarcodeFormat.EAN_13,
-      BarcodeFormat.EAN_8,
-      BarcodeFormat.UPC_A,
-      BarcodeFormat.UPC_E,
-      BarcodeFormat.CODE_128,
-      BarcodeFormat.CODE_39,
-      BarcodeFormat.ITF,
-    ],
-  ],
-  // Sem TRY_HARDER a leitura falha em embalagem curva (lata, garrafa).
-  [DecodeHintType.TRY_HARDER, true],
-]);
+// Carrega o ZXing só quando a câmera é ligada, e guarda o resultado para
+// que ligar/desligar várias vezes não baixe nada de novo.
+let scannerLibPromise = null;
+
+function loadScannerLib() {
+  if (!scannerLibPromise) {
+    scannerLibPromise = Promise.all([import("@zxing/browser"), import("@zxing/library")]).then(
+      ([browser, library]) => {
+        const { BarcodeFormat, DecodeHintType, NotFoundException } = library;
+        const hints = new Map([
+          [
+            DecodeHintType.POSSIBLE_FORMATS,
+            [
+              BarcodeFormat.EAN_13,
+              BarcodeFormat.EAN_8,
+              BarcodeFormat.UPC_A,
+              BarcodeFormat.UPC_E,
+              BarcodeFormat.CODE_128,
+              BarcodeFormat.CODE_39,
+              BarcodeFormat.ITF,
+            ],
+          ],
+          // Sem TRY_HARDER a leitura falha em embalagem curva (lata, garrafa).
+          [DecodeHintType.TRY_HARDER, true],
+        ]);
+        return { BrowserMultiFormatReader: browser.BrowserMultiFormatReader, NotFoundException, hints };
+      },
+    );
+  }
+  return scannerLibPromise;
+}
 
 const CAMERA_ERROR_MESSAGES = {
   NotAllowedError:
@@ -702,6 +718,30 @@ function hasTextIntent(query, terms) {
     if (!normalizedTerm) return false;
     return termRegex(normalizedTerm).test(haystack);
   });
+}
+
+// Busca textual: sem isto, procurar "nescau" ou "danone" não achava nada,
+// porque só a base local de 8 alimentos era consultada.
+async function searchProductsByName(term) {
+  const params = new URLSearchParams({
+    search_terms: term,
+    countries_tags: "en:brazil",
+    fields: PRODUCT_FIELDS,
+    page_size: "12",
+    sort_by: "unique_scans_n",
+  });
+
+  const response = await fetch(`${SEARCH_BASE}?${params}`, {
+    headers: { Accept: "application/json" },
+  });
+  // 503/500 significa serviço indisponível, não "produto inexistente" — quem
+  // chama precisa distinguir os dois para não mentir para o usuário.
+  if (!response.ok) throw new Error(`Busca indisponível (HTTP ${response.status})`);
+
+  const data = await response.json();
+  return (data.products || [])
+    .filter((item) => item.product_name || item.product_name_pt)
+    .map((item) => ({ ...item, source: "Open Food Facts", isLocal: false }));
 }
 
 async function fetchProductByBarcode(barcode) {
@@ -1472,10 +1512,38 @@ function App() {
           return;
         }
 
-        setStatus({
-          type: "warning",
-          message: "Não encontrei na base local. Tente o código de barras.",
-        });
+        // Não está na base local: procura na Open Food Facts pelo nome.
+        setStatus({ type: "loading", message: `Procurando "${nextQuery}"...` });
+        const token = ++searchTokenRef.current;
+
+        try {
+          const remoteMatches = await searchProductsByName(nextQuery);
+          if (token !== searchTokenRef.current) return;
+
+          if (!remoteMatches.length) {
+            setStatus({
+              type: "warning",
+              message: `Não encontrei "${nextQuery}". Tente outro nome ou use o código de barras.`,
+            });
+            return;
+          }
+
+          setLocalMatches(remoteMatches);
+          selectProduct(remoteMatches[0]);
+          setStatus({
+            type: "success",
+            message: `${remoteMatches.length} resultado(s) na Open Food Facts.`,
+          });
+        } catch {
+          if (token !== searchTokenRef.current) return;
+          // A busca textual da Open Food Facts sai do ar com alguma frequência
+          // (503). O código de barras usa outro endpoint e continua valendo.
+          setStatus({
+            type: "warning",
+            message:
+              "A busca por nome está indisponível no momento. Use o código de barras ou um dos exemplos.",
+          });
+        }
         return;
       }
 
@@ -1537,6 +1605,11 @@ function App() {
     const runId = ++scannerRunIdRef.current;
 
     try {
+      const { BrowserMultiFormatReader, NotFoundException, hints } = await loadScannerLib();
+
+      // O download da biblioteca pode demorar; se desligaram nesse meio-tempo, para aqui.
+      if (runId !== scannerRunIdRef.current) return;
+
       const reader = new BrowserMultiFormatReader(hints);
       const controls = await reader.decodeFromVideoDevice(
         undefined,
@@ -1604,6 +1677,12 @@ function App() {
     document.addEventListener("visibilitychange", stopWhenHidden);
     return () => document.removeEventListener("visibilitychange", stopWhenHidden);
   }, [stopScanner]);
+
+  // Volta ao topo depois que a nova página renderizou. Feito no efeito, e não
+  // no clique, porque no clique o conteúdo antigo ainda está na tela.
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, [activePage]);
 
   useEffect(() => {
     chatLogRef.current?.scrollTo({
@@ -1844,12 +1923,14 @@ function App() {
     setAssistantLoading(true);
     setAssistantConnection({
       type: "loading",
-      message: "Estou pensando na sua pergunta...",
+      message: "Analisando o rótulo...",
     });
 
-    const thinkingDelay = Math.min(900, 320 + question.length * 8);
+    // Pausa curta só para a resposta não aparecer no mesmo quadro em que a
+    // pergunta foi enviada. A análise é local e instantânea — não há chamada
+    // de rede para esperar, e fingir latência de IA seria enganoso.
     await new Promise((resolve) => {
-      window.setTimeout(resolve, thinkingDelay);
+      window.setTimeout(resolve, 120);
     });
 
     const answer = buildAssistantAnswer(product, question, allergyScan);
@@ -1884,7 +1965,6 @@ function App() {
     // pushState (e não replaceState) para o botão Voltar do Android voltar
     // à tela anterior em vez de sair do app.
     if (page !== activePage) window.history.pushState(null, "", `#${page}`);
-    window.scrollTo(0, 0);
   };
 
   const searchAndOpen = (value) => {
@@ -2102,7 +2182,7 @@ function App() {
         </article>
         <article className="page-card accent-chat">
           <Bot size={24} aria-hidden="true" />
-          <h3>Chat com IA</h3>
+          <h3>Assistente</h3>
           <p>Converse com o assistente usando o produto analisado.</p>
           <button type="button" onClick={() => navigateTo("chat")}>
             Abrir chat
@@ -2474,7 +2554,7 @@ function App() {
             </div>
             <div className="guide-item">
               <Bot size={20} aria-hidden="true" />
-              <span>Chat com IA usando o perfil e o produto atual.</span>
+              <span>Assistente usando o perfil e o produto atual.</span>
             </div>
           </aside>
         </section>
@@ -2529,7 +2609,7 @@ function App() {
     { id: "consulta", label: "Consulta", icon: Search },
     { id: "scan", label: "Scan", icon: Camera },
     { id: "alergias", label: "Alergias", icon: ShieldAlert },
-    { id: "chat", label: "Chat com IA", icon: Bot },
+    { id: "chat", label: "Assistente", icon: Bot },
     { id: "conta", label: currentUser ? "Perfil" : "Login", icon: currentUser ? User : LogIn },
     { id: "guia", label: "Guia", icon: ClipboardList },
   ];
