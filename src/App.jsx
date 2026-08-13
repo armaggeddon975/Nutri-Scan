@@ -44,6 +44,8 @@ const PRODUCT_FIELDS = [
   "nutrition_data_per",
   "serving_size",
   "allergens_tags",
+  "traces_tags",
+  "traces",
   "labels_tags",
   "categories_tags",
 ].join(",");
@@ -60,6 +62,9 @@ const NUTRIENTS = [
   { key: "sodium", label: "Sódio", unit: "mg" },
 ];
 
+// Cobertura dos alergênicos de declaração obrigatória (Anvisa RDC 26/2015).
+// `tags` lista os identificadores da Open Food Facts (que vêm prefixados por idioma,
+// ex.: "en:milk") e é comparada por igualdade, não por substring.
 const ALLERGY_OPTIONS = [
   {
     id: "milk",
@@ -69,55 +74,131 @@ const ALLERGY_OPTIONS = [
       "lactose",
       "whey",
       "caseina",
-      "caseína",
       "milk",
       "soro de leite",
-      "leite em pó",
       "leite em po",
-      "proteína do leite",
       "proteina do leite",
       "derivados de leite",
-      "lácteo",
       "lacteo",
       "creme de leite",
-      "manteiga",
+      "manteiga de leite",
+      "manteiga lactea",
+      "gordura anidra de leite",
     ],
+    tags: ["en:milk", "en:lactose", "pt:leite", "es:leche", "fr:lait", "it:latte", "de:milch"],
   },
   {
     id: "gluten",
     label: "Glúten",
     terms: [
       "gluten",
-      "glúten",
       "trigo",
       "farinha de trigo",
       "cevada",
       "centeio",
       "aveia",
       "malte",
-      "celíaco",
       "celiaco",
+    ],
+    tags: [
+      "en:gluten",
+      "en:wheat",
+      "en:barley",
+      "en:rye",
+      "en:oats",
+      "en:spelt",
+      "pt:gluten",
+      "pt:trigo",
+      "pt:aveia",
+      "es:trigo",
+      "es:avena",
+      "fr:gluten",
+      "fr:ble",
     ],
   },
   {
     id: "peanut",
     label: "Amendoim",
     terms: ["amendoim", "peanut"],
+    tags: ["en:peanuts", "pt:amendoim", "es:cacahuetes", "fr:arachides"],
   },
   {
     id: "nuts",
     label: "Castanhas",
-    terms: ["castanha", "amendoa", "amêndoa", "avelã", "nozes", "nuts", "hazelnut"],
+    terms: [
+      "castanha",
+      "castanha de caju",
+      "castanha do para",
+      "amendoa",
+      "avela",
+      "nozes",
+      "noz",
+      "pistache",
+      "macadamia",
+      "noz pecan",
+    ],
+    tags: [
+      "en:nuts",
+      "en:almonds",
+      "en:hazelnuts",
+      "en:walnuts",
+      "en:cashew-nuts",
+      "en:brazil-nuts",
+      "en:pistachio-nuts",
+      "en:macadamia-nuts",
+      "pt:castanha",
+      "pt:avela",
+      "es:frutos-de-cascara",
+      "fr:fruits-a-coque",
+    ],
   },
   {
     id: "soy",
     label: "Soja",
-    terms: ["soja", "soy", "lecitina de soja", "proteína de soja", "proteina de soja"],
+    terms: ["soja", "soy", "lecitina de soja", "proteina de soja"],
+    tags: ["en:soybeans", "pt:soja", "es:soja", "fr:soja"],
   },
   {
     id: "egg",
     label: "Ovo",
-    terms: ["ovo", "clara", "gema", "albumina", "ovo em pó", "ovo em po", "egg"],
+    terms: ["ovo", "ovos", "clara de ovo", "gema de ovo", "albumina", "ovo em po", "egg"],
+    tags: ["en:eggs", "pt:ovo", "pt:ovos", "es:huevos", "fr:oeufs"],
+  },
+  {
+    id: "fish",
+    label: "Peixe",
+    terms: ["peixe", "bacalhau", "atum", "sardinha", "salmao", "anchova", "fish"],
+    tags: ["en:fish", "pt:peixe", "es:pescado", "fr:poissons"],
+  },
+  {
+    id: "crustacean",
+    label: "Crustáceos",
+    terms: ["camarao", "caranguejo", "lagosta", "siri", "crustaceo", "crustaceos"],
+    tags: ["en:crustaceans", "pt:crustaceos", "es:crustaceos", "fr:crustaces"],
+  },
+  {
+    id: "mollusc",
+    label: "Moluscos",
+    terms: ["molusco", "moluscos", "mexilhao", "ostra", "lula", "polvo", "vieira"],
+    tags: ["en:molluscs", "pt:moluscos", "es:moluscos", "fr:mollusques"],
+  },
+  {
+    id: "sesame",
+    label: "Gergelim",
+    terms: ["gergelim", "sesamo", "tahine", "sesame"],
+    tags: ["en:sesame-seeds", "pt:gergelim", "es:sesamo", "fr:sesame"],
+  },
+  {
+    id: "mustard",
+    label: "Mostarda",
+    terms: ["mostarda", "mustard"],
+    tags: ["en:mustard", "pt:mostarda", "es:mostaza", "fr:moutarde"],
+  },
+  {
+    id: "sulphite",
+    label: "Sulfitos",
+    terms: ["sulfito", "sulfitos", "dioxido de enxofre", "metabissulfito", "sulphite"],
+    tags: ["en:sulphur-dioxide-and-sulphites", "pt:sulfitos", "es:sulfitos"],
   },
 ];
 
@@ -279,7 +360,7 @@ const SAMPLE_QUERIES = ["arroz", "feijão", "frango", "banana", "pão", "leite"]
 const SAMPLE_BARCODES = [
   { label: "Nutella", code: "3017624010701" },
   { label: "Coca-Cola", code: "5449000000996" },
-  { label: "Nescau", code: "7891000100103" },
+  { label: "Leite Moça", code: "7891000100103" },
 ];
 
 const DEFAULT_ALLERGIES = ["milk", "gluten"];
@@ -300,38 +381,110 @@ const hints = new Map([
       BarcodeFormat.ITF,
     ],
   ],
+  // Sem TRY_HARDER a leitura falha em embalagem curva (lata, garrafa).
+  [DecodeHintType.TRY_HARDER, true],
 ]);
+
+const CAMERA_ERROR_MESSAGES = {
+  NotAllowedError:
+    "Permissão da câmera negada. Clique no cadeado da barra de endereço, libere a Câmera e tente de novo.",
+  NotFoundError:
+    "Nenhuma câmera encontrada neste aparelho. Use o campo \"Digitar código manualmente\".",
+  NotReadableError:
+    "A câmera está sendo usada por outro programa. Feche o outro aplicativo e tente de novo.",
+  OverconstrainedError:
+    "Não encontrei uma câmera compatível. Tente pelo celular ou digite o código.",
+  SecurityError: "O navegador bloqueou a câmera: a página precisa estar em HTTPS ou localhost.",
+  AbortError: "A abertura da câmera foi interrompida. Tente novamente.",
+};
+
+function describeCameraError(error) {
+  return CAMERA_ERROR_MESSAGES[error?.name] || "Não foi possível iniciar o scanner.";
+}
 
 function readStoredUsers() {
   try {
     const rawUsers = localStorage.getItem(USERS_STORAGE_KEY);
     const users = rawUsers ? JSON.parse(rawUsers) : [];
-    return Array.isArray(users) ? users : [];
+    if (!Array.isArray(users)) return [];
+    // Um único item inválido no array quebrava a primeira renderização e deixava
+    // a tela em branco, sem o usuário conseguir sequer limpar os dados.
+    return users.filter(
+      (user) => user && typeof user === "object" && typeof user.email === "string",
+    );
   } catch {
     return [];
   }
 }
 
 function writeStoredUsers(users) {
-  localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+  try {
+    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+    return true;
+  } catch {
+    return false; // cota cheia ou armazenamento bloqueado (navegação privada)
+  }
 }
+
+const VALID_ALLERGY_IDS = new Set(ALLERGY_OPTIONS.map((option) => option.id));
 
 function readStoredAllergies() {
   try {
     const rawAllergies = localStorage.getItem(GUEST_ALLERGIES_KEY);
-    const allergies = rawAllergies ? JSON.parse(rawAllergies) : DEFAULT_ALLERGIES;
-    return Array.isArray(allergies) ? allergies : DEFAULT_ALLERGIES;
+    if (!rawAllergies) return DEFAULT_ALLERGIES;
+    const allergies = JSON.parse(rawAllergies);
+    if (!Array.isArray(allergies)) return DEFAULT_ALLERGIES;
+    // Lista vazia é escolha legítima do usuário e precisa ser preservada.
+    return allergies.filter((id) => VALID_ALLERGY_IDS.has(id));
   } catch {
     return DEFAULT_ALLERGIES;
   }
 }
 
-async function hashPassword(password) {
-  const data = new TextEncoder().encode(password);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(digest))
+const PBKDF2_ITERATIONS = 210000;
+
+function hasSecureCrypto() {
+  return typeof crypto !== "undefined" && Boolean(crypto.subtle);
+}
+
+function generateId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return `u_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function toHex(buffer) {
+  return Array.from(new Uint8Array(buffer))
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
+}
+
+function fromHex(hex) {
+  return Uint8Array.from(hex.match(/.{1,2}/g).map((byte) => parseInt(byte, 16)));
+}
+
+// SHA-256 puro é rápido demais e sem sal: a senha vira consulta de rainbow table.
+// PBKDF2 com sal por usuário. `legacyHashPassword` continua existindo só para
+// que contas criadas antes desta mudança ainda consigam entrar.
+async function hashPassword(password, saltHex) {
+  const salt = saltHex ? fromHex(saltHex) : crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt, iterations: PBKDF2_ITERATIONS, hash: "SHA-256" },
+    key,
+    256,
+  );
+  return { salt: saltHex || toHex(salt), hash: toHex(bits) };
+}
+
+async function legacyHashPassword(password) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(password));
+  return toHex(digest);
 }
 
 function getPublicUser(user) {
@@ -417,6 +570,21 @@ function getIngredients(product) {
   );
 }
 
+// Para exibição basta um campo, mas para procurar alergênico é preciso ler todos:
+// as traduções da Open Food Facts não são redundantes. A Nutella, por exemplo,
+// só declara a soja no texto em inglês.
+function getAllergenText(product) {
+  return [
+    product?.ingredients_text_pt,
+    product?.ingredients_text,
+    product?.ingredients_text_en,
+    typeof product?.ingredients === "string" ? product.ingredients : "",
+    product?.traces,
+  ]
+    .filter(Boolean)
+    .join(" \n ");
+}
+
 function formatNumber(value) {
   if (value === undefined || value === null || value === "") return null;
 
@@ -428,39 +596,52 @@ function formatNumber(value) {
   }).format(number);
 }
 
-function getNutrientRows(nutriments = {}) {
+const SODIUM_UNIT_TO_MG = { mg: 1, g: 1000, mcg: 0.001, "µg": 0.001, ug: 0.001 };
+
+// A Open Food Facts entrega sódio em gramas. Converter pela unidade declarada,
+// nunca pela magnitude do número: sal de cozinha tem 39,6 g de sódio por 100 g,
+// e qualquer heurística do tipo "converte só se for menor que 10" o transforma
+// em 39,6 mg — fazendo o app classificar sal puro como boa escolha.
+function toSodiumMg(amount, unit) {
+  const number = Number(amount);
+  if (!Number.isFinite(number)) return null;
+  const factor = SODIUM_UNIT_TO_MG[String(unit || "g").toLowerCase()] ?? 1000;
+  return number * factor;
+}
+
+function getNutrientRows(nutriments) {
+  const source = nutriments || {};
+
   return NUTRIENTS.map((nutrient) => {
     const amount =
-      nutriments[`${nutrient.key}_100g`] ??
-      nutriments[nutrient.key] ??
-      nutriments[`${nutrient.key}_value`];
-    const originalUnit = nutriments[`${nutrient.key}_unit`] || nutrient.unit;
-    const shouldConvertSodium =
-      nutrient.key === "sodium" && originalUnit !== "mg" && Number(amount) < 10;
-    const displayAmount = shouldConvertSodium ? Number(amount) * 1000 : amount;
-    const unit = nutrient.key === "sodium" ? "mg" : originalUnit;
+      source[`${nutrient.key}_100g`] ??
+      source[nutrient.key] ??
+      source[`${nutrient.key}_value`];
+
+    if (nutrient.key === "sodium") {
+      return {
+        ...nutrient,
+        amount: formatNumber(toSodiumMg(amount, source.sodium_unit)),
+        unit: "mg",
+      };
+    }
 
     return {
       ...nutrient,
-      amount: formatNumber(displayAmount),
-      unit,
+      amount: formatNumber(amount),
+      unit: source[`${nutrient.key}_unit`] || nutrient.unit,
     };
   }).filter((row) => row.amount !== null);
 }
 
 function getNutrientValue(product, key) {
-  const value =
-    product?.nutriments?.[`${key}_100g`] ??
-    product?.nutriments?.[key] ??
-    product?.nutriments?.[`${key}_value`];
-  if (!Number.isFinite(Number(value))) return null;
+  const nutriments = product?.nutriments || {};
+  const value = nutriments[`${key}_100g`] ?? nutriments[key] ?? nutriments[`${key}_value`];
 
-  if (key === "sodium") {
-    const unit = product?.nutriments?.sodium_unit || "g";
-    return unit !== "mg" && Number(value) < 10 ? Number(value) * 1000 : Number(value);
-  }
+  if (key === "sodium") return toSodiumMg(value, nutriments.sodium_unit);
 
-  return Number(value);
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
 function formatTag(tag = "") {
@@ -476,7 +657,9 @@ function formatTag(tag = "") {
 
 function getNutriScore(product) {
   const score = product?.nutriscore_grade || product?.nutrition_grades;
-  return score ? score.toUpperCase() : "N/A";
+  const normalized = score ? String(score).toLowerCase() : "";
+  // A API devolve "unknown"/"not-applicable"; não faz sentido exibir isso ao usuário.
+  return ["a", "b", "c", "d", "e"].includes(normalized) ? normalized.toUpperCase() : "N/A";
 }
 
 function getNutriScoreClass(product) {
@@ -511,13 +694,13 @@ function hasAnyTerm(query, terms) {
 }
 
 function hasTextIntent(query, terms) {
+  // Sempre com fronteira de palavra (aceitando plural): sem isso, "declaração"
+  // casava com "clara" e o assistente respondia sobre alergia a ovo.
+  const haystack = normalizeIntentText(query);
   return terms.some((term) => {
     const normalizedTerm = normalizeIntentText(term);
     if (!normalizedTerm) return false;
-    if (normalizedTerm.length <= 3 || normalizedTerm.includes(" ")) {
-      return hasAnyTerm(query, [normalizedTerm]);
-    }
-    return normalizeIntentText(query).includes(normalizedTerm);
+    return termRegex(normalizedTerm).test(haystack);
   });
 }
 
@@ -527,12 +710,25 @@ async function fetchProductByBarcode(barcode) {
     { headers: { Accept: "application/json" } },
   );
 
+  let data = null;
+  try {
+    data = await response.json();
+  } catch {
+    data = null;
+  }
+
+  // A v3 responde 404 com corpo estruturado quando o produto não existe.
+  // Isso é "não encontrado", não é falha de rede.
+  if (response.status === 404 || data?.result?.id === "product_not_found") return null;
+
   if (!response.ok) {
     throw new Error("A consulta falhou. Tente novamente.");
   }
 
-  const data = await response.json();
-  if (data.status !== "success" || !data.product) return null;
+  // Códigos UPC-A de 12 dígitos são normalizados pela API e voltam como
+  // "success_with_warnings" — o produto existe e não pode ser descartado.
+  const found = data?.status === "success" || data?.status === "success_with_warnings";
+  if (!found || !data?.product) return null;
 
   return {
     ...data.product,
@@ -541,23 +737,92 @@ async function fetchProductByBarcode(barcode) {
   };
 }
 
+// Trechos como "não contém glúten" ou "zero lactose" declaram AUSÊNCIA.
+// Sem remover isso antes de procurar, o app alerta glúten em produto sem glúten.
+const NEGATION_RE =
+  /(nao contem|nao contem|nao possui|sem|zero|isento de|isenta de|livre de|free of|gluten free|lactose free)\s+[^,;.]{0,32}/g;
+
+// A partir daqui o texto fala de contaminação cruzada, não de ingrediente.
+const TRACE_SPLIT_RE =
+  /pode conter|podem conter|pode ter|tracos de|traços de|may contain|elaborado em equipamento|produzido em equipamento|fabricado em equipamento/;
+
+// Rótulos que afirmam ausência. A tag oficial de alergênico sempre vence isto.
+const NEGATIVE_LABELS = {
+  gluten: ["en:no-gluten", "en:gluten-free"],
+  milk: ["en:no-lactose", "en:lactose-free", "en:no-milk", "en:milk-free"],
+};
+
+const TERM_REGEX_CACHE = new Map();
+
+// Fronteira de palavra: evita casar "ovo" dentro de "novo" ou "nuts" dentro de "donuts".
+function termRegex(term) {
+  if (!TERM_REGEX_CACHE.has(term)) {
+    const normalized = normalizeText(term)
+      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      .replace(/\s+/g, "[\\s-]+");
+    TERM_REGEX_CACHE.set(
+      term,
+      new RegExp(`(^|[^a-z0-9])${normalized}(s|es)?([^a-z0-9]|$)`),
+    );
+  }
+  return TERM_REGEX_CACHE.get(term);
+}
+
+// Expressões em que o termo aparece mas NÃO indica o alergênico.
+const ALLERGEN_EXCLUSIONS = {
+  milk: [
+    /leite\s+de\s+(coco|amendoas?|castanha|soja|aveia|arroz|amendoim)/,
+    /manteiga\s+de\s+(cacau|amendoim|castanha)/,
+    /(leite|bebida)\s+vegetal/,
+  ],
+};
+
+function matchesAllergenTag(tags, option) {
+  const known = [option.id, ...(option.tags || [])].map(normalizeText);
+  return tags.some((tag) => known.includes(normalizeText(tag)));
+}
+
+function matchesAllergenText(option, haystack) {
+  if (!haystack) return false;
+  if ((ALLERGEN_EXCLUSIONS[option.id] || []).some((re) => re.test(haystack))) return false;
+  return option.terms.some((term) => termRegex(term).test(haystack));
+}
+
 function scanAllergies(product, selectedAllergies) {
-  if (!product) return { allRisks: [], profileRisks: [] };
+  if (!product) return { allRisks: [], profileRisks: [], hasData: false };
 
-  const ingredients = normalizeText(getIngredients(product));
-  const tagText = normalizeText((product.allergens_tags || []).join(" "));
+  const allergenTags = product.allergens_tags || [];
+  const traceTags = product.traces_tags || [];
+  const labelTags = (product.labels_tags || []).map(normalizeText);
 
-  const allRisks = ALLERGY_OPTIONS.filter((option) => {
-    if ((product.allergens_tags || []).includes(option.id)) return true;
-    return option.terms.some((term) => {
-      const normalizedTerm = normalizeText(term);
-      return ingredients.includes(normalizedTerm) || tagText.includes(normalizedTerm);
-    });
-  });
+  const text = normalizeText(getAllergenText(product)).replace(NEGATION_RE, " ");
+  const splitAt = text.search(TRACE_SPLIT_RE);
+  const containsText = splitAt === -1 ? text : text.slice(0, splitAt);
+  const tracesText = splitAt === -1 ? "" : text.slice(splitAt);
+
+  const allRisks = ALLERGY_OPTIONS.map((option) => {
+    const declaredContains = matchesAllergenTag(allergenTags, option);
+    const declaredTrace = matchesAllergenTag(traceTags, option);
+
+    // Rótulo "sem glúten" derruba a suspeita vinda do texto, mas nunca a tag oficial.
+    const deniedByLabel =
+      !declaredContains &&
+      !declaredTrace &&
+      (NEGATIVE_LABELS[option.id] || []).some((label) => labelTags.includes(normalizeText(label)));
+    if (deniedByLabel) return null;
+
+    const isContains = declaredContains || matchesAllergenText(option, containsText);
+    const isTrace = declaredTrace || matchesAllergenText(option, tracesText);
+    if (!isContains && !isTrace) return null;
+
+    return { ...option, severity: isContains ? "contains" : "traces" };
+  }).filter(Boolean);
 
   return {
     allRisks,
     profileRisks: allRisks.filter((risk) => selectedAllergies.includes(risk.id)),
+    // Distingue "analisei e está limpo" de "não tenho dados para analisar".
+    hasData: Boolean(text.trim() || allergenTags.length || traceTags.length),
   };
 }
 
@@ -751,10 +1016,29 @@ function buildAllergyAdvice(food, mentionedAllergies, profileRisks = []) {
   return `Para ${foodLabel}, me diga qual alergia ou restrição você tem que eu consigo te orientar melhor.`;
 }
 
-function buildAssistantAnswer(product, question, profileRisks) {
+function buildAssistantAnswer(product, question, allergyScan = {}) {
+  const profileRisks = allergyScan.profileRisks || [];
+  const allRisks = allergyScan.allRisks || [];
+  const hasAllergenData = allergyScan.hasData !== false;
+
   const query = normalizeText(question);
   const mentionedAllergies = getMentionedAllergies(query);
   const mentionedFood = getMentionedFood(query);
+
+  // Alergia declarada na conversa que bate com alergênico detectado no produto.
+  // Sem isto, quem diz "sou alérgico a leite" olhando um leite condensado
+  // recebia "não apareceu conflito", porque só o perfil salvo era consultado.
+  const mentionedIds = mentionedAllergies.map((item) => item.id || item);
+  const conversationRisks = allRisks.filter((risk) => mentionedIds.includes(risk.id));
+  const relevantRisks = [...profileRisks];
+  conversationRisks.forEach((risk) => {
+    if (!relevantRisks.some((item) => item.id === risk.id)) relevantRisks.push(risk);
+  });
+
+  const describeRisks = (risks) =>
+    risks
+      .map((risk) => (risk.severity === "traces" ? `${risk.label} (pode conter traços)` : risk.label))
+      .join(", ");
   const askedGreeting = hasAnyTerm(query, ["oi", "ola", "olá", "e ai", "ei"]);
   const askedWellBeing =
     hasAnyTerm(query, ["tudo bem", "como vai", "beleza", "bom dia", "boa tarde", "boa noite"]);
@@ -966,11 +1250,11 @@ function buildAssistantAnswer(product, question, profileRisks) {
       ? `Ingredientes cadastrados de ${name}: ${ingredients}`
       : `Ainda não há ingredientes cadastrados para ${name}. Confira o rótulo físico antes de consumir.`;
 
-    if (askedAllergyAdvice || mentionedAllergies.length || profileRisks.length) {
-      const allergyAnswer = profileRisks.length
-        ? `Para seu perfil, eu encontrei possível relação com ${profileRisks
-            .map((risk) => risk.label)
-            .join(", ")}. Evite se o rótulo confirmar "contém", "pode conter" ou derivados da sua alergia.`
+    if (askedAllergyAdvice || mentionedAllergies.length || relevantRisks.length) {
+      const allergyAnswer = relevantRisks.length
+        ? `Atenção: eu encontrei possível relação com ${describeRisks(
+            relevantRisks,
+          )}. Evite se o rótulo confirmar "contém", "pode conter" ou derivados da sua alergia.`
         : buildAllergyAdvice(mentionedFood || name, mentionedAllergies, profileRisks);
       return `${ingredientAnswer}\n\n${allergyAnswer}`;
     }
@@ -979,14 +1263,17 @@ function buildAssistantAnswer(product, question, profileRisks) {
   }
 
   if (askedAllergyAdvice) {
-    if (profileRisks.length) {
-      return `${name} merece cuidado para seu perfil. Eu encontrei possível relação com ${profileRisks
-        .map((risk) => risk.label)
-        .join(", ")}. Antes de comer, confira o rótulo físico e evite se aparecer "contém", "pode conter" ou derivados do ingrediente da sua alergia.`;
+    if (relevantRisks.length) {
+      return `${name} merece cuidado. Eu encontrei possível relação com ${describeRisks(
+        relevantRisks,
+      )}. Antes de comer, confira o rótulo físico e evite se aparecer "contém", "pode conter" ou derivados do ingrediente da sua alergia.`;
     }
 
     if (mentionedAllergies.length || mentionedFood) {
-      return `${buildAllergyAdvice(mentionedFood || name, mentionedAllergies, profileRisks)}\n\nSobre ${name}: com os dados atuais, não apareceu conflito direto com as alergias marcadas, mas eu ainda conferiria o rótulo físico antes de consumir.`;
+      const conclusion = hasAllergenData
+        ? `Sobre ${name}: nos dados cadastrados não apareceu esse alergênico, mas isso não garante segurança — confira o rótulo físico antes de consumir.`
+        : `Sobre ${name}: não consigo avaliar, porque este produto está sem lista de ingredientes e sem alergênicos cadastrados. Não dá para dizer se é seguro para você — leia o rótulo físico.`;
+      return `${buildAllergyAdvice(mentionedFood || name, mentionedAllergies, profileRisks)}\n\n${conclusion}`;
     }
   }
 
@@ -1013,9 +1300,12 @@ function buildAssistantAnswer(product, question, profileRisks) {
     if (sodium !== null && sodium > 400) notes.push("tem sódio alto por 100 g");
     if (proteins !== null && proteins >= 10) notes.push("tem boa presença de proteínas");
 
-    return notes.length
-      ? `${name} merece atenção porque ${notes.join(", ")}. Eu olharia a porção e conferiria o rótulo físico antes de decidir.`
-      : `${name} não acendeu nenhum alerta forte com os dados cadastrados. Ainda assim, vale comparar porção, ingredientes e seu objetivo do momento.`;
+    if (notes.length) {
+      return `${name} merece atenção porque ${notes.join(", ")}. Eu olharia a porção e conferiria o rótulo físico antes de decidir.`;
+    }
+    return hasAllergenData
+      ? `${name} não acendeu nenhum alerta forte com os dados cadastrados. Ainda assim, vale comparar porção, ingredientes e seu objetivo do momento.`
+      : `${name} está sem ingredientes e sem alergênicos cadastrados na base, então não tenho como avaliar direito. Vale conferir o rótulo físico.`;
   }
 
   if (askedIdentity) {
@@ -1023,12 +1313,15 @@ function buildAssistantAnswer(product, question, profileRisks) {
   }
 
   if (query.includes("alerg") || query.includes("posso comer")) {
-    if (profileRisks.length) {
-      return `${name} merece cuidado para seu perfil. Encontrei ${profileRisks
-        .map((risk) => risk.label)
-        .join(", ")} nos ingredientes ou tags. Minha orientação é não consumir sem confirmar o rótulo físico; se você já consumiu e tiver falta de ar, inchaço, urticária intensa, vômitos repetidos ou tontura, procure atendimento.`;
+    if (relevantRisks.length) {
+      return `${name} merece cuidado. Encontrei ${describeRisks(
+        relevantRisks,
+      )} nos ingredientes ou nos alergênicos declarados. O rótulo físico precisa ser confirmado antes de consumir; se você já consumiu e tiver falta de ar, inchaço, urticária intensa, vômitos repetidos ou tontura, procure atendimento.`;
     }
-    return `${name} não bateu com as alergias marcadas no perfil, mas isso não garante segurança absoluta. Confira o rótulo físico, observe traços/contaminação cruzada e evite se você já teve reação a produto parecido.`;
+    if (!hasAllergenData) {
+      return `Não consigo avaliar ${name}: este produto está sem lista de ingredientes e sem alergênicos cadastrados na base. Não dá para dizer se é seguro para você — a única fonte confiável aqui é o rótulo físico.`;
+    }
+    return `${name} não bateu com as alergias marcadas, mas isso não garante segurança absoluta. Confira o rótulo físico, observe traços/contaminação cruzada e evite se você já teve reação a produto parecido.`;
   }
 
   if (query.includes("prote")) {
@@ -1068,6 +1361,9 @@ function App() {
   const scanControlsRef = useRef(null);
   const lastDetectedRef = useRef("");
   const lastAssistantQuestionRef = useRef("");
+  // Invalida buscas e aberturas de câmera que ficaram em voo quando outra começa.
+  const searchTokenRef = useRef(0);
+  const scannerRunIdRef = useRef(0);
   const [activePage, setActivePage] = useState("home");
   const [query, setQuery] = useState("");
   const [product, setProduct] = useState(null);
@@ -1134,6 +1430,9 @@ function App() {
   );
 
   const stopScanner = useCallback(() => {
+    // Incrementar antes de parar invalida qualquer abertura de câmera ainda em voo,
+    // impedindo que ela "ressuscite" o scanner depois que o usuário desligou.
+    scannerRunIdRef.current += 1;
     scanControlsRef.current?.stop();
     scanControlsRef.current = null;
     lastDetectedRef.current = "";
@@ -1183,20 +1482,28 @@ function App() {
       const barcode = cleanBarcode(nextQuery);
       setStatus({ type: "loading", message: `Buscando produto ${barcode}...` });
 
+      const token = ++searchTokenRef.current;
+
       try {
         const foundProduct = await fetchProductByBarcode(barcode);
+        if (token !== searchTokenRef.current) return; // uma busca mais nova já assumiu
+
         if (!foundProduct) {
+          // Permite tentar o mesmo código de novo pelo scanner.
+          lastDetectedRef.current = "";
           setStatus({
             type: "warning",
-            message: "Produto não encontrado na base aberta.",
+            message: `Produto ${barcode} não está cadastrado na Open Food Facts. Você pode buscar pelo nome ou conferir o rótulo.`,
           });
           return;
         }
         selectProduct(foundProduct);
-      } catch (error) {
+      } catch {
+        if (token !== searchTokenRef.current) return;
+        lastDetectedRef.current = "";
         setStatus({
           type: "error",
-          message: error.message || "Não foi possível consultar o produto.",
+          message: "Não foi possível consultar o produto. Verifique sua conexão e tente novamente.",
         });
       }
     },
@@ -1204,8 +1511,22 @@ function App() {
   );
 
   const startScanner = useCallback(async () => {
+    if (scanControlsRef.current) return; // já está ligada
+
+    // getUserMedia só existe em contexto seguro. Sem essa distinção, abrir o app
+    // pelo IP da rede (para testar no celular) mostra "navegador não suporta",
+    // quando o problema real é o protocolo.
+    if (!window.isSecureContext) {
+      setStatus({
+        type: "error",
+        message:
+          "A câmera só funciona em HTTPS ou localhost. Neste endereço o navegador bloqueia o acesso — use o campo de código manual.",
+      });
+      return;
+    }
+
     if (!navigator.mediaDevices?.getUserMedia) {
-      setStatus({ type: "error", message: "Este navegador não liberou acesso à câmera." });
+      setStatus({ type: "error", message: "Este navegador não suporta acesso à câmera." });
       return;
     }
 
@@ -1213,44 +1534,75 @@ function App() {
     setScannerState("starting");
     setStatus({ type: "loading", message: "Abrindo câmera..." });
 
+    const runId = ++scannerRunIdRef.current;
+
     try {
       const reader = new BrowserMultiFormatReader(hints);
       const controls = await reader.decodeFromVideoDevice(
         undefined,
         videoRef.current,
-        (result, error) => {
+        (result, error, currentControls) => {
           if (result) {
             const detectedBarcode = cleanBarcode(result.getText());
-            if (detectedBarcode && detectedBarcode !== lastDetectedRef.current) {
-              lastDetectedRef.current = detectedBarcode;
-              searchProduct(detectedBarcode);
-            }
+            if (!detectedBarcode || detectedBarcode === lastDetectedRef.current) return;
+
+            lastDetectedRef.current = detectedBarcode;
+            if (navigator.vibrate) navigator.vibrate(60);
+
+            // Liberar a câmera assim que o código é lido: manter a captura viva
+            // enquanto o usuário analisa o produto só gasta bateria.
+            currentControls?.stop();
+            scanControlsRef.current = null;
+            scannerRunIdRef.current += 1;
+            setScannerState("idle");
+
+            searchProduct(detectedBarcode);
             return;
           }
 
-          if (error && !(error instanceof NotFoundException)) {
-            setStatus({ type: "warning", message: "Reposicione o código na moldura." });
-          }
+          if (!error || error instanceof NotFoundException) return; // quadro sem código: normal
+
+          // Qualquer outro erro encerra o loop da biblioteca. Sem tratar isso,
+          // a interface continuaria dizendo "escaneando" com a câmera morta.
+          currentControls?.stop();
+          scanControlsRef.current = null;
+          scannerRunIdRef.current += 1;
+          setScannerState("idle");
+          setStatus({
+            type: "error",
+            message: "A câmera foi interrompida. Ligue novamente ou digite o código.",
+          });
         },
       );
+
+      // O usuário pode ter desligado durante o tempo de permissão/abertura.
+      if (runId !== scannerRunIdRef.current) {
+        controls.stop();
+        return;
+      }
 
       scanControlsRef.current = controls;
       setScannerState("scanning");
       setStatus({ type: "ready", message: "Câmera ativa." });
     } catch (error) {
       setScannerState("idle");
-      setStatus({
-        type: "error",
-        message:
-          error?.name === "NotAllowedError"
-            ? "Permissão da câmera negada."
-            : "Não foi possível iniciar o scanner.",
-      });
+      setStatus({ type: "error", message: describeCameraError(error) });
     }
   }, [searchProduct]);
 
+  // A navegação é por estado, não por rota: sem este efeito, sair da aba Scan
+  // deixa a câmera ligada indefinidamente.
   useEffect(() => {
+    if (activePage !== "scan") stopScanner();
     return () => stopScanner();
+  }, [activePage, stopScanner]);
+
+  useEffect(() => {
+    const stopWhenHidden = () => {
+      if (document.hidden) stopScanner();
+    };
+    document.addEventListener("visibilitychange", stopWhenHidden);
+    return () => document.removeEventListener("visibilitychange", stopWhenHidden);
   }, [stopScanner]);
 
   useEffect(() => {
@@ -1267,29 +1619,49 @@ function App() {
   };
 
   const saveAllergiesForSession = (nextAllergies) => {
-    if (!currentUser) {
+    // Espelha sempre no armazenamento local: sem isso, uma alergia marcada
+    // durante a sessão logada desaparecia silenciosamente ao sair da conta.
+    try {
       localStorage.setItem(GUEST_ALLERGIES_KEY, JSON.stringify(nextAllergies));
+    } catch {
+      /* armazenamento indisponível: a seleção continua valendo nesta sessão */
+    }
+
+    if (!currentUser) return;
+
+    const storedUsers = readStoredUsers();
+    if (!storedUsers.some((user) => user.email === currentUser.email)) {
+      setAuthStatus({
+        type: "error",
+        message: "Não consegui salvar suas alergias na conta. Entre novamente.",
+      });
       return;
     }
 
-    const nextUsers = users.map((user) =>
+    const nextUsers = storedUsers.map((user) =>
       user.email === currentUser.email ? { ...user, allergies: nextAllergies } : user,
     );
 
+    if (!writeStoredUsers(nextUsers)) {
+      setAuthStatus({
+        type: "error",
+        message: "Não consegui salvar suas alergias. O armazenamento pode estar cheio.",
+      });
+      return;
+    }
+
     setUsers(nextUsers);
-    writeStoredUsers(nextUsers);
     setCurrentUser((user) => (user ? { ...user, allergies: nextAllergies } : user));
   };
 
+  // O updater de estado precisa ser puro — o efeito colateral saiu de dentro dele.
   const toggleAllergy = (id) => {
-    setSelectedAllergies((current) => {
-      const nextAllergies = current.includes(id)
-        ? current.filter((item) => item !== id)
-        : [...current, id];
+    const nextAllergies = selectedAllergies.includes(id)
+      ? selectedAllergies.filter((item) => item !== id)
+      : [...selectedAllergies, id];
 
-      saveAllergiesForSession(nextAllergies);
-      return nextAllergies;
-    });
+    setSelectedAllergies(nextAllergies);
+    saveAllergiesForSession(nextAllergies);
   };
 
   const updateAuthForm = (field, value) => {
@@ -1319,12 +1691,30 @@ function App() {
       return;
     }
 
-    const passwordHash = await hashPassword(password);
+    // crypto.subtle não existe fora de HTTPS/localhost. Sem este aviso, abrir o
+    // app pelo IP da rede fazia o botão simplesmente não responder.
+    if (!hasSecureCrypto()) {
+      setAuthStatus({
+        type: "error",
+        message:
+          "Login indisponível neste endereço: abra o app por https:// ou http://localhost. Pelo IP da rede o navegador bloqueia a criptografia.",
+      });
+      return;
+    }
+
+    // Relê do armazenamento em vez de usar o estado, que pode estar velho
+    // se houver outra aba aberta — antes isso apagava contas.
+    const storedUsers = readStoredUsers();
 
     if (authMode === "register") {
-      const alreadyExists = users.some(
-        (user) => user.email === email || normalizeText(user.name) === normalizeText(name),
-      );
+      const alreadyExists = storedUsers.some((user) => {
+        const emailKey = normalizeText(user.email);
+        const nameKey = normalizeText(user.name);
+        return (
+          [emailKey, nameKey].includes(normalizeText(email)) ||
+          [emailKey, nameKey].includes(normalizeText(name))
+        );
+      });
 
       if (alreadyExists) {
         setAuthStatus({
@@ -1334,18 +1724,35 @@ function App() {
         return;
       }
 
+      let credentials;
+      try {
+        credentials = await hashPassword(password);
+      } catch {
+        setAuthStatus({ type: "error", message: "Falha ao processar a senha. Tente novamente." });
+        return;
+      }
+
       const newUser = {
-        id: crypto.randomUUID(),
+        id: generateId(),
         name,
         email,
-        passwordHash,
+        passwordSalt: credentials.salt,
+        passwordHash: credentials.hash,
         allergies: selectedAllergies,
         createdAt: new Date().toISOString(),
       };
-      const nextUsers = [...users, newUser];
+      const nextUsers = [...storedUsers, newUser];
+
+      if (!writeStoredUsers(nextUsers)) {
+        setAuthStatus({
+          type: "error",
+          message:
+            "Não consegui salvar seus dados. O armazenamento do navegador pode estar cheio ou bloqueado.",
+        });
+        return;
+      }
 
       setUsers(nextUsers);
-      writeStoredUsers(nextUsers);
       localStorage.setItem(SESSION_STORAGE_KEY, newUser.email);
       setCurrentUser(getPublicUser(newUser));
       setAuthForm({ name: "", email: "", password: "" });
@@ -1356,9 +1763,27 @@ function App() {
       return;
     }
 
-    const foundUser = findUserByIdentifier(users, email);
+    // Prioriza o e-mail: um usuário cujo NOME seja o e-mail de outro não deve
+    // sequestrar o login alheio.
+    const foundUser =
+      storedUsers.find((user) => normalizeText(user.email) === normalizeText(email)) ||
+      findUserByIdentifier(storedUsers, email);
 
-    if (!foundUser || foundUser.passwordHash !== passwordHash) {
+    let passwordMatches = false;
+    try {
+      if (foundUser?.passwordSalt) {
+        const { hash } = await hashPassword(password, foundUser.passwordSalt);
+        passwordMatches = hash === foundUser.passwordHash;
+      } else if (foundUser) {
+        // Conta criada antes do PBKDF2: valida pelo formato antigo.
+        passwordMatches = (await legacyHashPassword(password)) === foundUser.passwordHash;
+      }
+    } catch {
+      setAuthStatus({ type: "error", message: "Falha ao verificar a senha. Tente novamente." });
+      return;
+    }
+
+    if (!foundUser || !passwordMatches) {
       setAuthStatus({
         type: "error",
         message: "Usuário, e-mail ou senha inválidos.",
@@ -1366,9 +1791,30 @@ function App() {
       return;
     }
 
-    localStorage.setItem(SESSION_STORAGE_KEY, foundUser.email);
-    setCurrentUser(getPublicUser(foundUser));
-    setSelectedAllergies(foundUser.allergies?.length ? foundUser.allergies : DEFAULT_ALLERGIES);
+    // Migra a conta antiga para PBKDF2 no primeiro login bem-sucedido.
+    let userToStore = foundUser;
+    if (!foundUser.passwordSalt) {
+      try {
+        const credentials = await hashPassword(password);
+        userToStore = {
+          ...foundUser,
+          passwordSalt: credentials.salt,
+          passwordHash: credentials.hash,
+        };
+        const migrated = storedUsers.map((user) =>
+          user.email === foundUser.email ? userToStore : user,
+        );
+        if (writeStoredUsers(migrated)) setUsers(migrated);
+      } catch {
+        userToStore = foundUser; // migração é oportunista; o login continua válido
+      }
+    }
+
+    localStorage.setItem(SESSION_STORAGE_KEY, userToStore.email);
+    setCurrentUser(getPublicUser(userToStore));
+    setSelectedAllergies(
+      Array.isArray(userToStore.allergies) ? userToStore.allergies : DEFAULT_ALLERGIES,
+    );
     setAuthForm({ name: "", email: "", password: "" });
     setAuthStatus({
       type: "success",
@@ -1406,7 +1852,7 @@ function App() {
       window.setTimeout(resolve, thinkingDelay);
     });
 
-    const answer = buildAssistantAnswer(product, question, allergyScan.profileRisks);
+    const answer = buildAssistantAnswer(product, question, allergyScan);
     setAssistantMessages([...nextMessages, { role: "assistant", text: answer }]);
     setAssistantConnection({
       type: "success",
@@ -1435,7 +1881,10 @@ function App() {
 
   const navigateTo = (page) => {
     setActivePage(page);
-    window.history.replaceState(null, "", `#${page}`);
+    // pushState (e não replaceState) para o botão Voltar do Android voltar
+    // à tela anterior em vez de sair do app.
+    if (page !== activePage) window.history.pushState(null, "", `#${page}`);
+    window.scrollTo(0, 0);
   };
 
   const searchAndOpen = (value) => {
@@ -1549,11 +1998,15 @@ function App() {
               {allergyScan.profileRisks.length ? (
                 allergyScan.profileRisks.map((risk) => (
                   <span className="danger-tag" key={risk.id}>
-                    {risk.label}
+                    {risk.severity === "traces" ? `Pode conter ${risk.label}` : risk.label}
                   </span>
                 ))
-              ) : (
+              ) : allergyScan.hasData ? (
                 <span className="quiet-tag">Sem conflito com o perfil</span>
+              ) : (
+                <span className="danger-tag">
+                  Sem dados de alergênicos — confira o rótulo físico
+                </span>
               )}
             </div>
           </article>
@@ -1566,11 +2019,13 @@ function App() {
               {allergyScan.allRisks.length ? (
                 allergyScan.allRisks.map((risk) => (
                   <span className="soft-tag" key={risk.id}>
-                    {risk.label}
+                    {risk.severity === "traces" ? `Pode conter ${risk.label}` : risk.label}
                   </span>
                 ))
-              ) : (
+              ) : allergyScan.hasData ? (
                 <span className="quiet-tag">Nenhum alergênico detectado</span>
+              ) : (
+                <span className="quiet-tag">Produto sem ingredientes cadastrados na base</span>
               )}
               {[...(product.labels_tags || []), ...(product.categories_tags || [])]
                 .filter(Boolean)
@@ -1693,7 +2148,7 @@ function App() {
           </button>
         ))}
       </div>
-      <div className={`status-line ${status.type}`}>
+      <div className={`status-line ${status.type}`} role="status" aria-live="polite">
         <StatusIcon
           size={18}
           className={status.type === "loading" ? "spin" : ""}
@@ -1755,7 +2210,7 @@ function App() {
               </button>
             </div>
           </form>
-          <div className={`status-line ${status.type}`}>
+          <div className={`status-line ${status.type}`} role="status" aria-live="polite">
             <StatusIcon
               size={18}
               className={status.type === "loading" ? "spin" : ""}
@@ -1799,7 +2254,7 @@ function App() {
   const renderChatPage = () => (
     <>
       <header className="page-header">
-        <p className="eyebrow dark">Chat com IA</p>
+        <p className="eyebrow dark">Assistente</p>
         <h2>Converse com o assistente normalmente.</h2>
         <p className="page-subtitle">
           Ele responde dúvidas gerais, ajuda com alimentos e usa o produto atual quando houver um selecionado.
@@ -1810,7 +2265,12 @@ function App() {
           <Bot size={18} aria-hidden="true" />
           <h4>Nutri Assistente</h4>
         </div>
-        <div className={`assistant-status ${assistantConnection.type}`}>
+        <p className="assistant-disclaimer">
+          Orientação informativa, baseada em dados públicos de rótulo que podem estar incompletos ou
+          desatualizados. Não substitui avaliação de médico ou nutricionista. Em caso de reação
+          alérgica, procure atendimento.
+        </p>
+        <div className={`assistant-status ${assistantConnection.type}`} role="status" aria-live="polite">
           <StatusIcon
             size={17}
             className={assistantConnection.type === "loading" ? "spin" : ""}
@@ -1834,7 +2294,7 @@ function App() {
             </button>
           ))}
         </div>
-        <div className="chat-log" ref={chatLogRef}>
+        <div className="chat-log" ref={chatLogRef} role="log" aria-live="polite">
           {assistantMessages.map((message, index) => (
             <p className={`chat-message ${message.role}`} key={`${message.role}-${index}`}>
               {message.text}
@@ -1930,7 +2390,9 @@ function App() {
       ) : (
         <section className="auth-layout">
           <article className="auth-card">
-            <div className="auth-tabs" role="tablist" aria-label="Tipo de acesso">
+            {/* Sem role="tab"/aria-selected nos filhos, declarar "tablist" confunde
+                mais o leitor de tela do que não ter ARIA nenhum. */}
+            <div className="auth-tabs" aria-label="Tipo de acesso">
               <button
                 type="button"
                 className={authMode === "login" ? "active" : ""}
@@ -1997,7 +2459,7 @@ function App() {
               </button>
             </form>
 
-            <div className={`status-line ${authStatus.type}`}>
+            <div className={`status-line ${authStatus.type}`} role="status" aria-live="polite">
               <StatusIcon size={18} aria-hidden="true" />
               <span>{authStatus.message}</span>
             </div>
@@ -2093,6 +2555,7 @@ function App() {
                 type="button"
                 key={item.id}
                 className={activePage === item.id ? "active" : ""}
+                aria-current={activePage === item.id ? "page" : undefined}
                 onClick={() => navigateTo(item.id)}
               >
                 <Icon size={18} aria-hidden="true" />
@@ -2125,7 +2588,7 @@ function App() {
           </button>
         </section>
 
-        <div className={`status-line ${status.type}`}>
+        <div className={`status-line ${status.type}`} role="status" aria-live="polite">
           <StatusIcon
             size={18}
             className={status.type === "loading" ? "spin" : ""}

@@ -537,7 +537,7 @@ h1 {
 
 .chip-list button,
 .match-strip button {
-  min-height: 36px;
+  min-height: 44px;
   border: 1px solid var(--line-blue);
   border-radius: 999px;
   padding: 0 12px;
@@ -711,8 +711,21 @@ h1 {
 }
 
 .assistant-page .chat-log {
-  min-height: 420px;
+  /* min-height fixo vencia o max-height em qualquer celular, travando o log
+     em 63% da tela. min() faz os dois limites conviverem. */
+  min-height: min(420px, 45vh);
   max-height: 56vh;
+}
+
+.assistant-disclaimer {
+  border: 1px solid #f6d98f;
+  border-left-width: 4px;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--warn-bg);
+  color: #6b4200;
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .assistant-status {
@@ -755,7 +768,7 @@ h1 {
 
 .prompt-suggestions button,
 .retry-button {
-  min-height: 36px;
+  min-height: 44px;
   border: 1px solid var(--line-blue);
   border-radius: 999px;
   padding: 0 12px;
@@ -1099,20 +1112,22 @@ h1 {
   color: #ffffff !important;
 }
 
+/* Fundos escurecidos para o texto branco atingir 4.5:1 (WCAG AA).
+   Antes, a nota C ficava em 2,37:1 — ilegível sob luz forte. */
 .grade-a {
-  background: #0b8f47 !important;
+  background: #0a7a3d !important;
 }
 
 .grade-b {
-  background: #72a815 !important;
+  background: #4f7410 !important;
 }
 
 .grade-c {
-  background: #d5a015 !important;
+  background: #8a6600 !important;
 }
 
 .grade-d {
-  background: #dd6b20 !important;
+  background: #b4530f !important;
 }
 
 .grade-e,
