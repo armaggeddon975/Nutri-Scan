@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.vite/
+.env.local
+src.backup-antes-correcoes/
+package.json.backup
