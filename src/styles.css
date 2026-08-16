@@ -1303,6 +1303,16 @@ th:last-child {
   color: #1d3528;
 }
 
+.chat-source {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  color: #08735c;
+  text-transform: uppercase;
+}
+
 .chat-message.user {
   align-self: flex-end;
   background:

@@ -2,7 +2,7 @@ import basicSsl from "@vitejs/plugin-basic-ssl";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-// `npm run dev`    -> http://localhost:5173 (só neste computador)
+// `npm run dev` -> http://localhost:5173 (só neste computador)
 // `npm run dev:celular` -> https://<ip-da-rede>:5173
 //
 // A câmera (getUserMedia) e o login (crypto.subtle) só funcionam em contexto
@@ -14,5 +14,12 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: mode === "rede" ? true : "127.0.0.1",
     port: 5173,
+    proxy: {
+      "/api": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
 }));

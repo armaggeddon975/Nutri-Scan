@@ -1,11 +1,22 @@
 {
   "name": "nutri-scan",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.6.6",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "dev:celular": "vite --mode rede",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:full": "node scripts/dev-full.js",
+    "doctor": "node scripts/doctor.js",
+    "doctor:e2e": "node scripts/doctor.js --strict-e2e",
+    "e2e:real": "node scripts/e2e-real.js",
+    "e2e:strict": "node scripts/e2e-real.js --strict",
+    "verify:release": "node scripts/verify-release.js",
+    "verify:e2e": "node scripts/verify-e2e.js",
+    "db:migrate": "npm --prefix backend run db:migrate",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1"
   },
