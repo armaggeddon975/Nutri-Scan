@@ -48,6 +48,9 @@ export const env = {
   databaseUrl: process.env.DATABASE_URL || "",
   databaseSsl: parseBoolean(process.env.DATABASE_SSL, false),
   frontendOrigin: process.env.FRONTEND_ORIGIN || "http://localhost:5173",
+  // Atras de proxy (Render, Fly, Nginx) o Express precisa confiar no
+  // X-Forwarded-For para o rate limit contar por visitante, nao por proxy.
+  trustProxy: parseBoolean(process.env.TRUST_PROXY, parseNodeEnv(process.env.NODE_ENV) === "production"),
   sessionTtlDays: parsePositiveInt(process.env.SESSION_TTL_DAYS, 30),
   sessionCookieName: process.env.SESSION_COOKIE_NAME || "nutriscan_session",
   aiProvider: AI_PROVIDER,

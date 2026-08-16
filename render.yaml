@@ -1,0 +1,44 @@
+# Blueprint do Render para o NutriScan.
+#
+# Um unico web service serve a API e o frontend ja compilado, na mesma origem.
+# O PostgreSQL fica no Neon: o plano gratuito do Render expira em 90 dias e
+# apaga os dados, o do Neon nao.
+#
+# Variaveis marcadas com `sync: false` NAO ficam neste arquivo: elas sao
+# preenchidas no painel do Render, para nao entrarem no Git.
+
+services:
+  - type: web
+    name: nutriscan
+    runtime: node
+    plan: free
+    healthCheckPath: /api/health
+    buildCommand: npm ci && npm --prefix backend ci && npm run build && npm run db:migrate
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+
+      # String de conexao do Neon. Preencher no painel.
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_SSL
+        value: "true"
+
+      # Sem chave, o assistente cai para a resposta local e o app continua de pe.
+      # A API da Anthropic e paga por uso; deixar em branco nao quebra nada.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-5
+
+      # Mesma origem em producao: a URL publica do proprio servico.
+      - key: FRONTEND_ORIGIN
+        sync: false
+
+      - key: SESSION_TTL_DAYS
+        value: "30"
+      - key: TRUST_PROXY
+        value: "true"
