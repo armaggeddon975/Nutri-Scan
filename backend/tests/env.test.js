@@ -76,7 +76,7 @@ test("carrega backend/.env por caminho absoluto e valida valores", async () => {
       assert.equal(env.databaseUrl, "postgresql://env-file.example/nutriscan");
       assert.equal(env.databaseSsl, true);
       assert.equal(env.sessionTtlDays, 12);
-      assert.equal(env.version, "0.6.6");
+      assert.equal(env.version, "0.6.7");
       assert.equal(env.anthropicModel, "claude-modelo-de-teste");
       assert.equal(env.anthropicTimeoutMs, 1234);
       assert.equal(env.anthropicMaxOutputTokens, 567);

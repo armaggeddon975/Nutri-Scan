@@ -1,4 +1,4 @@
-# NutriScan Backend v0.6.6
+# NutriScan Backend v0.6.7
 
 API Express responsavel por contas, sessoes e alergias sincronizadas.
 
@@ -104,15 +104,15 @@ curl http://localhost:3000/api/health
 Respostas possiveis:
 
 ```json
-{ "status": "ok", "database": "not_configured", "ai": "not_configured", "aiProvider": "anthropic", "version": "0.6.6" }
+{ "status": "ok", "database": "not_configured", "ai": "not_configured", "aiProvider": "anthropic", "version": "0.6.7" }
 ```
 
 ```json
-{ "status": "ok", "database": "connected", "ai": "configured", "aiProvider": "anthropic", "version": "0.6.6" }
+{ "status": "ok", "database": "connected", "ai": "configured", "aiProvider": "anthropic", "version": "0.6.7" }
 ```
 
 ```json
-{ "status": "degraded", "database": "error", "ai": "not_configured", "aiProvider": "anthropic", "version": "0.6.6" }
+{ "status": "degraded", "database": "error", "ai": "not_configured", "aiProvider": "anthropic", "version": "0.6.7" }
 ```
 
 ## Testes

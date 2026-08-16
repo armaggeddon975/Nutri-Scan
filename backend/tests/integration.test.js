@@ -12,7 +12,18 @@ import { hashSessionToken } from "../src/utils/sessionToken.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const backendRoot = path.resolve(__dirname, "..");
-const hasDatabase = Boolean(env.databaseUrl);
+// Estes testes rodam migrations e executam DELETE em `users`. Presenca de
+// DATABASE_URL NAO basta para liga-los: um desenvolvedor com a string de
+// producao no .env rodaria `npm test` e escreveria no banco real sem perceber.
+// Foi exatamente o que aconteceu na v0.6.6, deixando linha de teste em
+// producao. Agora exige-se autorizacao explicita, alem da string.
+const DB_TESTS_FLAG = "RUN_DB_INTEGRATION_TESTS";
+const dbTestsAuthorized = process.env[DB_TESTS_FLAG] === "true";
+const hasDatabase = Boolean(env.databaseUrl) && dbTestsAuthorized;
+
+const skipReason = env.databaseUrl
+  ? `NAO EXECUTADO - defina ${DB_TESTS_FLAG}=true para escrever no banco apontado por DATABASE_URL`
+  : "NAO EXECUTADO - PostgreSQL nao disponivel";
 
 after(async () => {
   await closePool();
@@ -85,7 +96,7 @@ async function cleanupTestUsers() {
 
 test(
   "fluxo real: cadastro, me, alergias, logout e login recuperando alergias",
-  { skip: hasDatabase ? false : "NAO EXECUTADO - PostgreSQL nao disponivel" },
+  { skip: hasDatabase ? false : skipReason },
   async () => {
     runMigrations();
     await cleanupTestUsers();
@@ -142,7 +153,7 @@ test(
 
 test(
   "multi-dispositivo simulado sincroniza alergias entre dois clientes",
-  { skip: hasDatabase ? false : "NAO EXECUTADO - PostgreSQL nao disponivel" },
+  { skip: hasDatabase ? false : skipReason },
   async () => {
     runMigrations();
     await cleanupTestUsers();
@@ -182,7 +193,7 @@ test(
 
 test(
   "contas permanecem isoladas",
-  { skip: hasDatabase ? false : "NAO EXECUTADO - PostgreSQL nao disponivel" },
+  { skip: hasDatabase ? false : skipReason },
   async () => {
     runMigrations();
     await cleanupTestUsers();
@@ -222,7 +233,7 @@ test(
 
 test(
   "logout sem sessao ou com token desconhecido limpa cookie de forma controlada",
-  { skip: hasDatabase ? false : "NAO EXECUTADO - PostgreSQL nao disponivel" },
+  { skip: hasDatabase ? false : skipReason },
   async () => {
     runMigrations();
 
@@ -245,7 +256,7 @@ test(
 
 test(
   "sessao expirada deixa de autenticar",
-  { skip: hasDatabase ? false : "NAO EXECUTADO - PostgreSQL nao disponivel" },
+  { skip: hasDatabase ? false : skipReason },
   async () => {
     runMigrations();
     await cleanupTestUsers();

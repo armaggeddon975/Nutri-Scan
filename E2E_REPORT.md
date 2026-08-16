@@ -1,4 +1,4 @@
-# E2E Report - NutriScan v0.6.6
+# E2E Report - NutriScan v0.6.7
 
 Data: 2026-08-15
 
@@ -84,7 +84,7 @@ Exit code 0. O runner subiu a API temporaria, validou o possivel e encerrou.
 
 ```json
 {
-  "version": "0.6.6",
+  "version": "0.6.7",
   "backendProcess": "STARTED_BY_RUNNER",
   "database": "NOT_EXECUTED",
   "deterministicEngine": "PASSED",
@@ -108,7 +108,7 @@ status      ok
 database    not_configured
 ai          not_configured
 aiProvider  anthropic
-version     0.6.6
+version     0.6.7
 ```
 
 ## Assistente

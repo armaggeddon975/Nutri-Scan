@@ -1,5 +1,27 @@
 # Changelog
 
+## NutriScan v0.6.7 - 2026-08-16
+
+Correcoes da auditoria do gauntlet-loop sobre a preparacao de producao. O
+supervisor REPROVOU a v0.6.6 com nota 2 em safety, e o motivo mais grave nao foi
+codigo: a suite de testes escreveu no banco de producao do usuario.
+
+- backend/tests/integration.test.js parou de se auto-habilitar so por encontrar
+  DATABASE_URL. Rodar migrations e DELETE em users agora exige
+  RUN_DB_INTEGRATION_TESTS=true. Sem isso, quem tivesse a string de producao no
+  .env escreveria no banco real ao rodar npm test, sem perceber. Foi o que
+  aconteceu: a suite rodou varias vezes contra o Neon e deixou uma linha de
+  teste em producao, removida manualmente.
+- Corrigido o contrato da API sob o fallback de SPA: o roteamento do Express nao
+  diferencia maiusculas, mas o guarda diferenciava, entao /API/naoexiste e /api
+  devolviam o HTML do app com status 200 em vez de erro JSON.
+- createApp aceita options.distDir, permitindo testar os dois modos, com e sem
+  build, sem depender de npm run build.
+- Adicionado backend/tests/productionServing.test.js cobrindo o codigo que
+  nasceu sem teste: app servido, assets, fallback de SPA, contrato da API em
+  varias caixas, metodo diferente de GET, ausencia de build e CSP sem
+  afrouxamento. Validado por mutacao.
+
 ## NutriScan v0.6.6 - 2026-08-15
 
 Endurecimento do gate E2E a partir da auditoria do gauntlet-loop sobre a v0.6.5.

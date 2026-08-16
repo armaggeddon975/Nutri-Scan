@@ -48,7 +48,11 @@ function buildContentSecurityPolicy() {
   return { directives, useDefaults: false };
 }
 
-export function createApp() {
+// `options.distDir` existe para teste: permite apontar para um diretorio
+// temporario e exercitar os dois modos (com e sem build) sem depender de
+// `npm run build` ter rodado.
+export function createApp(options = {}) {
+  const activeDistDir = options.distDir || distDir;
   const app = express();
 
   // Render e hospedagens equivalentes terminam TLS num proxy. Sem isto, o rate
@@ -67,9 +71,9 @@ export function createApp() {
 
   // Em producao o frontend e servido pelo proprio backend, na mesma origem.
   // Isso evita CORS e cookie de terceiro, como recomenda docs/ARCHITECTURE.md.
-  const hasBuild = existsSync(path.join(distDir, "index.html"));
+  const hasBuild = existsSync(path.join(activeDistDir, "index.html"));
   if (hasBuild) {
-    app.use(express.static(distDir, { index: false, maxAge: "1h" }));
+    app.use(express.static(activeDistDir, { index: false, maxAge: "1h" }));
   }
 
   app.use("/api", healthRoutes);
@@ -80,9 +84,16 @@ export function createApp() {
   if (hasBuild) {
     // Qualquer rota que nao seja da API devolve o app. Rota de API inexistente
     // continua caindo no notFoundHandler, com erro JSON.
+    //
+    // A comparacao e minuscula e cobre `/api` sem barra de proposito: o
+    // roteamento do Express nao diferencia maiusculas, entao `/API/naoexiste`
+    // e `/api` escapavam do guarda e recebiam o HTML do app com status 200,
+    // quebrando o contrato da API. Corrigido na v0.6.7.
     app.use((req, res, next) => {
-      if (req.method !== "GET" || req.path.startsWith("/api/")) return next();
-      res.sendFile(path.join(distDir, "index.html"));
+      const requestPath = req.path.toLowerCase();
+      const isApiPath = requestPath === "/api" || requestPath.startsWith("/api/");
+      if (req.method !== "GET" || isApiPath) return next();
+      res.sendFile(path.join(activeDistDir, "index.html"));
     });
   }
 

@@ -1,4 +1,4 @@
-# Relatorio de Auditoria - NutriScan v0.6.6
+# Relatorio de Auditoria - NutriScan v0.6.7
 
 Data: 2026-08-15
 
@@ -248,7 +248,7 @@ e-mail, senha, hash, salt, cookie de sessao, `DATABASE_URL` ou
 ## Health
 
 ```json
-{ "status": "ok", "database": "connected", "ai": "configured", "aiProvider": "anthropic", "version": "0.6.6" }
+{ "status": "ok", "database": "connected", "ai": "configured", "aiProvider": "anthropic", "version": "0.6.7" }
 ```
 
 Informa apenas se ha chave, nunca o valor.
