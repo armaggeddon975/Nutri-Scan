@@ -37,9 +37,10 @@ services:
       - key: ANTHROPIC_MODEL
         value: claude-sonnet-5
 
-      # Mesma origem em producao: a URL publica do proprio servico.
-      - key: FRONTEND_ORIGIN
-        sync: false
+      # FRONTEND_ORIGIN nao aparece aqui de proposito. Em producao o backend
+      # serve o proprio frontend, entao as chamadas sao de mesma origem e nao
+      # passam por CORS. Exigir essa variavel no blueprint travaria a criacao do
+      # servico: a URL publica so existe depois que o servico e criado.
 
       - key: SESSION_TTL_DAYS
         value: "30"
