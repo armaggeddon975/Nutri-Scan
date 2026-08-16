@@ -13,7 +13,10 @@ services:
     runtime: node
     plan: free
     healthCheckPath: /api/health
-    buildCommand: npm ci && npm --prefix backend ci && npm run build && npm run db:migrate
+    # `--include=dev` e obrigatorio: com NODE_ENV=production o npm ci descarta
+    # devDependencies, e o vite (que compila o frontend) e devDependency.
+    # Sem isso o build morre com "vite: not found".
+    buildCommand: npm ci --include=dev && npm --prefix backend ci && npm run build && npm run db:migrate
     startCommand: npm start
     envVars:
       - key: NODE_VERSION

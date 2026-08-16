@@ -28,13 +28,20 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "../..");
 const scriptsDir = path.join(rootDir, "scripts");
 
-// Ambiente limpo: sem chave e sem flag herdadas do processo de teste.
+// Ambiente limpo para o processo filho.
+//
+// Regressao da v0.6.7: apagar a variavel aqui NAO basta. O backend carrega
+// backend/.env com `override: false`, entao uma variavel ausente e reposta pelo
+// arquivo e o filho enxerga a credencial real. Vazia, a chave existe no
+// ambiente, o dotenv nao sobrescreve, e o codigo a trata como nao configurada.
+// Sem isso, este teste passava so enquanto backend/.env nao existia.
 function cleanEnv(overrides = {}) {
   const env = { ...process.env };
-  delete env.ANTHROPIC_API_KEY;
+  env.ANTHROPIC_API_KEY = "";
+  env.DATABASE_URL = "";
   delete env[ANTHROPIC_FLAG];
   delete env[REQUIRE_ANTHROPIC];
-  delete env.DATABASE_URL;
+  delete env.E2E_BASE_URL;
   return { ...env, ...overrides };
 }
 

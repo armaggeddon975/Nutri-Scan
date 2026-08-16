@@ -17,14 +17,24 @@ async function withServer(callback) {
   }
 }
 
-test("health sem DATABASE_URL retorna banco nao configurado", async () => {
+test("health reporta o estado real do banco e da IA, sem vazar configuracao", async () => {
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/health`);
     const body = await response.json();
 
     assert.equal(response.status, 200);
     assert.equal(body.status, "ok");
-    assert.equal(body.database, env.databaseUrl ? "error" : "not_configured");
+    // Sem DATABASE_URL a resposta e sempre not_configured. Com ela, depende de
+    // o banco estar acessivel: `connected` num ambiente real, `error` quando a
+    // string aponta para um banco inalcancavel. As duas sao respostas honestas.
+    if (env.databaseUrl) {
+      assert.ok(
+        ["connected", "error"].includes(body.database),
+        `database inesperado com DATABASE_URL configurada: ${body.database}`,
+      );
+    } else {
+      assert.equal(body.database, "not_configured");
+    }
     assert.equal(body.ai, env.anthropicApiKey ? "configured" : "not_configured");
     assert.equal(body.aiProvider, "anthropic");
     assert.equal(body.version, "0.6.6");
