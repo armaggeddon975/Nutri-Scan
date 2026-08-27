@@ -1,4 +1,4 @@
-# Nutri Assistente IA - v0.6.7
+# Nutri Assistente IA - v0.6.8
 
 ## Fluxo
 
@@ -6,6 +6,7 @@
 Motor deterministico
   -> Allergy Snapshot
   -> Claude explica
+  -> servidor escreve o veredito e aplica o piso de risco
 ```
 
 A IA nao e a autoridade primaria sobre presenca de alergenicos. O motor
@@ -225,6 +226,71 @@ O E2E da v0.6.1 prova isso de duas formas: por teste automatizado com loader
 injetado e, quando ha PostgreSQL real, por instrumentacao interna que le o
 payload enviado a um mock da Anthropic. A API publica continua sem expor o
 snapshot.
+
+## Veredito deterministico e piso de risco
+
+Ate a v0.6.7, a autoridade do motor existia apenas como frase no system prompt.
+Uma auditoria externa mostrou o que isso valia: com um cliente que devolvia
+`safety: "normal"` e o texto "este produto NAO contem leite e e totalmente
+seguro", para um perfil com alergia a leite e um produto com leite declarado, a
+resposta chegava ao usuario exatamente assim. Instrucao ao modelo nao e
+garantia.
+
+Desde a v0.6.8 o veredito e um campo autoral do servidor, em
+`shared/allergyVerdict.js`:
+
+```text
+allergySnapshot (motor)
+  -> buildAllergyVerdict()
+  -> applyAllergyAuthority(resposta do modelo, veredito)
+  -> resposta ao usuario
+```
+
+Tres garantias impostas por codigo:
+
+```text
+1. o campo `allergyVerdict` e escrito pelo servidor, nunca pelo modelo
+2. com conflito declarado, `safety` nunca sai como "normal"
+3. o alerta em texto e escrito pelo servidor, separado de `answer`
+```
+
+O modelo nao escreve o campo por duas barreiras independentes. O
+`assistantResponseSchema` e `.strict()`: qualquer chave fora do contrato faz a
+resposta inteira ser rejeitada com `AI_SCHEMA_INVALID`, em vez de a chave ser
+descartada em silencio. E `applyAllergyAuthority` remove qualquer
+`allergyVerdict` da resposta antes de escrever o do motor, de modo que o valor
+entregue vem do motor mesmo que algo chegue ali por outro caminho.
+
+O piso de risco so sobe, nunca desce: uma resposta `urgent` continua `urgent`.
+Traco declarado aparece no veredito com `status: "traces"` e alerta proprio, mas
+nao muda o nivel de risco do modelo - `traces` significa "pode conter", e
+confundir isso com evidencia declarada tiraria o sentido do piso.
+
+Quando o modelo responde `safety: "normal"` havendo conflito declarado, isso e
+registrado como tentativa de minimizacao:
+
+```json
+{
+  "event": "assistant.allergy_minimization_attempt",
+  "conflicts": ["milk"],
+  "modelSafety": "normal",
+  "enforcedSafety": "caution",
+  "total": 1
+}
+```
+
+O registro nao carrega mensagem, identificador de usuario, e-mail nem chave. Ele
+nao derruba a requisicao: a resposta ja foi corrigida pelo piso, e o objetivo e
+o operador enxergar a frequencia.
+
+Todas as respostas do endpoint passam pelo mesmo ponto de saida, inclusive as
+locais de urgencia, fora de escopo e tentativa de injecao. A invariante fica
+auditavel em uma frase: nenhuma resposta com conflito declarado sai com safety
+"normal", venha ela da IA ou nao.
+
+Na interface, o bloco deterministico aparece acima do texto do modelo, e o
+estado exibido vem sempre de `verdict.status`. A UI nunca infere conflito do
+texto da resposta.
 
 ## Limites Medicos
 

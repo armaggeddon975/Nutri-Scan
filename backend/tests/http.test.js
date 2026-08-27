@@ -37,7 +37,7 @@ test("health reporta o estado real do banco e da IA, sem vazar configuracao", as
     }
     assert.equal(body.ai, env.anthropicApiKey ? "configured" : "not_configured");
     assert.equal(body.aiProvider, "anthropic");
-    assert.equal(body.version, "0.6.7");
+    assert.equal(body.version, "0.6.8");
     assert.equal("environment" in body, false);
   });
 });

@@ -11,12 +11,20 @@ export const ASSISTANT_CATEGORIES = [
 
 export const ASSISTANT_SAFETY_LEVELS = ["normal", "caution", "urgent"];
 
-export const assistantResponseSchema = z.object({
-  answer: z.string().min(1).max(4000),
-  category: z.enum(ASSISTANT_CATEGORIES),
-  safety: z.enum(ASSISTANT_SAFETY_LEVELS),
-  usedProductContext: z.boolean(),
-});
+// `.strict()` e deliberado e e a primeira das duas barreiras do veredito.
+// O modelo nao escreve `allergyVerdict`: se a resposta trouxer qualquer chave
+// fora deste contrato, a resposta inteira e rejeitada com AI_SCHEMA_INVALID em
+// vez de ter a chave descartada em silencio. Fail-closed, como o resto do app.
+// A segunda barreira e `applyAllergyAuthority`, que reescreve o campo a partir
+// do motor mesmo que algo chegue ali por outro caminho.
+export const assistantResponseSchema = z
+  .object({
+    answer: z.string().min(1).max(4000),
+    category: z.enum(ASSISTANT_CATEGORIES),
+    safety: z.enum(ASSISTANT_SAFETY_LEVELS),
+    usedProductContext: z.boolean(),
+  })
+  .strict();
 
 // Instrucoes privilegiadas. Na Messages API elas viajam no parametro `system`,
 // nunca como uma mensagem de role "system" dentro de `messages`.
@@ -40,6 +48,8 @@ Regras fundamentais:
 - Se houver sinais de reacao alergica grave, oriente busca imediata de
   atendimento de emergencia.
 - O motor deterministico do NutriScan e autoridade para conflitos de alergia.
+  O veredito de alergia e escrito pelo servidor a partir do motor, depois da
+  sua resposta. Voce nao decide conflito de alergenico e nao escreve esse campo.
 - Se allergySnapshot.hasDeclaredConflict for true, nao minimize o risco.
 - Nao invente nutrientes, ingredientes ou ausencia/presenca de alergenicos.
 - Se a informacao nao estiver no contexto, diga que os dados disponiveis nao

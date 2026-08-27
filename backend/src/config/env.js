@@ -11,7 +11,7 @@ dotenv.config({
   quiet: true,
 });
 
-const APP_VERSION = "0.6.7";
+const APP_VERSION = "0.6.8";
 const AI_PROVIDER = "anthropic";
 const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5";
 const VALID_NODE_ENVS = new Set(["development", "test", "production"]);

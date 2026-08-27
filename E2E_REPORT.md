@@ -1,156 +1,157 @@
-# E2E Report - NutriScan v0.6.7
+# E2E Report - NutriScan v0.6.8
 
-Data: 2026-08-15
+Data: 2026-08-27
 
 ## Resultado geral
 
 ```text
-Migracao OpenAI -> Anthropic: CONCLUIDA
-PostgreSQL real: NAO EXECUTADO
-Claude real: NAO EXECUTADO
-verify:e2e: BLOCKED (ambiente sem PostgreSQL e sem ANTHROPIC_API_KEY)
+PostgreSQL real: EXECUTADO (Neon, sa-east-1)
+Claude real:     EXECUTADO (2 chamadas)
+verify:e2e:      PASS
 ```
 
-Nenhuma credencial foi inventada e nenhuma chamada paga foi feita.
+Este e o primeiro relatorio do projeto em que `verify:e2e` termina em PASS. Nas
+versoes anteriores ele ficou BLOCKED por ambiente, e isso foi registrado como
+`NAO EXECUTADO` em vez de aprovado.
+
+Nenhuma credencial foi inventada.
 
 ## Ambiente
 
 - Sistema: Windows 11.
 - Node.js: 24.15.0 / npm: 11.12.1.
 - SDK de IA: `@anthropic-ai/sdk` 0.117.1.
-- `DATABASE_URL`: NAO CONFIGURADA.
-- `ANTHROPIC_API_KEY`: NAO CONFIGURADA.
-- `RUN_ANTHROPIC_INTEGRATION_TESTS`: desabilitado.
-- PostgreSQL, Docker e distro WSL: ausentes.
+- `DATABASE_URL`: configurada, PostgreSQL gerenciado (Neon).
+- `ANTHROPIC_API_KEY`: configurada, somente no backend.
+- `RUN_ANTHROPIC_INTEGRATION_TESTS`: habilitado apenas nesta execucao.
+- `RUN_DB_INTEGRATION_TESTS`: desabilitado (padrao). Os testes destrutivos de
+  banco continuam SKIP em `npm test`.
+- Docker e distro WSL: ausentes (opcionais).
+
+## verify:e2e
+
+```bash
+RUN_ANTHROPIC_INTEGRATION_TESTS=true npm run verify:e2e
+```
+
+Exit code 0.
+
+```text
+[OK] doctor:e2e
+[OK] migrations - aplicadas duas vezes (idempotente)
+[RUN] backend - iniciando API temporaria na porta 3000
+[OK] health - status=ok database=connected ai=configured
+[OK] deterministic engine - contains/traces conforme baseline
+[OK] privacy - payload sem segredos e com snapshot deterministico
+[OK] anthropic real #1 - pergunta generica validada
+[OK] fallback - AI_NOT_CONFIGURED -> source local
+[OK] session schema - token_hash presente e sem coluna de token bruto
+[OK] assistant authority - PostgreSQL vence guestAllergies e snapshot marca conflito
+[OK] anthropic real #2 - produto com conflito validado com sessao autenticada
+[OK] multi-device - alergias sincronizadas entre dispositivos A e B
+[OK] isolation - contas permanecem isoladas
+[OK] auth - register, me, allergies, login, logout idempotente
+[OK] e2e:strict
+[PASS] verify:e2e - PostgreSQL real e Claude real comprovados
+```
+
+```json
+{
+  "version": "0.6.8",
+  "mode": "strict",
+  "startedAt": "2026-08-27T20:30:09.082Z",
+  "finishedAt": "2026-08-27T20:30:23.594Z",
+  "backendProcess": "STARTED_BY_RUNNER",
+  "database": "EXECUTED",
+  "migrations": "EXECUTED_IDEMPOTENT",
+  "auth": "PASSED",
+  "sessionSchema": "PASSED",
+  "multiDevice": "PASSED",
+  "isolation": "PASSED",
+  "logout": "PASSED",
+  "deterministicEngine": "PASSED",
+  "assistantGuest": "PASSED",
+  "assistantAuthenticated": "PASSED",
+  "assistantAuthority": "PASSED",
+  "fallback": "PASSED",
+  "privacy": "PASSED",
+  "anthropic": "configured",
+  "anthropicReal": "EXECUTED_GENERIC_AND_PRODUCT",
+  "anthropicCalls": 2,
+  "ok": true
+}
+```
+
+Limpeza conferida direto no banco depois da execucao: `usuarios totais: 1`
+(a conta real do dono do projeto), `residuo de teste: 0`.
+
+## B2 - diagnostico por execucao
+
+Cenario da auditoria externa reproduzido aqui: PostgreSQL real, migrations
+aplicadas, `ANTHROPIC_API_KEY` falsa e `RUN_ANTHROPIC_INTEGRATION_TESTS=true`.
+
+Antes da v0.6.8, o runner abortava na primeira chamada Anthropic e o relatorio
+saia com `database: NOT_EXECUTED` mesmo com o banco acessivel.
+
+Depois:
+
+```text
+[OK]   migrations, health, deterministic engine, privacy
+[WARN] assistant guest - adiado - chamada real da Anthropic (visitante) falhou
+[OK]   fallback, session schema, assistant authority
+[WARN] assistant authenticated - adiado - chamada real da Anthropic falhou
+[OK]   multi-device, isolation, auth
+[FAIL] E2E real - falha em etapa dependente da IA: assistant guest ... | assistant authenticated ...
+```
+
+```text
+database        EXECUTED       (era NOT_EXECUTED)
+auth            PASSED
+sessionSchema   PASSED
+multiDevice     PASSED
+isolation       PASSED
+logout          PASSED
+assistantGuest  NOT_EXECUTED
+anthropicReal   NOT_EXECUTED
+ok              false
+```
+
+O gate continua reprovando. Adiar a falha serve para diagnostico e nunca para
+transformar FAIL em PASS: `deferredFailures` e relancado antes de `report.ok` e
+antes da avaliacao strict.
+
+## Exploit C1
+
+Reproduzido antes da correcao e bloqueado depois. Saidas completas no
+AUDIT_REPORT.
+
+```text
+antes   safety "normal", sem veredito         -> falso seguro entregue
+depois  safety "caution", veredito do motor   -> exploit bloqueado
+```
 
 ## Gates
 
 | Item | Resultado |
 |---|---|
-| Migracao do SDK | PASS |
-| Mapeamento de erro com instancias REAIS do SDK | PASS, corrigido na v0.6.4 |
-| Guarda fail-closed de `stop_reason` | PASS, corrigido na v0.6.4 |
-| Messages API | PASS, coberto por mock |
-| Structured Outputs + Zod | PASS |
-| Tratamento de `stop_reason` | PASS |
-| Leitura de content blocks | PASS |
-| Codigos de erro neutros | PASS |
-| Motor deterministico | PASS |
-| Autoridade do perfil | PASS |
+| Veredito deterministico autoral do servidor | PASS |
+| Piso de risco com conflito declarado | PASS |
+| Schema `.strict()` rejeita campo do modelo | PASS |
+| Interface mostra o veredito acima do texto | PASS |
+| Veredito sem IA (fallback) | PASS |
+| Autoridade do perfil (PostgreSQL vence request) | PASS |
 | Privacidade do payload | PASS |
-| Fallback local | PASS |
-| Health com `aiProvider` | PASS |
-| Doctor normal | PASS |
-| Doctor strict | FAIL, por ambiente |
-| PostgreSQL real | NAO EXECUTADO |
-| Migrations, register, login, auth/me | NAO EXECUTADO |
-| Alergias, multi-dispositivo, isolamento, sessao, logout | NAO EXECUTADO |
-| Assistente autenticado por HTTP | NAO EXECUTADO |
-| Claude real | NAO EXECUTADO |
+| Migrations idempotentes | PASS |
+| Sessao com `token_hash` e sem token bruto | PASS |
+| Multi-dispositivo e isolamento entre contas | PASS |
+| Logout idempotente | PASS |
+| Claude real, 2 chamadas | PASS |
+| Doctor normal e strict | PASS |
 | Frontend build | PASS |
 | Backend tests | PASS |
 | npm audits | PASS |
 | Secret scan | PASS |
-| **verify:e2e** | **BLOCKED** por ambiente |
-
-## Doctor
-
-```bash
-npm run doctor
-```
-
-Exit code 0. Trecho relevante da migracao:
-
-```text
-[OK]   Backend dependencies - installed (4 modules resolved)
-[WARN] ANTHROPIC_API_KEY - not_configured
-[OK]   ANTHROPIC_MODEL - claude-sonnet-5
-[OK]   RUN_ANTHROPIC_INTEGRATION_TESTS - disabled
-```
-
-O modulo obrigatorio do backend agora e `@anthropic-ai/sdk`. Nenhum valor de
-chave foi impresso.
-
-`npm run doctor:e2e` continua exit code 1, agora exigindo `ANTHROPIC_API_KEY` no
-lugar de `OPENAI_API_KEY`.
-
-## E2E executado
-
-```bash
-npm run e2e:real
-```
-
-Exit code 0. O runner subiu a API temporaria, validou o possivel e encerrou.
-
-```json
-{
-  "version": "0.6.7",
-  "backendProcess": "STARTED_BY_RUNNER",
-  "database": "NOT_EXECUTED",
-  "deterministicEngine": "PASSED",
-  "assistantGuest": "AI_NOT_CONFIGURED",
-  "fallback": "PASSED",
-  "privacy": "PASSED",
-  "anthropic": "not_configured",
-  "anthropicReal": "NOT_EXECUTED"
-}
-```
-
-O check de privacidade e a prova pratica da migracao: ele injeta um mock de
-`client.messages.create` e o servico chama exatamente esse metodo. Se o backend
-ainda estivesse na API antiga, esse passo falharia.
-
-## Health
-
-```text
-GET /api/health -> 200
-status      ok
-database    not_configured
-ai          not_configured
-aiProvider  anthropic
-version     0.6.7
-```
-
-## Assistente
-
-VISITANTE: EXECUTADO. `POST /api/assistant/chat` retornou `AI_NOT_CONFIGURED`,
-como esperado sem chave.
-
-AUTENTICADO POR HTTP: NAO EXECUTADO, depende de PostgreSQL.
-
-AUTORIDADE DO PERFIL: EXECUTADO por teste automatizado com mock da Messages API:
-
-```text
-conta ["milk"] + request guestAllergies ["soy"]
--> profileAllergies ["milk"]
--> hasDeclaredConflict true
-```
-
-## Claude real
-
-NAO EXECUTADO.
-
-Motivo: sem `ANTHROPIC_API_KEY` e com `RUN_ANTHROPIC_INTEGRATION_TESTS`
-desabilitado. O runner mantem o limite de duas chamadas por execucao:
-
-```text
-1. Em uma frase, explique o que e proteina.
-2. Chocolate E2E (leite integral) para conta com alergia milk
-```
-
-Ambas validam `HTTP 200`, `source = anthropic`, `answer` nao vazio, `category` e
-`safety` validos. A protecao de custo continua: exigir Claude sem a flag falha
-antes de qualquer chamada.
-
-## Fallback
-
-EXECUTADO. `AI_NOT_CONFIGURED` continua caindo para resposta local, e a decisao
-permanece testada fora do React. O frontend passou a tratar a origem de forma
-agnostica: qualquer `source` diferente de `local` aparece como Nutri IA.
-
-## Motor deterministico e privacidade
-
-Ambos PASS, sem alteracao de comportamento em relacao a v0.6.2.
+| **verify:e2e** | **PASS** |
 
 ## Build
 
@@ -167,11 +168,15 @@ npm --prefix backend test
 ```
 
 ```text
-total   79
-passed  73
+total   104
+passed  98
 failed  0
 skipped 6
 ```
+
+Os 6 pulados sao os testes destrutivos de banco, que exigem
+`RUN_DB_INTEGRATION_TESTS=true`, mais o teste de integracao real da Anthropic.
+SKIP nao conta como PASS.
 
 ## Audits e secret scan
 
@@ -181,12 +186,17 @@ npm --prefix backend audit --audit-level=high 0 vulnerabilidades
 secret scan                                   0 segredos reais
 ```
 
-## O que falta para desbloquear
+## Varredura OpenAI
+
+Nenhuma ocorrencia executavel nova. As que permanecem sao intencionais e estao
+descritas no AUDIT_REPORT: testes de regressao que provam a ausencia da flag
+antiga, o padrao de secret scan da chave antiga, e o registro historico no
+CHANGELOG e nos documentos de arquitetura.
+
+## O que NAO foi comprovado neste ambiente
 
 ```text
-1. PostgreSQL acessivel + DATABASE_URL em backend/.env
-2. ANTHROPIC_API_KEY real em backend/.env
-3. RUN_ANTHROPIC_INTEGRATION_TESTS=true apenas na execucao
+Docker e WSL           ausentes; opcionais, nao exigidos por nenhum gate
+Carga e concorrencia   fora do escopo desta versao
+Navegadores reais      T7 renderiza o componente no servidor, nao em browser
 ```
-
-Com isso, `npm run verify:e2e` executa o fluxo completo sem alteracao de codigo.

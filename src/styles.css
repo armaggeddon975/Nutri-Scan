@@ -1519,3 +1519,62 @@ th:last-child {
     width: 94%;
   }
 }
+
+/* Veredito deterministico do assistente (v0.6.8).
+   Fica acima da explicacao do modelo e nunca depende do texto dela. */
+.chat-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.allergy-verdict {
+  border: 1px solid transparent;
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.allergy-verdict.danger {
+  border-color: #efaea8;
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.allergy-verdict.warning {
+  border-color: #e8c06a;
+  background: var(--warn-bg);
+  color: #7a5502;
+}
+
+.allergy-verdict.safe {
+  border-color: #a9dcc1;
+  background: var(--ok-bg);
+  color: var(--green-dark);
+}
+
+.allergy-verdict-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.allergy-verdict-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.allergy-verdict-alert {
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.allergy-verdict-origin {
+  font-size: 0.78rem;
+  opacity: 0.75;
+}

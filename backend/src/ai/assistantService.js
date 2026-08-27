@@ -3,6 +3,12 @@ import Anthropic from "@anthropic-ai/sdk";
 import { env } from "../config/env.js";
 import { getUserAllergies } from "../repositories/userRepository.js";
 import { buildAssistantContext } from "./contextBuilder.js";
+import {
+  applyAllergyAuthority,
+  buildAllergyVerdict,
+  isMinimizationAttempt,
+  PROFILE_SOURCE,
+} from "../../../shared/allergyVerdict.js";
 import { getAnthropicClient, hasAnthropicConfig } from "./anthropicClient.js";
 import {
   ASSISTANT_OUTPUT_FORMAT,
@@ -20,6 +26,33 @@ import {
 
 // Stop reasons que representam uma resposta completa da Messages API.
 const COMPLETE_STOP_REASONS = new Set(["end_turn", "stop_sequence"]);
+
+// Observabilidade da tentativa de minimizacao (v0.6.8). Nao derruba a
+// requisicao: o piso de risco ja corrigiu a resposta. Serve para o operador
+// enxergar com que frequencia o modelo contradiz o motor. Nao registra
+// mensagem, perfil, identificador de usuario nem qualquer credencial.
+let minimizationAttempts = 0;
+
+export function getMinimizationAttempts() {
+  return minimizationAttempts;
+}
+
+export function resetMinimizationAttempts() {
+  minimizationAttempts = 0;
+}
+
+function recordMinimizationAttempt(verdict, logger = console) {
+  minimizationAttempts += 1;
+  logger.warn(
+    JSON.stringify({
+      event: "assistant.allergy_minimization_attempt",
+      conflicts: verdict.conflicts.map((risk) => risk.id),
+      modelSafety: "normal",
+      enforcedSafety: verdict.minimumSafety,
+      total: minimizationAttempts,
+    }),
+  );
+}
 
 function createLocalResponse(answer, category = "general_food", safety = "normal", usedProductContext = false) {
   return {
@@ -119,6 +152,17 @@ export async function buildAssistantProfileAllergies(req, guestAllergies, loadUs
   return guestAllergies;
 }
 
+// Ponto unico de saida do endpoint. Toda resposta - do modelo, das protecoes
+// locais ou do caminho de urgencia - passa por aqui antes de chegar ao usuario.
+// Ter um so lugar torna a invariante auditavel: nenhuma resposta com conflito
+// declarado sai com safety "normal", venha ela da IA ou nao.
+export function finalizeAssistantResponse(response, verdict, options = {}) {
+  if (isMinimizationAttempt(response, verdict)) {
+    recordMinimizationAttempt(verdict, options.logger);
+  }
+  return applyAllergyAuthority(response, verdict);
+}
+
 export async function answerAssistantChat(req, input, client = getAnthropicClient(), options = {}) {
   const data = validateAssistantChat(input);
   const profileAllergies = await buildAssistantProfileAllergies(
@@ -131,32 +175,44 @@ export async function answerAssistantChat(req, input, client = getAnthropicClien
     allergies: profileAllergies,
   });
 
+  // O veredito nasce aqui, antes de qualquer chamada de IA, e acompanha todas
+  // as respostas do endpoint - inclusive as locais. Um produto com conflito
+  // continua sendo um produto com conflito mesmo quando a pergunta e fora de
+  // escopo ou o modelo nem chegou a ser chamado.
+  const verdict = buildAllergyVerdict({
+    profileRisks: context.allergySnapshot.profileRisks,
+    profileAllergies: context.allergySnapshot.profileAllergies,
+    hasProductContext: context.allergySnapshot.hasProductContext,
+    profileSource: req.user?.id ? PROFILE_SOURCE.database : PROFILE_SOURCE.request,
+  });
+  const finalize = (response) => finalizeAssistantResponse(response, verdict, options);
+
   // Protecoes deterministicas locais. Elas continuam funcionando com ou sem IA.
   if (isUrgentHealthQuestion(data.message)) {
-    return createLocalResponse(
+    return finalize(createLocalResponse(
       "Se ha falta de ar, inchaco em lingua/garganta/rosto, desmaio ou piora rapida apos alimento, procure atendimento de emergencia agora. Posso ajudar a entender o rotulo depois, mas nesse momento a prioridade e seguranca.",
       "health_caution",
       "urgent",
       Boolean(context.product),
-    );
+    ));
   }
 
   if (isOutOfScopeQuestion(data.message)) {
-    return createLocalResponse(
+    return finalize(createLocalResponse(
       "Eu sou focado em alimentacao, rotulos, alergias e interpretacao nutricional. Posso te ajudar com alguma duvida sobre alimento ou produto?",
       "out_of_scope",
       "normal",
       false,
-    );
+    ));
   }
 
   if (isPromptInjectionAttempt(data.message)) {
-    return createLocalResponse(
+    return finalize(createLocalResponse(
       "Nao posso revelar instrucoes internas ou mudar meu papel. Posso ajudar com rotulos, ingredientes, alergias e alimentacao.",
       "out_of_scope",
       "caution",
       false,
-    );
+    ));
   }
 
   if (!client || (!hasAnthropicConfig() && client === getAnthropicClient())) {
@@ -183,7 +239,7 @@ export async function answerAssistantChat(req, input, client = getAnthropicClien
       { timeout: env.anthropicTimeoutMs },
     );
 
-    return parseStructuredResponse(response);
+    return finalize(parseStructuredResponse(response));
   } catch (error) {
     if (error?.code?.startsWith?.("AI_")) throw error;
     throw mapProviderError(error);

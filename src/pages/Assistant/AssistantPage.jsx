@@ -1,5 +1,6 @@
 import { Bot, Loader2, MessageSquareText } from "lucide-react";
 
+import { AllergyVerdict } from "../../components/assistant/AllergyVerdict";
 import { PageHeader } from "../../components/common/PageHeader";
 import { STATUS_ICONS } from "../../components/common/StatusLine";
 
@@ -59,14 +60,18 @@ export function AssistantPage({
         </div>
         <div className="chat-log" ref={chatLogRef} role="log" aria-live="polite">
           {assistantMessages.map((message, index) => (
-            <p className={`chat-message ${message.role}`} key={`${message.role}-${index}`}>
-              {message.role === "assistant" && message.source && (
-                <span className="chat-source">
-                  {message.source === "local" ? "Resposta local" : "Nutri IA"}
-                </span>
-              )}
-              {message.text}
-            </p>
+            <div className="chat-entry" key={`${message.role}-${index}`}>
+              {/* O veredito deterministico vem antes da explicacao do modelo. */}
+              {message.role === "assistant" && <AllergyVerdict verdict={message.verdict} />}
+              <p className={`chat-message ${message.role}`}>
+                {message.role === "assistant" && message.source && (
+                  <span className="chat-source">
+                    {message.source === "local" ? "Resposta local" : "Nutri IA"}
+                  </span>
+                )}
+                {message.text}
+              </p>
+            </div>
           ))}
           {assistantLoading && (
             <p className="chat-message assistant pending">

@@ -1,6 +1,234 @@
-# Relatorio de Auditoria - NutriScan v0.6.7
+# Relatorio de Auditoria - NutriScan v0.6.8
 
-Data: 2026-08-15
+Data: 2026-08-27
+
+## Auditoria externa independente da v0.6.7
+
+Um auditor externo instalou PostgreSQL real, rodou a suite inteira contra ele
+(84 testes, 83 pass, 1 skip, 0 fail), executou a bateria adversarial do gate
+`verify:e2e` e escreveu exploits proprios.
+
+Resultado: **BLOQUEADO** por um defeito CRITICO, mais tres achados menores.
+
+Confirmado como correto e nao alterado nesta versao: ausencia de residuo
+executavel de OpenAI, gate `verify:e2e` fail-closed nas quatro variacoes
+testadas, guarda `RUN_DB_INTEGRATION_TESTS`, ausencia de `ANTHROPIC_API_KEY` no
+bundle de producao, identidade derivada da sessao, payload sem dado sensivel, e
+instrucoes privilegiadas isoladas em `system`.
+
+## C1 - CRITICO - resposta do modelo substituia o veredito deterministico
+
+### Causa raiz
+
+A regra do projeto e explicita: o motor deterministico e a autoridade sobre
+conflito de alergia, e nenhuma resposta do modelo pode substituir esse
+resultado. Ate a v0.6.7, essa autoridade existia **apenas como uma frase no
+system prompt**.
+
+`parseStructuredResponse` validava `stop_reason`, JSON e schema Zod e retornava
+os campos do modelo com `source: "anthropic"` - texto e nivel de risco vindos da
+IA, sem nenhuma reconciliacao com o `allergySnapshot` que
+`buildAssistantContext` ja tinha produzido.
+
+Agravante: `src/pages/Assistant/AssistantPage.jsx` nao exibia veredito
+deterministico algum. O banner do motor so existia em `ProductAnalysis.jsx`, que
+e outra superficie. Na tela do Assistente, o texto do modelo era o unico sinal
+de alergenico que o usuario recebia.
+
+### Exploit, reproduzido antes da correcao
+
+```text
+produto  Leite em Po Integral, ingredients_text "leite em po integral",
+         allergens ["milk"]
+perfil   ["milk"]
+```
+
+Saida real, com o cliente Anthropic substituido por um mock que devolve schema
+valido:
+
+```text
+MOTOR DETERMINISTICO
+  hasDeclaredConflict : true
+  detectedConflicts   : ["milk"]
+
+RESPOSTA ENTREGUE AO USUARIO
+{
+  "answer": "Este produto NAO contem leite e e totalmente seguro para voce.
+             Pode consumir sem preocupacao.",
+  "category": "allergy",
+  "safety": "normal",
+  "usedProductContext": true,
+  "source": "anthropic"
+}
+
+VEREDITO DETERMINISTICO NA RESPOSTA : NAO
+SAFETY ENTREGUE                     : normal
+EXPLOIT                             : FUNCIONA - falso seguro entregue
+```
+
+### Correcao estrutural
+
+O veredito deixou de ser algo pedido ao modelo e virou campo autoral do
+servidor.
+
+```text
+shared/allergyVerdict.js                      novo, autoridade do veredito
+backend/src/ai/assistantPrompt.js             schema strict, prompt ajustado
+backend/src/ai/assistantService.js            ponto unico de saida, piso, log
+src/components/assistant/AllergyVerdict.jsx   novo, bloco deterministico na UI
+src/pages/Assistant/AssistantPage.jsx         veredito acima do texto do modelo
+src/App.jsx                                   veredito tambem no fallback local
+src/styles.css                                estilos do bloco
+```
+
+Duas barreiras independentes impedem o modelo de escrever o campo:
+
+1. `assistantResponseSchema` passou a ser estrito. Qualquer chave fora do
+   contrato - `allergyVerdict` inclusive - rejeita a resposta inteira com
+   `AI_SCHEMA_INVALID`. A escolha foi rejeitar, e nao descartar em silencio,
+   porque o projeto e fail-closed em checagem de seguranca.
+2. `applyAllergyAuthority` desestrutura e descarta qualquer `allergyVerdict` da
+   resposta do modelo antes de escrever o do motor.
+
+Piso de risco: com `status: "conflict"`, `safety` nunca sai `normal`. A elevacao
+e por codigo e so sobe - `urgent` permanece `urgent`. O alerta em texto e
+escrito pelo servidor, separado de `answer`, e nao passa pelo modelo.
+
+`finalizeAssistantResponse` e o ponto unico de saida do endpoint. As respostas
+locais de protecao passam por ele tambem, entao a invariante vale para toda
+resposta do endpoint, nao apenas para a da IA.
+
+Traco declarado (`status: "traces"`) recebe alerta proprio mas nao altera o
+nivel de risco: `traces` significa "pode conter", e trata-lo como evidencia
+declarada esvaziaria a distincao que o motor faz.
+
+Tentativa de minimizacao - conflito declarado com o modelo respondendo `normal`
+- vira contador e log estruturado, sem mensagem, sem identificador de usuario,
+sem e-mail e sem chave.
+
+### Depois da correcao
+
+```text
+RESPOSTA ENTREGUE AO USUARIO
+{
+  "answer": "Este produto NAO contem leite e e totalmente seguro para voce...",
+  "category": "allergy",
+  "safety": "caution",
+  "source": "anthropic",
+  "allergyVerdict": {
+    "status": "conflict",
+    "source": "deterministic_engine",
+    "conflicts": [{ "id": "milk", "label": "Leite/lactose" }],
+    "profileSource": "request",
+    "alert": "Alerta do NutriScan: este produto tem Leite/lactose no seu
+              perfil de alergias...",
+    "minimumSafety": "caution",
+    "safetyFloorApplied": true
+  }
+}
+
+log: {"event":"assistant.allergy_minimization_attempt","conflicts":["milk"],
+      "modelSafety":"normal","enforcedSafety":"caution","total":1}
+
+VEREDITO DETERMINISTICO NA RESPOSTA : sim
+SAFETY ENTREGUE                     : caution
+EXPLOIT                             : bloqueado
+```
+
+O texto do modelo continua sendo entregue. Ele e explicacao, nao veredito - e
+agora aparece abaixo de um bloco que o contradiz quando ele erra.
+
+### Validacao por mutacao
+
+Quatro mutantes, todos mortos:
+
+```text
+M1  remover o piso de risco em applyAllergyAuthority      4 testes falharam
+M2  remover o modo estrito do assistantResponseSchema     1 teste falhou
+M3  deixar o allergyVerdict do modelo vencer o do motor   1 teste falhou
+M4  remover o bloco AllergyVerdict de AssistantPage       3 testes falharam
+```
+
+Nenhum sobrevivente. O teste de interface compila o JSX do componente real com
+esbuild e renderiza de verdade, entao ele morre junto com o alerta.
+
+## M1 - E2E_REPORT com numeros da versao anterior
+
+O documento declarava `total 79 | passed 73 | skipped 6` enquanto a medicao real
+da v0.6.7 era `84 | 78 | 6`, e trazia data 2026-08-15 contra 2026-08-16 no
+CHANGELOG da mesma versao. Era o relatorio da v0.6.6 com o titulo trocado. O
+teste de versao que ja existia nao pegou porque so olhava o cabecalho.
+
+Corrigido com regeneracao a partir de execucao real e com
+`backend/tests/reportConsistency.test.js`, que compara a data declarada nos
+relatorios com a data da entrada do CHANGELOG da versao atual e recusa blocos de
+resultado de outra versao no corpo do texto.
+
+A escolha por data e versao, em vez de travar a contagem de testes, esta
+justificada no arquivo: um teste que afirma o total da suite da qual ele faz
+parte muda o proprio alvo a cada teste novo, ficaria vermelho sozinho e
+ensinaria a ignorar a falha.
+
+Quando escrito, este teste falhou contra os relatorios da v0.6.7 - que e a prova
+de que ele pega o defeito:
+
+```text
+AssertionError: E2E_REPORT.md diz 2026-08-15 e o CHANGELOG da v0.6.7 diz
+2026-08-16: o relatorio parece ser o da versao anterior com o titulo trocado
+```
+
+## B1 - artefatos declarados ausentes do ZIP
+
+O CHANGELOG da v0.6.4 declarava `.claude/skills/gauntlet-loop/SKILL.md`,
+`.claude/workflows/gauntlet-loop.js` e `CLAUDE.md` como padrao permanente, e
+nenhum estava no pacote.
+
+Resolvido de forma declarada, e nao por silencio:
+
+- `CLAUDE.md` passa a ser incluido no ZIP. Ele descreve o metodo de trabalho e
+  os gates, e o auditor externo precisa dele.
+- `.claude/` fica fora do pacote por ser configuracao de ferramenta local, e nao
+  artefato do produto. Alem disso, o metodo que ele automatizava saiu de uso: o
+  dono do projeto proibiu o gauntlet-loop em 27/08/2026, e o `CLAUDE.md` foi
+  atualizado para refletir isso. Nenhuma afirmacao deste relatorio se apoia no
+  gauntlet - as evidencias desta versao vem de execucao de comando.
+
+## B2 - primeira falha mascarava os demais subgates
+
+Com banco real e chave falsa, o relatorio trazia `database: NOT_EXECUTED` mesmo
+com PostgreSQL acessivel, porque o runner abortava na chamada Anthropic do
+visitante antes de exercitar o banco.
+
+As duas etapas dependentes da Anthropic passaram a ser adiaveis: a falha e
+guardada, as etapas independentes rodam e reportam, e a falha volta a ser fatal
+antes de `report.ok = true` e antes da avaliacao strict.
+
+Prova de que o gate nao afrouxou:
+
+- Execucao no mesmo cenario terminou com `ok: false` e exit diferente de zero,
+  agora com `database: EXECUTED`, `auth: PASSED`, `sessionSchema`,
+  `multiDevice`, `isolation` e `logout` reportados.
+- `backend/tests/e2eGate.test.js` ganhou um teste que trava o conjunto exato de
+  requisitos de `buildStrictRequirements` e prova que cada requisito, sozinho,
+  ainda reprova a execucao.
+
+## Estado dos gates nesta versao
+
+```text
+npm run build                      SUCCESS
+npm --prefix backend test          104 testes, 98 pass, 0 fail, 6 skip
+npm audit --audit-level=high       0 vulnerabilidades
+backend audit --audit-level=high   0 vulnerabilidades
+secret scan                        0 segredos reais
+npm run verify:release             exit 0
+npm run verify:e2e                 PASS com PostgreSQL real e Claude real
+```
+
+Os 6 testes pulados sao os destrutivos de banco, que exigem
+`RUN_DB_INTEGRATION_TESTS=true`, mais o de integracao real da Anthropic. SKIP
+nao conta como PASS em nenhum gate.
+
+## Historico de auditorias anteriores
 
 ## Auditoria pelo gauntlet-loop
 

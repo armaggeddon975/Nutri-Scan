@@ -22,6 +22,7 @@ import { AccountPage } from "./pages/Account/AccountPage";
 import { GuidePage } from "./pages/Guide/GuidePage";
 import { askAiAssistant } from "./services/aiAssistantService";
 import { decideAssistantFallback, resolveAssistantSuccess } from "./services/assistantFallback";
+import { buildAllergyVerdict } from "../shared/allergyVerdict.js";
 import { buildAssistantAnswer } from "./services/assistantService";
 import { getMe, loginAccount, logoutAccount, registerAccount } from "./services/authService";
 import { findLocalFoods } from "./services/foodService";
@@ -651,7 +652,13 @@ function App() {
       const success = resolveAssistantSuccess(result);
       setAssistantMessages([
         ...nextMessages,
-        { role: "assistant", text: result.answer, source: success.source },
+        {
+          role: "assistant",
+          text: result.answer,
+          source: success.source,
+          // Veredito autoral do servidor. A UI nunca o deriva do texto.
+          verdict: result.allergyVerdict,
+        },
       ]);
       setAssistantConnection(success.connection);
     } catch (error) {
@@ -663,7 +670,18 @@ function App() {
 
       setAssistantMessages([
         ...nextMessages,
-        { role: "assistant", text: answer, source: decision.source },
+        {
+          role: "assistant",
+          text: answer,
+          source: decision.source,
+          // Sem backend, o veredito sai do mesmo motor compartilhado, no
+          // cliente. O alerta de alergia nao depende de IA nem de rede.
+          verdict: buildAllergyVerdict({
+            profileRisks: allergyScan.profileRisks,
+            profileAllergies: selectedAllergiesRef.current,
+            hasProductContext: Boolean(product),
+          }),
+        },
       ]);
       setAssistantConnection(decision.connection);
     } finally {

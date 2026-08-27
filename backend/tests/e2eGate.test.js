@@ -170,24 +170,25 @@ test("E: E2E_BASE_URL e recusado no gate, que precisa provar o backend local", a
   assert.equal(/\[RUN\] doctor:e2e/.test(result.output), false);
 });
 
-test("E: strict exige que o backend tenha sido iniciado pelo proprio runner", () => {
-  const reportCompleto = {
-    backendProcess: "STARTED_BY_RUNNER",
-    database: "EXECUTED",
-    migrations: "EXECUTED_IDEMPOTENT",
-    auth: "PASSED",
-    sessionSchema: "PASSED",
-    multiDevice: "PASSED",
-    isolation: "PASSED",
-    logout: "PASSED",
-    assistantAuthority: "PASSED",
-    deterministicEngine: "PASSED",
-    fallback: "PASSED",
-    privacy: "PASSED",
-    anthropicReal: "EXECUTED_GENERIC_AND_PRODUCT",
-    assistantAuthenticated: "PASSED",
-  };
+// Relatorio em que todo requisito do modo strict esta satisfeito.
+const reportCompleto = {
+  backendProcess: "STARTED_BY_RUNNER",
+  database: "EXECUTED",
+  migrations: "EXECUTED_IDEMPOTENT",
+  auth: "PASSED",
+  sessionSchema: "PASSED",
+  multiDevice: "PASSED",
+  isolation: "PASSED",
+  logout: "PASSED",
+  assistantAuthority: "PASSED",
+  deterministicEngine: "PASSED",
+  fallback: "PASSED",
+  privacy: "PASSED",
+  anthropicReal: "EXECUTED_GENERIC_AND_PRODUCT",
+  assistantAuthenticated: "PASSED",
+};
 
+test("E: strict exige que o backend tenha sido iniciado pelo proprio runner", () => {
   assert.deepEqual(findMissingRequirements(reportCompleto, { anthropicFlagEnabled: true }), []);
 
   // API externa nao satisfaz o modo strict.
@@ -210,6 +211,43 @@ test("E: strict exige que o backend tenha sido iniciado pelo proprio runner", ()
 
   // A lista de requisitos nunca pode ficar vazia: isso seria strict sem prova.
   assert.ok(buildStrictRequirements(reportCompleto, { anthropicFlagEnabled: true }).length >= 14);
+});
+
+// A14 da v0.6.8: o conserto de diagnostico do runner (B2) nao pode custar
+// requisito nenhum. Este teste trava o conjunto exato, entao remover uma linha
+// de `buildStrictRequirements` para "facilitar" quebra aqui.
+test("D2: o conjunto de requisitos do modo strict e exatamente este", () => {
+  const chavesSemFlag = buildStrictRequirements(reportCompleto, { anthropicFlagEnabled: false }).map(
+    ([chave]) => chave,
+  );
+  assert.deepEqual(chavesSemFlag, [
+    "backendProcess",
+    "database",
+    "migrations",
+    "auth",
+    "sessionSchema",
+    "multiDevice",
+    "isolation",
+    "logout",
+    "assistantAuthority",
+    "deterministicEngine",
+    "fallback",
+    "privacy",
+  ]);
+
+  const chavesComFlag = buildStrictRequirements(reportCompleto, { anthropicFlagEnabled: true }).map(
+    ([chave]) => chave,
+  );
+  assert.deepEqual(chavesComFlag, [...chavesSemFlag, "anthropicReal", "assistantAuthenticated"]);
+
+  // Cada requisito, sozinho, precisa ser capaz de reprovar a execucao.
+  for (const chave of chavesComFlag) {
+    assert.deepEqual(
+      findMissingRequirements({ ...reportCompleto, [chave]: "NOT_EXECUTED" }, { anthropicFlagEnabled: true }),
+      [chave],
+      `requisito ${chave} deixou de reprovar`,
+    );
+  }
 });
 
 test("E: resposta fabricada da IA nao passa na validacao de forma", () => {

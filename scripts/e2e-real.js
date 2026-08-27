@@ -277,6 +277,19 @@ async function main() {
   let backendHandle = null;
   let signalHandler = null;
 
+  // Falhas de etapas dependentes da Anthropic sao guardadas e relancadas depois
+  // que as etapas independentes ja rodaram e reportaram o proprio estado.
+  // Adiar nunca perdoa: o array e verificado antes de `report.ok = true`.
+  const deferredFailures = [];
+  const runDeferrable = async (label, run) => {
+    try {
+      await run();
+    } catch (error) {
+      deferredFailures.push({ label, message: error.message });
+      log("WARN", label, `adiado - ${error.message}`);
+    }
+  };
+
   const stopBackend = async () => {
     if (!backendHandle) return;
     const handle = backendHandle;
@@ -356,6 +369,15 @@ async function main() {
     log("OK", "privacy", "payload sem segredos e com snapshot deterministico");
 
     // 5. Assistente como visitante.
+    //
+    // B2 (v0.6.8): as etapas que dependem da Anthropic passam a ser adiaveis.
+    // Uma falha aqui era suficiente para abortar a execucao antes de o banco,
+    // a autenticacao e o isolamento serem exercitados, e o relatorio saia com
+    // `database: NOT_EXECUTED` mesmo com PostgreSQL acessivel. Adiar a falha
+    // preserva o diagnostico sem afrouxar nada: `deferredFailures` e relancado
+    // antes de `report.ok = true`, e os requisitos de `buildStrictRequirements`
+    // continuam intactos.
+    await runDeferrable("assistant guest", async () => {
     if (paidCallProtected) {
       report.assistantGuest = "SKIPPED_PAID_CALL_PROTECTED";
       log("WARN", "assistant guest", "NAO EXECUTADO - chave configurada sem RUN_ANTHROPIC_INTEGRATION_TESTS");
@@ -388,6 +410,7 @@ async function main() {
         log("OK", "assistant guest", "AI_NOT_CONFIGURED conforme esperado");
       }
     }
+    });
 
     // 6. Fallback: decisao real da funcao usada pelo frontend.
     const fallbackDecision = decideAssistantFallback({ code: "AI_NOT_CONFIGURED" });
@@ -493,6 +516,7 @@ async function main() {
         log("OK", "assistant authority", "PostgreSQL vence guestAllergies e snapshot marca conflito");
 
         // 7.2 Assistente autenticado via HTTP, com o mesmo cookie.
+        await runDeferrable("assistant authenticated", async () => {
         if (runAnthropic) {
           await delay(ANTHROPIC_CALL_SPACING_MS);
           guardAnthropicCall();
@@ -531,6 +555,7 @@ async function main() {
           report.assistantAuthenticated = "AI_NOT_CONFIGURED";
           log("OK", "assistant authenticated", "rota autenticada alcancada, AI_NOT_CONFIGURED");
         }
+        });
 
         const loginB = await clientB.request("/auth/login", {
           method: "POST",
@@ -579,6 +604,14 @@ async function main() {
         });
         await db?.end().catch(() => {});
       }
+    }
+
+    // Nenhuma falha adiada pode virar sucesso: ela volta a ser fatal aqui,
+    // antes da avaliacao strict e antes de `report.ok`.
+    if (deferredFailures.length) {
+      throw new Error(
+        `falha em etapa dependente da IA: ${deferredFailures.map((item) => `${item.label}: ${item.message}`).join(" | ")}`,
+      );
     }
 
     if (options.strict) {

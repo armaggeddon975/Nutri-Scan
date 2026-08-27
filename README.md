@@ -1,4 +1,4 @@
-# NutriScan v0.6.7
+# NutriScan v0.6.8
 
 NutriScan e um app web para consultar alimentos por nome ou codigo de barras,
 ver tabela nutricional, identificar ingredientes sensiveis e conversar com um

@@ -1,5 +1,129 @@
 # Changelog
 
+## NutriScan v0.6.8 - 2026-08-27
+
+Correcao do defeito CRITICO encontrado pela auditoria externa independente da
+v0.6.7, mais tres achados menores. A auditoria instalou PostgreSQL real, rodou a
+suite inteira contra ele, exercitou a bateria adversarial do gate e escreveu
+exploits proprios.
+
+### C1 - CRITICO - a resposta do modelo substituia o veredito deterministico
+
+A regra do projeto diz que o motor deterministico e a autoridade sobre conflito
+de alergia. Ate esta versao, essa autoridade existia **apenas como frase no
+system prompt**: "O motor deterministico do NutriScan e autoridade para
+conflitos de alergia". Instrucao ao modelo nao e garantia - e um pedido que ele
+pode ignorar.
+
+`parseStructuredResponse` validava `stop_reason`, JSON e schema Zod e devolvia o
+texto e o nivel de risco do modelo sem nenhuma reconciliacao com o
+`allergySnapshot`. O exploit da auditoria, reproduzido aqui antes da correcao:
+
+```text
+produto  leite em po nos ingredientes, allergens: ["milk"]
+perfil   ["milk"]
+motor    hasDeclaredConflict: true, detectedConflicts: ["milk"]
+
+modelo   "Este produto NAO contem leite e e totalmente seguro para voce.
+          Pode consumir sem preocupacao."   safety: "normal"
+
+entregue exatamente isso, safety "normal", sem veredito e sem correcao
+```
+
+Um falso "seguro" para quem tem alergia a leite e risco de saude. Agravante: a
+tela do Assistente nao exibia nenhum veredito deterministico, entao o texto do
+modelo era o unico sinal de alergenico que o usuario recebia ali.
+
+Correcao estrutural - o veredito virou campo autoral do servidor:
+
+- `shared/allergyVerdict.js` (novo) deriva `allergyVerdict` somente do motor. O
+  modelo nao le, nao escreve e nao influencia esse campo.
+- `assistantResponseSchema` passou a ser `.strict()`. Se a resposta do modelo
+  trouxer qualquer chave fora do contrato - `allergyVerdict` inclusive - a
+  resposta inteira e rejeitada com `AI_SCHEMA_INVALID`, em vez de a chave ser
+  descartada em silencio. Fail-closed, como o resto do app.
+- `applyAllergyAuthority` remove qualquer `allergyVerdict` vindo do modelo e
+  escreve o do motor. Duas barreiras independentes para a mesma garantia.
+- PISO DE RISCO: com conflito declarado, `safety` nunca sai como `normal`. O
+  servidor eleva para `caution` no minimo, por codigo. `urgent` nao e rebaixado.
+- Alerta em texto escrito pelo servidor, separado de `answer`, que nao passa
+  pelo modelo.
+- `finalizeAssistantResponse` e o ponto unico de saida do endpoint. As respostas
+  locais de protecao (urgencia, fora de escopo, tentativa de injecao) passam por
+  ele tambem, entao a invariante vale para toda resposta: nenhuma com conflito
+  declarado sai como `normal`, venha da IA ou nao.
+- Tentativa de minimizacao (conflito declarado + modelo respondendo `normal`)
+  vira contador e log estruturado, sem mensagem, sem identificador de usuario e
+  sem chave. Nao derruba a requisicao; o piso ja corrigiu a resposta.
+- `src/components/assistant/AllergyVerdict.jsx` (novo) mostra o bloco
+  deterministico ACIMA do texto do modelo em `AssistantPage`. O estado exibido
+  vem sempre de `verdict.status`; a interface nunca infere conflito do texto.
+- Sem backend, o frontend calcula o mesmo veredito com o motor compartilhado. O
+  alerta de alergia nao depende de IA nem de rede.
+
+Traco declarado aparece no veredito com `status: "traces"` e alerta proprio, mas
+nao muda o nivel de risco: `traces` significa "pode conter", e trata-lo como
+evidencia declarada esvaziaria o sentido do piso.
+
+### M1 - E2E_REPORT com numeros da versao anterior
+
+O E2E_REPORT da v0.6.7 era o relatorio da v0.6.6 com o titulo trocado: declarava
+79 testes (total da versao anterior, sem os 5 de `productionServing.test.js`) e
+data 2026-08-15, enquanto o CHANGELOG da propria versao dizia 2026-08-16.
+
+- Relatorio regenerado a partir de execucao real.
+- `backend/tests/reportConsistency.test.js` (novo) falha quando a data declarada
+  no E2E_REPORT ou no AUDIT_REPORT diverge da data da entrada do CHANGELOG da
+  versao atual, ou quando o corpo do documento traz bloco de resultado de outra
+  versao. A escolha por data e versao, em vez da contagem de testes, esta
+  justificada no proprio arquivo: um teste que afirma o total da suite da qual
+  ele faz parte e um alvo movel que erra sozinho a cada teste novo.
+
+### B1 - artefatos declarados ausentes do ZIP
+
+O CHANGELOG da v0.6.4 declarava `.claude/skills/gauntlet-loop/SKILL.md`,
+`.claude/workflows/gauntlet-loop.js` e `CLAUDE.md` como padrao permanente do
+projeto, e nenhum dos tres estava no pacote de auditoria.
+
+Duas coisas mudaram desde entao. O dono do projeto proibiu o uso do
+gauntlet-loop em 27/08/2026, e o `CLAUDE.md` deixou de descreve-lo como metodo
+padrao. Entao:
+
+- `CLAUDE.md` passa a ser incluido no ZIP: ele documenta o metodo de trabalho e
+  os gates, e o auditor externo precisa dele para verificar as afirmacoes.
+- `.claude/` continua **fora** do pacote, agora de forma declarada: e diretorio
+  de configuracao de ferramenta local, nao artefato do produto, e o metodo que
+  ele automatizava nao esta mais em uso. As afirmacoes do AUDIT_REPORT desta
+  versao nao se apoiam nele.
+
+### B2 - a primeira falha mascarava os demais subgates
+
+Com PostgreSQL real, migrations aplicadas e chave falsa, o relatorio saia com
+`database: NOT_EXECUTED` mesmo com o banco acessivel: o runner abortava na
+chamada Anthropic do visitante antes de exercitar o banco. Nao gerava falso
+PASS, mas custava diagnostico.
+
+- As duas etapas que dependem da Anthropic passaram a ser adiaveis. A falha e
+  guardada, as etapas independentes rodam e reportam o proprio estado, e a falha
+  e relancada antes de `report.ok = true`.
+- `buildStrictRequirements` nao perdeu requisito. `backend/tests/e2eGate.test.js`
+  ganhou um teste que trava o conjunto exato de requisitos e prova que cada um,
+  sozinho, ainda reprova a execucao.
+
+Resultado medido no mesmo cenario da auditoria (banco real, chave falsa):
+`database: EXECUTED`, `auth: PASSED`, `sessionSchema`, `multiDevice`,
+`isolation` e `logout` reportados, com `ok: false` e exit diferente de zero.
+
+### Testes
+
+- `backend/tests/allergyVerdict.test.js` (novo): T1 a T6, T8, protecoes locais e
+  observabilidade da minimizacao.
+- `backend/tests/assistantPageRender.test.js` (novo): T7 renderiza o componente
+  REAL do Assistente compilando o JSX com esbuild, e verifica que o alerta
+  aparece mesmo quando o texto do modelo diz que o produto e seguro.
+- Validacao por mutacao de T1, T2, T3 e T7: os quatro mutantes morreram. Nenhum
+  sobrevivente.
+
 ## NutriScan v0.6.7 - 2026-08-16
 
 Correcoes da auditoria do gauntlet-loop sobre a preparacao de producao. O

@@ -1,4 +1,4 @@
-# API NutriScan v0.6.7
+# API NutriScan v0.6.8
 
 Base local: `http://localhost:3000/api`
 
@@ -19,7 +19,7 @@ Exemplo:
   "database": "not_configured",
   "ai": "not_configured",
   "aiProvider": "anthropic",
-  "version": "0.6.7"
+  "version": "0.6.8"
 }
 ```
 
@@ -83,11 +83,50 @@ Resposta:
   "category": "allergy",
   "safety": "caution",
   "usedProductContext": true,
-  "source": "anthropic"
+  "source": "anthropic",
+  "allergyVerdict": {
+    "status": "conflict",
+    "reason": null,
+    "source": "deterministic_engine",
+    "conflicts": [{ "id": "milk", "label": "Leite/lactose" }],
+    "traces": [],
+    "profileSource": "postgresql",
+    "alert": "Alerta do NutriScan: este produto tem Leite/lactose no seu perfil de alergias...",
+    "minimumSafety": "caution",
+    "safetyFloorApplied": true
+  }
 }
 ```
 
 `source` pode ser `anthropic` ou `local`.
+
+### `allergyVerdict` (v0.6.8)
+
+Campo autoral do servidor. E derivado somente do motor deterministico e o
+modelo nao pode escreve-lo: se a resposta da IA trouxer uma chave com esse
+nome, ela e rejeitada com `AI_SCHEMA_INVALID`.
+
+`status`:
+
+```text
+conflict       alergenico do perfil presente no produto
+traces         alergenico do perfil aparece como possivel traco
+clear          produto avaliado, sem interseccao com o perfil
+not_evaluated  sem produto ou sem alergia no perfil; `reason` diz qual
+```
+
+`profileSource` e `postgresql` para usuario autenticado e `request` para
+visitante. `alert` e o texto escrito pelo servidor, separado de `answer`, e vem
+vazio quando nao ha conflito nem traco.
+
+`safetyFloorApplied` indica que o servidor elevou `safety`. Com
+`status: "conflict"`, `safety` nunca e `normal`, qualquer que tenha sido a
+resposta do modelo. A elevacao vale para toda resposta do endpoint, inclusive
+as locais.
+
+O veredito acompanha tambem as respostas locais de protecao (urgencia, fora de
+escopo, tentativa de injecao). Sem backend, o frontend calcula o mesmo veredito
+com o motor compartilhado: o alerta de alergia nao depende de IA.
 
 Erros mapeados:
 
