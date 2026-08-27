@@ -3,32 +3,25 @@
 App web de leitura de rotulos e alergias. React/Vite em `src/`, Express/PostgreSQL
 em `backend/`, motor deterministico compartilhado em `shared/`.
 
-## Metodo padrao de trabalho: gauntlet-loop
+## Metodo de trabalho
 
-Toda tarefa substantiva deste projeto roda pelo **gauntlet-loop**: uma equipe de
-subagentes executa em frentes paralelas e um supervisor adversarial so libera
-quando o trabalho impressiona. Se reprovar, a equipe refaz.
+Trabalhe direto na tarefa. **Nao rode o gauntlet-loop**: em 27/08/2026 o dono do
+projeto proibiu explicitamente o uso dele. Os arquivos em
+`.claude/workflows/gauntlet-loop.js` e `.claude/skills/gauntlet-loop/` continuam
+no repositorio, mas nao devem ser invocados nem oferecidos como proximo passo.
+So volte a usar se ele pedir de novo, de forma explicita.
+
+A exigencia de prova nao caiu junto. O que substitui o supervisor adversarial sao
+os gates automatizados, que sao rapidos e rodam sem subagentes:
 
 ```text
-Workflow({
-  scriptPath: '.claude/workflows/gauntlet-loop.js',
-  args: { task: '<briefing completo>' },
-})
+npm run build
+npm --prefix backend test
+node scripts/verify-release.js
+npm run e2e:strict            quando houver infraestrutura real
 ```
 
-O padrao esta em `.claude/skills/gauntlet-loop/SKILL.md` e a orquestracao em
-`.claude/workflows/gauntlet-loop.js`.
-
-Vale para: implementar feature, migrar camada, auditar, refatorar, corrigir bug
-com risco de regressao, fechar versao.
-
-**Nao vale para** pergunta, leitura de arquivo, edicao de uma linha ou conversa —
-nesses casos responda direto e diga em uma linha que pulou o gauntlet. Se o
-usuario pedir para rodar mesmo assim, rode.
-
-Aprovacao exige nota minima 8 em correctness, completeness, evidence, craft e
-safety, zero bloqueios e verificacao independente citada. Loop sem aprovacao
-nao vira entrega.
+Antes de dizer que algo funciona, execute a verificacao e mostre a saida.
 
 ## Regras permanentes de entrega
 
