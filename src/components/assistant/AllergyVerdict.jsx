@@ -8,7 +8,7 @@ import { AlertTriangle, Info, ShieldCheck } from "lucide-react";
 // que o produto e seguro.
 const PRESENTATION = {
   conflict: { tone: "danger", Icon: AlertTriangle, title: "Conflito com o seu perfil" },
-  traces: { tone: "warning", Icon: Info, title: "Pode conter tracos" },
+  traces: { tone: "warning", Icon: Info, title: "Pode conter traços" },
   clear: { tone: "safe", Icon: ShieldCheck, title: "Sem conflito com o seu perfil" },
 };
 
@@ -38,7 +38,7 @@ export function AllergyVerdict({ verdict }) {
       )}
       {verdict.alert && <p className="allergy-verdict-alert">{verdict.alert}</p>}
       <p className="allergy-verdict-origin">
-        Verificacao do motor do NutriScan. O texto abaixo e a explicacao do assistente.
+        Verificação do próprio app. O texto abaixo é a explicação do assistente.
       </p>
     </div>
   );

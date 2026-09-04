@@ -12,7 +12,9 @@ import {
 
 import { DEFAULT_ALLERGIES } from "./data/allergens";
 import { ProductAnalysis } from "./components/food/ProductAnalysis";
-import { Sidebar } from "./components/navigation/Sidebar";
+import { NavRail } from "./components/navigation/NavRail";
+import { TabBar } from "./components/navigation/TabBar";
+import { TopBar } from "./components/navigation/TopBar";
 import { HomePage } from "./pages/Home/HomePage";
 import { SearchPage } from "./pages/Search/SearchPage";
 import { ScannerPage } from "./pages/Scanner/ScannerPage";
@@ -423,6 +425,15 @@ function App() {
     }
   }, [searchProduct]);
 
+  // Busca da barra superior: leva para a Consulta e ja procura, de qualquer tela.
+  const submitGlobalSearch = (event) => {
+    event.preventDefault();
+    const term = query.trim();
+    if (!term) return;
+    navigateTo("consulta");
+    searchProduct(term);
+  };
+
   const submitSearch = (event) => {
     event.preventDefault();
     const formQuery = new FormData(event.currentTarget).get("query");
@@ -720,14 +731,18 @@ function App() {
   );
 
   const navItems = [
-    { id: "home", label: "Tela principal", icon: Home },
-    { id: "consulta", label: "Consulta", icon: Search },
-    { id: "scan", label: "Scan", icon: Camera },
-    { id: "alergias", label: "Alergias", icon: ShieldAlert },
-    { id: "chat", label: "Assistente", icon: Bot },
-    { id: "conta", label: currentUser ? "Perfil" : "Login", icon: currentUser ? User : LogIn },
-    { id: "guia", label: "Guia", icon: ClipboardList },
+    { id: "home", label: "Início", shortLabel: "Início", icon: Home },
+    { id: "consulta", label: "Consulta", shortLabel: "Buscar", icon: Search },
+    { id: "scan", label: "Escanear código", shortLabel: "Scan", icon: Camera },
+    { id: "alergias", label: "Minhas alergias", shortLabel: "Alergias", icon: ShieldAlert },
+    { id: "chat", label: "Assistente", shortLabel: "Assistente", icon: Bot },
+    { id: "guia", label: "Guia de rótulos", shortLabel: "Guia", icon: ClipboardList },
+    { id: "conta", label: currentUser ? "Minha conta" : "Entrar", icon: currentUser ? User : LogIn },
   ];
+
+  // O celular mostra os cinco destinos de uso diario. Conta fica na barra de
+  // cima e Guia tem cartao proprio na tela principal.
+  const tabItems = navItems.filter((item) => item.id !== "conta" && item.id !== "guia");
 
   const renderActivePage = () => {
     if (activePage === "consulta") {
@@ -810,26 +825,45 @@ function App() {
         selectedAllergies={selectedAllergies}
         productAnalysis={productAnalysis}
         onNavigate={navigateTo}
+        onSearchAndOpen={searchAndOpen}
       />
     );
   };
 
   return (
-    <main className="app-shell">
-      <Sidebar
-        navItems={navItems}
-        activePage={activePage}
+    <div className="app">
+      <a className="skip-link" href="#conteudo">
+        Pular para o conteúdo
+      </a>
+
+      <TopBar
+        query={query}
         currentUser={currentUser}
-        selectedAllergies={selectedAllergies}
-        status={status}
+        onQueryChange={setQuery}
+        onSubmitSearch={submitGlobalSearch}
         onNavigate={navigateTo}
-        onSearchAndOpen={searchAndOpen}
       />
 
-      <section className="workspace" aria-label="Página atual">
-        {renderActivePage()}
-      </section>
-    </main>
+      <div className="app-body">
+        <NavRail
+          navItems={navItems}
+          activePage={activePage}
+          allergyCount={selectedAllergies.length}
+          onNavigate={navigateTo}
+        />
+
+        <main id="conteudo" className="content" aria-label="Página atual">
+          {renderActivePage()}
+        </main>
+      </div>
+
+      <TabBar
+        navItems={tabItems}
+        activePage={activePage}
+        allergyCount={selectedAllergies.length}
+        onNavigate={navigateTo}
+      />
+    </div>
   );
 }
 

@@ -65,7 +65,7 @@ export function ProductAnalysis({
           </div>
         )}
 
-        <div className="analysis-banner">
+        <div className={`analysis-banner ${productScore.tone}`}>
           <CircleGauge size={22} aria-hidden="true" />
           <div>
             <strong>{productScore.label}</strong>

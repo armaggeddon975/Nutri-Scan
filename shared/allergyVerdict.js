@@ -50,10 +50,10 @@ function joinLabels(risks) {
 // Texto autoral do servidor. Nao passa pelo modelo e nao depende dele.
 export function buildAlertText(status, conflicts, traces) {
   if (status === VERDICT_STATUS.conflict) {
-    return `Alerta do NutriScan: este produto tem ${joinLabels(conflicts)} no seu perfil de alergias. A verificacao e do motor do app, nao do assistente. Nao consuma sem conferir a embalagem fisica.`;
+    return `Este produto tem ${joinLabels(conflicts)}, que está no seu perfil de alergias. Confira a embalagem física antes de consumir.`;
   }
   if (status === VERDICT_STATUS.traces) {
-    return `Atencao do NutriScan: este produto pode conter tracos de ${joinLabels(traces)}. A verificacao e do motor do app, nao do assistente.`;
+    return `Este produto pode conter traços de ${joinLabels(traces)}. O rótulo não garante ausência.`;
   }
   return "";
 }
