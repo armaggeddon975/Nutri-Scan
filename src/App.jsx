@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { DEFAULT_ALLERGIES } from "./data/allergens";
+import { BrandSignature } from "./components/common/BrandSignature";
 import { ProductAnalysis } from "./components/food/ProductAnalysis";
 import { NavRail } from "./components/navigation/NavRail";
 import { TabBar } from "./components/navigation/TabBar";
@@ -30,7 +31,13 @@ import { getMe, loginAccount, logoutAccount, registerAccount } from "./services/
 import { findLocalFoods } from "./services/foodService";
 import { fetchProductByBarcode, searchProductsByName } from "./services/openFoodFactsService";
 import { updateProfileAllergies } from "./services/profileService";
-import { describeCameraError, loadScannerLib } from "./services/scannerService";
+import {
+  SCAN_OPTIONS,
+  buildVideoConstraints,
+  describeCameraError,
+  isTransientScanError,
+  loadScannerLib,
+} from "./services/scannerService";
 import {
   readStoredAllergies,
   readStoredUsers,
@@ -38,6 +45,7 @@ import {
 } from "./services/storageService";
 import { scanAllergies } from "./utils/allergens";
 import { shouldApplyAllergySaveResult } from "./utils/allergySaveQueue";
+import { EMPTY_CONFIRMATION, nextConfirmation } from "./utils/barcodeConfirm";
 import { getNutrientRows, getNutritionScore } from "./utils/nutrition";
 import { getProductName } from "./utils/product";
 import { cleanBarcode, isBarcodeQuery, normalizeText } from "./utils/text";
@@ -107,6 +115,7 @@ function App() {
   const chatLogRef = useRef(null);
   const scanControlsRef = useRef(null);
   const lastDetectedRef = useRef("");
+  const confirmationRef = useRef(EMPTY_CONFIRMATION);
   const lastAssistantQuestionRef = useRef("");
   const searchTokenRef = useRef(0);
   const scannerRunIdRef = useRef(0);
@@ -118,6 +127,7 @@ function App() {
   const [product, setProduct] = useState(null);
   const [localMatches, setLocalMatches] = useState([]);
   const [scannerState, setScannerState] = useState("idle");
+  const [torch, setTorch] = useState({ available: false, on: false });
   const [currentUser, setCurrentUser] = useState(null);
   const [selectedAllergies, setSelectedAllergies] = useState(() => getInitialAllergies());
   const selectedAllergiesRef = useRef(selectedAllergies);
@@ -212,8 +222,28 @@ function App() {
     scanControlsRef.current?.stop();
     scanControlsRef.current = null;
     lastDetectedRef.current = "";
+    confirmationRef.current = EMPTY_CONFIRMATION;
     setScannerState("idle");
+    setTorch({ available: false, on: false });
   }, []);
+
+  // A lanterna e o que salva leitura em prateleira de mercado mal iluminada.
+  // So existe quando a camera declara a capacidade: em aparelho sem suporte a
+  // @zxing/browser nem expoe `switchTorch`.
+  const toggleTorch = useCallback(async () => {
+    const controls = scanControlsRef.current;
+    if (typeof controls?.switchTorch !== "function") return;
+
+    const next = !torch.on;
+    try {
+      await controls.switchTorch(next);
+      setTorch((current) => ({ ...current, on: next }));
+    } catch {
+      // Aparelho que anuncia a capacidade mas recusa o comando nao deve
+      // derrubar o scanner: a leitura continua, so sem lanterna.
+      setTorch((current) => ({ ...current, available: false, on: false }));
+    }
+  }, [torch.on]);
 
   useEffect(() => {
     const syncPageWithHash = () => {
@@ -368,42 +398,59 @@ function App() {
     }
 
     lastDetectedRef.current = "";
+    confirmationRef.current = EMPTY_CONFIRMATION;
+    setTorch({ available: false, on: false });
     setScannerState("starting");
     setStatus({ type: "loading", message: "Abrindo câmera..." });
 
     const runId = ++scannerRunIdRef.current;
 
     try {
-      const { BrowserMultiFormatReader, NotFoundException, hints } = await loadScannerLib();
+      const { BrowserMultiFormatReader, hints } = await loadScannerLib();
       if (runId !== scannerRunIdRef.current) return;
 
-      const reader = new BrowserMultiFormatReader(hints);
-      const controls = await reader.decodeFromVideoDevice(
-        undefined,
+      const reader = new BrowserMultiFormatReader(hints, SCAN_OPTIONS);
+      // `decodeFromConstraints` no lugar de `decodeFromVideoDevice` porque o
+      // segundo ignora resolucao e aceita o padrao da camera (640x480 na
+      // maioria dos aparelhos), onde um EAN-13 quase nao tem pixel por barra.
+      const controls = await reader.decodeFromConstraints(
+        buildVideoConstraints(),
         videoRef.current,
         (result, error, currentControls) => {
           if (result) {
             const detectedBarcode = cleanBarcode(result.getText());
-            if (!detectedBarcode || detectedBarcode === lastDetectedRef.current) return;
+            if (!detectedBarcode) return;
 
-            lastDetectedRef.current = detectedBarcode;
+            // Exige a mesma leitura duas vezes seguidas antes de aceitar.
+            const confirmation = nextConfirmation(confirmationRef.current, detectedBarcode);
+            confirmationRef.current = confirmation;
+            if (!confirmation.confirmed) return;
+            if (confirmation.confirmed === lastDetectedRef.current) return;
+
+            lastDetectedRef.current = confirmation.confirmed;
             if (navigator.vibrate) navigator.vibrate(60);
 
             currentControls?.stop();
             scanControlsRef.current = null;
             scannerRunIdRef.current += 1;
             setScannerState("idle");
+            setTorch({ available: false, on: false });
 
-            searchProduct(detectedBarcode);
+            searchProduct(confirmation.confirmed);
             return;
           }
 
-          if (!error || error instanceof NotFoundException) return;
+          // Quadro sem codigo, codigo cortado, codigo borrado: e o
+          // funcionamento normal enquanto a pessoa mira, e a propria
+          // @zxing/browser segue tentando nesses casos. Desligar a camera aqui
+          // era o que interrompia a leitura no primeiro quadro imperfeito.
+          if (isTransientScanError(error)) return;
 
           currentControls?.stop();
           scanControlsRef.current = null;
           scannerRunIdRef.current += 1;
           setScannerState("idle");
+          setTorch({ available: false, on: false });
           setStatus({
             type: "error",
             message: "A câmera foi interrompida. Ligue novamente ou digite o código.",
@@ -417,10 +464,15 @@ function App() {
       }
 
       scanControlsRef.current = controls;
+      setTorch({ available: typeof controls.switchTorch === "function", on: false });
       setScannerState("scanning");
-      setStatus({ type: "ready", message: "Câmera ativa." });
+      setStatus({
+        type: "ready",
+        message: "Câmera ativa. Encaixe o código de barras no quadro.",
+      });
     } catch (error) {
       setScannerState("idle");
+      setTorch({ available: false, on: false });
       setStatus({ type: "error", message: describeCameraError(error) });
     }
   }, [searchProduct]);
@@ -733,7 +785,10 @@ function App() {
   const navItems = [
     { id: "home", label: "Início", shortLabel: "Início", icon: Home },
     { id: "consulta", label: "Consulta", shortLabel: "Buscar", icon: Search },
-    { id: "scan", label: "Escanear código", shortLabel: "Scan", icon: Camera },
+    // "Scan" era a unica palavra em ingles da navegacao. Para quem tem mais
+    // idade e nao vive de aplicativo, "Camera" diz o que vai acontecer ao
+    // tocar; "Scan" exige adivinhar.
+    { id: "scan", label: "Escanear código", shortLabel: "Câmera", icon: Camera },
     { id: "alergias", label: "Minhas alergias", shortLabel: "Alergias", icon: ShieldAlert },
     { id: "chat", label: "Assistente", shortLabel: "Assistente", icon: Bot },
     { id: "guia", label: "Guia de rótulos", shortLabel: "Guia", icon: ClipboardList },
@@ -766,10 +821,12 @@ function App() {
           scannerState={scannerState}
           videoRef={videoRef}
           productAnalysis={productAnalysis}
+          torch={torch}
           onQueryChange={setQuery}
           onSubmitSearch={submitSearch}
           onStartScanner={startScanner}
           onStopScanner={stopScanner}
+          onToggleTorch={toggleTorch}
         />
       );
     }
@@ -854,6 +911,7 @@ function App() {
 
         <main id="conteudo" className="content" aria-label="Página atual">
           {renderActivePage()}
+          <BrandSignature />
         </main>
       </div>
 

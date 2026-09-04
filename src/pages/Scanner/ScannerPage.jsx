@@ -1,4 +1,4 @@
-import { Barcode, Camera, CameraOff, Search } from "lucide-react";
+import { Barcode, Camera, CameraOff, Flashlight, FlashlightOff, Search } from "lucide-react";
 
 import { PageHeader } from "../../components/common/PageHeader";
 import { StatusLine } from "../../components/common/StatusLine";
@@ -9,14 +9,16 @@ export function ScannerPage({
   scannerState,
   videoRef,
   productAnalysis,
+  torch = { available: false, on: false },
   onQueryChange,
   onSubmitSearch,
   onStartScanner,
   onStopScanner,
+  onToggleTorch,
 }) {
   return (
     <>
-      <PageHeader eyebrow="Scan" title="Escaneie o código de barras do produto." />
+      <PageHeader eyebrow="Câmera" title="Aponte a câmera para o código de barras." />
       <section className="scan-page-grid">
         <div className="scanner-stage">
           <video
@@ -40,10 +42,26 @@ export function ScannerPage({
               Ligar câmera
             </button>
           ) : (
-            <button className="secondary-button" onClick={onStopScanner}>
-              <CameraOff size={20} aria-hidden="true" />
-              Desligar câmera
-            </button>
+            <div className="scan-actions">
+              <button className="secondary-button" onClick={onStopScanner}>
+                <CameraOff size={20} aria-hidden="true" />
+                Desligar câmera
+              </button>
+              {torch.available && (
+                <button
+                  className="secondary-button"
+                  onClick={onToggleTorch}
+                  aria-pressed={torch.on}
+                >
+                  {torch.on ? (
+                    <FlashlightOff size={20} aria-hidden="true" />
+                  ) : (
+                    <Flashlight size={20} aria-hidden="true" />
+                  )}
+                  {torch.on ? "Desligar lanterna" : "Ligar lanterna"}
+                </button>
+              )}
+            </div>
           )}
           <form className="search-card" onSubmit={onSubmitSearch}>
             <label htmlFor="barcode-page">Digitar código manualmente</label>

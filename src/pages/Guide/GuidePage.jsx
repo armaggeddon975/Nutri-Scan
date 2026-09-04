@@ -6,7 +6,7 @@ import { PageHeader } from "../../components/common/PageHeader";
 export function GuidePage() {
   return (
     <>
-      <PageHeader eyebrow="Guia" title="Pontos de atenção por alergia e rótulo." />
+      <PageHeader eyebrow="Guia" title="O que olhar no rótulo." />
       <section className="guide-band guide-page">
         <div className="guide-item">
           <ClipboardList size={20} aria-hidden="true" />

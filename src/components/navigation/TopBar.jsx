@@ -13,7 +13,7 @@ export function TopBar({ query, currentUser, onQueryChange, onSubmitSearch, onNa
           aria-label="NutriVa, ir para a tela principal"
         >
           <span className="brand-mark" aria-hidden="true">
-            <Leaf size={18} />
+            <Leaf size={22} />
           </span>
           <span className="brand-name">NutriVa</span>
         </button>
@@ -22,18 +22,22 @@ export function TopBar({ query, currentUser, onQueryChange, onSubmitSearch, onNa
           <label className="sr-only" htmlFor="busca-global">
             Buscar alimento ou codigo de barras
           </label>
-          <Search size={17} aria-hidden="true" />
+          <Search size={20} aria-hidden="true" />
+          {/* O texto de dica e curto de proposito: com a fonte no tamanho que o
+              publico enxerga, a frase inteira nao cabe na caixa e some no meio
+              de reticencias. A descricao completa continua no rotulo acima, que
+              e o que o leitor de tela anuncia. */}
           <input
             id="busca-global"
             name="q"
             value={query}
-            placeholder="Buscar alimento ou código de barras"
+            placeholder="Buscar alimento"
             onChange={(event) => onQueryChange(event.target.value)}
           />
         </form>
 
         <button type="button" className="topbar-account" onClick={() => onNavigate("conta")}>
-          <User size={17} aria-hidden="true" />
+          <User size={20} aria-hidden="true" />
           <span>{currentUser ? currentUser.name : "Entrar"}</span>
         </button>
       </div>

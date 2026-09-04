@@ -20,8 +20,8 @@ export function AccountPage({
     <>
       <PageHeader
         eyebrow="Conta"
-        title="Salve seu perfil e sincronize suas alergias."
-        subtitle="Cada conta mantem uma lista propria de alergias para cruzar com os alimentos consultados em qualquer dispositivo."
+        title="Entre na sua conta."
+        subtitle="Com a conta, suas alergias ficam salvas e aparecem em qualquer aparelho."
       />
 
       {currentUser ? (

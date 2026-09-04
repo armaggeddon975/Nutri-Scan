@@ -21,8 +21,8 @@ export function AssistantPage({
     <>
       <PageHeader
         eyebrow="Assistente"
-        title="Converse com o assistente normalmente."
-        subtitle="Ele responde dúvidas gerais, ajuda com alimentos e usa o produto atual quando houver um selecionado."
+        title="Tire suas dúvidas sobre alimentos."
+        subtitle="Pergunte sobre um alimento, uma alergia ou o produto que você acabou de escanear."
       />
       <article className="assistant-card assistant-page">
         <div className="panel-heading">

@@ -6,11 +6,11 @@ export function AllergiesPage({ currentUser, selectedAllergies, productAnalysis,
     <>
       <PageHeader
         eyebrow="Alergias"
-        title="Configure o perfil de restrições do usuário."
+        title="Marque o que você não pode comer."
         subtitle={
           currentUser
-            ? `Essas alergias estão salvas na conta de ${currentUser.name}.`
-            : "Entre em uma conta para salvar suas alergias e recuperar depois."
+            ? `Tudo que estiver marcado aqui fica salvo na conta de ${currentUser.name}.`
+            : "Depois de marcar, o app avisa quando o alimento tiver esse ingrediente."
         }
       />
       <section className="allergy-page-grid">

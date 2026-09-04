@@ -14,7 +14,7 @@ export function SearchPage({
 }) {
   return (
     <>
-      <PageHeader eyebrow="Consulta" title="Pesquise por alimento ou código de barras." />
+      <PageHeader eyebrow="Buscar" title="Procure um alimento pelo nome." />
       <form className="search-card page-search" onSubmit={onSubmitSearch}>
         <label htmlFor="food-search-page">Alimento ou código</label>
         <div className="input-row">
