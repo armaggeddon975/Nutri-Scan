@@ -65,7 +65,7 @@ async function renderAssistantPage(props) {
     logLevel: "silent",
   });
 
-  const dir = mkdtempSync(path.join(tmpdir(), "nutriscan-render-"));
+  const dir = mkdtempSync(path.join(tmpdir(), "nutriva-render-"));
   const file = path.join(dir, "assistant-page.mjs");
   try {
     writeFileSync(file, bundle.outputFiles[0].text, "utf8");

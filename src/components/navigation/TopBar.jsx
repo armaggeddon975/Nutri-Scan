@@ -10,12 +10,12 @@ export function TopBar({ query, currentUser, onQueryChange, onSubmitSearch, onNa
           type="button"
           className="brand"
           onClick={() => onNavigate("home")}
-          aria-label="NutriScan, ir para a tela principal"
+          aria-label="NutriVa, ir para a tela principal"
         >
           <span className="brand-mark" aria-hidden="true">
             <Leaf size={18} />
           </span>
-          <span className="brand-name">NutriScan</span>
+          <span className="brand-name">NutriVa</span>
         </button>
 
         <form className="topbar-search" onSubmit={onSubmitSearch} role="search">

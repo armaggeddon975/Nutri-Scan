@@ -61,7 +61,7 @@ test("carrega backend/.env por caminho absoluto e valida valores", async () => {
     [
       "NODE_ENV=test",
       "PORT=4312",
-      "DATABASE_URL=postgresql://env-file.example/nutriscan",
+      "DATABASE_URL=postgresql://env-file.example/nutriva",
       "DATABASE_SSL=true",
       "SESSION_TTL_DAYS=12",
       "ANTHROPIC_MODEL=claude-modelo-de-teste",
@@ -73,7 +73,7 @@ test("carrega backend/.env por caminho absoluto e valida valores", async () => {
       const env = runEnvProbe();
       assert.equal(env.nodeEnv, "test");
       assert.equal(env.port, 4312);
-      assert.equal(env.databaseUrl, "postgresql://env-file.example/nutriscan");
+      assert.equal(env.databaseUrl, "postgresql://env-file.example/nutriva");
       assert.equal(env.databaseSsl, true);
       assert.equal(env.sessionTtlDays, 12);
       assert.equal(env.version, "0.6.8");

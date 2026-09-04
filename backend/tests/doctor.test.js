@@ -179,14 +179,14 @@ test("probe de env le presenca sem depender de dotenv e sem expor valores", () =
     [
       "# comentario",
       "PORT=3000",
-      'DATABASE_URL="postgresql://usuario:senha@localhost:5432/nutriscan"',
+      'DATABASE_URL="postgresql://usuario:senha@localhost:5432/nutriva"',
       "ANTHROPIC_API_KEY=",
       "export ANTHROPIC_MODEL=claude-sonnet-5",
     ].join("\n"),
   );
 
   assert.equal(parsed.get("PORT"), "3000");
-  assert.equal(parsed.get("DATABASE_URL"), "postgresql://usuario:senha@localhost:5432/nutriscan");
+  assert.equal(parsed.get("DATABASE_URL"), "postgresql://usuario:senha@localhost:5432/nutriva");
   assert.equal(parsed.get("ANTHROPIC_API_KEY"), "");
   assert.equal(parsed.get("ANTHROPIC_MODEL"), "claude-sonnet-5");
 

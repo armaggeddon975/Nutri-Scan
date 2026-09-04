@@ -1,4 +1,4 @@
-# API NutriScan v0.6.8
+# API NutriVa v0.6.8
 
 Base local: `http://localhost:3000/api`
 
@@ -91,7 +91,7 @@ Resposta:
     "conflicts": [{ "id": "milk", "label": "Leite/lactose" }],
     "traces": [],
     "profileSource": "postgresql",
-    "alert": "Alerta do NutriScan: este produto tem Leite/lactose no seu perfil de alergias...",
+    "alert": "Alerta do NutriVa: este produto tem Leite/lactose no seu perfil de alergias...",
     "minimumSafety": "caution",
     "safetyFloorApplied": true
   }

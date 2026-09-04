@@ -19,7 +19,7 @@ snapshot com linguagem clara.
 ```text
 React
   -> POST /api/assistant/chat
-  -> Backend NutriScan
+  -> Backend NutriVa
   -> contexto controlado + allergySnapshot
   -> Anthropic Messages API
   -> Claude Sonnet 5
@@ -110,7 +110,7 @@ com:
 - timeout por `ANTHROPIC_TIMEOUT_MS`, no cliente e na chamada
 
 As instrucoes privilegiadas ficam no parametro `system`. A Messages API nao
-aceita uma mensagem `role: "system"` dentro de `messages`, e o NutriScan nunca
+aceita uma mensagem `role: "system"` dentro de `messages`, e o NutriVa nunca
 tenta usar uma.
 
 O assistente responde curto e estruturado, entao o thinking fica desligado: sem

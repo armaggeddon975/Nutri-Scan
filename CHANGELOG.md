@@ -1,6 +1,26 @@
 # Changelog
 
-## NutriScan v0.6.8 - 2026-08-27
+## Renomeacao NutriScan -> NutriVa - 2026-09-04
+
+O produto passou a se chamar NutriVa, seguindo a marca. A troca foi feita em
+codigo, documentacao, interface e testes, com tres excecoes deliberadas:
+
+```text
+nutriscan:users            localStorage - trocar apaga contas locais ja salvas
+nutriscan:guest-allergies  localStorage - trocar apaga as alergias do visitante
+nutriscan_session          cookie - trocar desloga todo mundo em producao
+```
+
+Nenhum desses nomes aparece na interface. O servico no Render tambem continua
+com o nome antigo, porque a URL publica deriva dele; renomear exige acao no
+painel e troca o endereco do site.
+
+Junto com a renomeacao, a interface foi redesenhada: barra superior com busca
+global, menu lateral de uma coluna no computador, abas fixas no celular, e cor
+com significado - verde para marca e acao, vermelho e ambar so para conflito de
+alergia.
+
+## NutriVa v0.6.8 - 2026-08-27
 
 Correcao do defeito CRITICO encontrado pela auditoria externa independente da
 v0.6.7, mais tres achados menores. A auditoria instalou PostgreSQL real, rodou a
@@ -11,7 +31,7 @@ exploits proprios.
 
 A regra do projeto diz que o motor deterministico e a autoridade sobre conflito
 de alergia. Ate esta versao, essa autoridade existia **apenas como frase no
-system prompt**: "O motor deterministico do NutriScan e autoridade para
+system prompt**: "O motor deterministico do NutriVa e autoridade para
 conflitos de alergia". Instrucao ao modelo nao e garantia - e um pedido que ele
 pode ignorar.
 
@@ -124,7 +144,7 @@ Resultado medido no mesmo cenario da auditoria (banco real, chave falsa):
 - Validacao por mutacao de T1, T2, T3 e T7: os quatro mutantes morreram. Nenhum
   sobrevivente.
 
-## NutriScan v0.6.7 - 2026-08-16
+## NutriVa v0.6.7 - 2026-08-16
 
 Correcoes da auditoria do gauntlet-loop sobre a preparacao de producao. O
 supervisor REPROVOU a v0.6.6 com nota 2 em safety, e o motivo mais grave nao foi
@@ -146,7 +166,7 @@ codigo: a suite de testes escreveu no banco de producao do usuario.
   varias caixas, metodo diferente de GET, ausencia de build e CSP sem
   afrouxamento. Validado por mutacao.
 
-## NutriScan v0.6.6 - 2026-08-15
+## NutriVa v0.6.6 - 2026-08-15
 
 Endurecimento do gate E2E a partir da auditoria do gauntlet-loop sobre a v0.6.5.
 O supervisor aprovou a v0.6.5 (notas 9/9/9/8/9), mas apontou um vao estrutural e
@@ -173,7 +193,7 @@ mutantes sobreviventes na superficie de decisao. Ambos foram corrigidos.
   teste escrito e so morreu depois que o teste passou a conferir o codigo
   gravado, e nao apenas a quantidade de etapas.
 
-## NutriScan v0.6.5 - 2026-08-15
+## NutriVa v0.6.5 - 2026-08-15
 
 Hotfix do gate E2E. A migracao da v0.6.3 deixou residuo executavel da
 arquitetura antiga em `scripts/verify-e2e.js`, e a varredura que declarou "zero
@@ -200,7 +220,7 @@ ocorrencias ativas" era sensivel a maiusculas, entao passou reto pela forma
   antiga do secret scan, que existem para achar credencial esquecida.
 - Corrigida no AUDIT_REPORT a afirmacao falsa de varredura completa da v0.6.3.
 
-## NutriScan v0.6.4 - 2026-08-15
+## NutriVa v0.6.4 - 2026-08-15
 
 Correcao de dois defeitos da v0.6.3 encontrados pelo gauntlet-loop, o metodo de
 equipe de subagentes com supervisor adversarial adotado como padrao do projeto.
@@ -229,7 +249,7 @@ Ambos passavam pela suite de 64 testes sem serem detectados.
   `.claude/skills/gauntlet-loop/SKILL.md`, a orquestracao em
   `.claude/workflows/gauntlet-loop.js` e a regra permanente em `CLAUDE.md`.
 
-## NutriScan v0.6.3 - 2026-08-14
+## NutriVa v0.6.3 - 2026-08-14
 
 Migracao oficial do provedor de IA: OpenAI -> Anthropic Claude. PostgreSQL,
 autenticacao, sessoes, motor deterministico, adapters e visual nao mudaram.
@@ -256,13 +276,13 @@ autenticacao, sessoes, motor deterministico, adapters e visual nao mudaram.
 - Health passou a informar `aiProvider`, sem revelar chave.
 - Doctor e doctor:e2e passaram a exigir `ANTHROPIC_API_KEY` e `ANTHROPIC_MODEL`.
 - Secret scan ganhou padroes `sk-ant-` e `ANTHROPIC_API_KEY=`.
-- Frontend continua chamando apenas a API do NutriScan e agora trata a origem da
+- Frontend continua chamando apenas a API do NutriVa e agora trata a origem da
   resposta de forma agnostica: qualquer origem diferente de `local` e Nutri IA.
 - Fallback local preservado, incluindo `AI_NOT_CONFIGURED`.
 - Testes novos do client: sucesso, timeout, 429, 5xx, JSON invalido, schema
   invalido, stop_reason anormal e leitura de content blocks fora de ordem.
 
-## NutriScan v0.6.2 - 2026-08-14
+## NutriVa v0.6.2 - 2026-08-14
 
 Checkpoint de tentativa de E2E real. O ambiente nao possui PostgreSQL nem
 OpenAI, entao o gate `verify:e2e` permanece BLOQUEADO e a v0.7.0 nao foi
@@ -284,7 +304,7 @@ iniciada.
   documentacao, exemplos de health e secao do CHANGELOG.
 - Atualizada a versao para 0.6.2 em pacotes, lockfiles, health e documentacao.
 
-## NutriScan v0.6.1 - 2026-08-13
+## NutriVa v0.6.1 - 2026-08-13
 
 - Corrigido `scripts/doctor.js`, que importava `backend/src/config/env.js` e `pg`
   no topo e podia lancar `ERR_MODULE_NOT_FOUND` antes de exibir
@@ -329,7 +349,7 @@ iniciada.
 - Adicionado relatorio sanitizado opcional `E2E_LAST_RUN.json`, ignorado pelo
   Git e fora do ZIP.
 
-## NutriScan v0.6.0 - 2026-08-13
+## NutriVa v0.6.0 - 2026-08-13
 
 - Adicionado `npm run doctor` para diagnostico de ambiente sem revelar secrets.
 - Adicionado `npm run e2e:real` para validar uma API real rodando.
@@ -344,7 +364,7 @@ iniciada.
 - Mantido PostgreSQL real com skip honesto quando `DATABASE_URL` nao esta
   configurado.
 
-## NutriScan v0.5.3 - 2026-08-13
+## NutriVa v0.5.3 - 2026-08-13
 
 - Corrigida semantica do campo `traces`, que agora e tratado como traco pela
   origem do dado.
@@ -358,7 +378,7 @@ iniciada.
 - Atualizado snapshot da IA para refletir corretamente `possibleTraces`.
 - Expandida matriz de regressao para 50+ cenarios.
 
-## NutriScan v0.5.2 - 2026-08-13
+## NutriVa v0.5.2 - 2026-08-13
 
 - Corrigidos falsos negativos causados por remocao global de trechos negados.
 - Implementada classificacao por ocorrencia de termo alergico.
@@ -375,7 +395,7 @@ iniciada.
 - Ajustado parsing OpenAI para priorizar `refusal` e `incomplete` antes de
   `output_parsed`.
 
-## NutriScan v0.5.1 - 2026-08-13
+## NutriVa v0.5.1 - 2026-08-13
 
 - Criado motor deterministico unico de alergias em `shared/`.
 - Eliminada divergencia entre classificacao do frontend e snapshot do backend.
@@ -393,7 +413,7 @@ iniciada.
 - Adicionados testes de consistencia frontend/backend com mais de 15 cenarios.
 - Adicionados testes de prompt injection em produto, snapshot contains/traces e mocks da Responses API.
 
-## NutriScan v0.5.0 - 2026-08-13
+## NutriVa v0.5.0 - 2026-08-13
 
 - Implementado Nutri Assistente com IA generativa via backend.
 - Adicionado SDK oficial `openai` no backend.
@@ -403,7 +423,7 @@ iniciada.
 - Adicionado timeout e limite de saida configuraveis.
 - Adicionado contexto minimo de produto para a IA.
 - Adicionado contexto de alergias com fonte oficial no PostgreSQL para usuarios logados.
-- Adicionado snapshot deterministico de alergias para a IA explicar, sem substituir o motor do NutriScan.
+- Adicionado snapshot deterministico de alergias para a IA explicar, sem substituir o motor do NutriVa.
 - Adicionada moderacao da entrada quando OpenAI estiver configurada.
 - Adicionados mapeamentos seguros para erros da IA.
 - Mantido fallback local baseado em regras quando IA falha ou nao esta configurada.
@@ -412,7 +432,7 @@ iniciada.
 - Corrigida condicao residual em que resposta antiga de alergias podia sobrescrever visualmente uma intencao nova.
 - Adicionada documentacao `docs/AI_ASSISTANT.md`.
 
-## NutriScan v0.4.1 - 2026-08-13
+## NutriVa v0.4.1 - 2026-08-13
 
 - Adicionado carregamento real de `backend/.env` com caminho absoluto.
 - Mantida prioridade das variaveis do sistema sobre o `.env` local.
@@ -429,7 +449,7 @@ iniciada.
 - Adicionados testes de `.env`, health, logout e integracao PostgreSQL com skip honesto.
 - Atualizada documentacao de API, arquitetura e ambiente.
 
-## NutriScan v0.4.0 - 2026-08-13
+## NutriVa v0.4.0 - 2026-08-13
 
 - Adicionado backend Express em `backend/`.
 - Adicionado PostgreSQL com migracao inicial para `users`, `user_allergies`,

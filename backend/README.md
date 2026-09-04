@@ -1,4 +1,4 @@
-# NutriScan Backend v0.6.8
+# NutriVa Backend v0.6.8
 
 API Express responsavel por contas, sessoes e alergias sincronizadas.
 
@@ -27,7 +27,7 @@ Crie `backend/.env` usando `backend/.env.example`:
 ```env
 PORT=3000
 NODE_ENV=development
-DATABASE_URL=postgresql://usuario:senha@localhost:5432/nutriscan
+DATABASE_URL=postgresql://usuario:senha@localhost:5432/nutriva
 DATABASE_SSL=false
 FRONTEND_ORIGIN=http://localhost:5173
 SESSION_TTL_DAYS=30
@@ -52,7 +52,7 @@ Nunca coloque uma chave real em arquivos versionados.
 Com PostgreSQL local:
 
 ```sql
-CREATE DATABASE nutriscan;
+CREATE DATABASE nutriva;
 ```
 
 Com Docker opcional, pela raiz do projeto:
@@ -64,7 +64,7 @@ npm run db:up
 URL de desenvolvimento do Docker:
 
 ```env
-DATABASE_URL=postgresql://nutriscan:nutriscan_dev_password@localhost:5432/nutriscan
+DATABASE_URL=postgresql://nutriva:nutriva_dev_password@localhost:5432/nutriva
 ```
 
 Esta senha e apenas para desenvolvimento local.

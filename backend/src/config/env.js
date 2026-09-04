@@ -52,6 +52,9 @@ export const env = {
   // X-Forwarded-For para o rate limit contar por visitante, nao por proxy.
   trustProxy: parseBoolean(process.env.TRUST_PROXY, parseNodeEnv(process.env.NODE_ENV) === "production"),
   sessionTtlDays: parsePositiveInt(process.env.SESSION_TTL_DAYS, 30),
+  // Nome preservado na renomeacao para NutriVa: o cookie de sessao ja esta no
+  // navegador de quem esta logado em producao, e trocar o nome desloga todo
+  // mundo de uma vez. Da para mudar por SESSION_COOKIE_NAME quando fizer sentido.
   sessionCookieName: process.env.SESSION_COOKIE_NAME || "nutriscan_session",
   aiProvider: AI_PROVIDER,
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || "",

@@ -4,5 +4,5 @@ import { env } from "./config/env.js";
 const app = createApp();
 
 app.listen(env.port, () => {
-  console.log(`NutriScan API v${env.version} ouvindo na porta ${env.port}`);
+  console.log(`NutriVa API v${env.version} ouvindo na porta ${env.port}`);
 });

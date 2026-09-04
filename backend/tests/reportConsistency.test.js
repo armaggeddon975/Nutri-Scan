@@ -38,7 +38,7 @@ function extractDeclaredDate(text, file) {
 async function changelogDateForCurrentVersion() {
   const changelog = await readText("CHANGELOG.md");
   const pattern = new RegExp(
-    `^## NutriScan v${env.version.replace(/\./g, "\\.")} - (\\d{4}-\\d{2}-\\d{2})\\s*$`,
+    `^## NutriVa v${env.version.replace(/\./g, "\\.")} - (\\d{4}-\\d{2}-\\d{2})\\s*$`,
     "m",
   );
   const match = pattern.exec(changelog);

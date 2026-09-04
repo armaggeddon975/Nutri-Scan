@@ -1,6 +1,6 @@
-# NutriScan v0.6.8
+# NutriVa v0.6.8
 
-NutriScan e um app web para consultar alimentos por nome ou codigo de barras,
+NutriVa e um app web para consultar alimentos por nome ou codigo de barras,
 ver tabela nutricional, identificar ingredientes sensiveis e conversar com um
 assistente sobre rotulos e alergias.
 
@@ -53,7 +53,7 @@ Crie `backend/.env` a partir de `backend/.env.example`:
 ```env
 PORT=3000
 NODE_ENV=development
-DATABASE_URL=postgresql://usuario:senha@localhost:5432/nutriscan
+DATABASE_URL=postgresql://usuario:senha@localhost:5432/nutriva
 DATABASE_SSL=false
 FRONTEND_ORIGIN=http://localhost:5173
 SESSION_TTL_DAYS=30

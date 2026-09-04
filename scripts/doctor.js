@@ -234,7 +234,7 @@ async function main() {
     detail: dockerAvailable ? "available" : "unavailable (optional)",
   });
 
-  console.log(`NutriScan Doctor - modo ${options.strict ? "STRICT E2E" : "NORMAL"} (${rootDir})`);
+  console.log(`NutriVa Doctor - modo ${options.strict ? "STRICT E2E" : "NORMAL"} (${rootDir})`);
   for (const check of checks) {
     console.log(statusLine(check.status, check.label, check.detail));
   }

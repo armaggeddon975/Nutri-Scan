@@ -1,4 +1,4 @@
-# E2E Report - NutriScan v0.6.8
+# E2E Report - NutriVa v0.6.8
 
 Data: 2026-08-27
 

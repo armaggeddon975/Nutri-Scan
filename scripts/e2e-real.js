@@ -432,8 +432,8 @@ async function main() {
 
       const db = await createDbClient(env);
       const stamp = Date.now();
-      const emailA = `nutriscan-e2e-${stamp}@example.test`;
-      const emailB = `nutriscan-e2e-b-${stamp}@example.test`;
+      const emailA = `nutriva-e2e-${stamp}@example.test`;
+      const emailB = `nutriva-e2e-b-${stamp}@example.test`;
       const password = `E2E-${stamp}-senha`;
       const clientA = new CookieClient("A", baseUrl);
       const clientB = new CookieClient("B", baseUrl);

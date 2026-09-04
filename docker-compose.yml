@@ -1,20 +1,20 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: nutriscan-postgres-dev
+    container_name: nutriva-postgres-dev
     environment:
-      POSTGRES_DB: nutriscan
-      POSTGRES_USER: nutriscan
-      POSTGRES_PASSWORD: nutriscan_dev_password
+      POSTGRES_DB: nutriva
+      POSTGRES_USER: nutriva
+      POSTGRES_PASSWORD: nutriva_dev_password
     ports:
       - "5432:5432"
     volumes:
-      - nutriscan_postgres_data:/var/lib/postgresql/data
+      - nutriva_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U nutriscan -d nutriscan"]
+      test: ["CMD-SHELL", "pg_isready -U nutriva -d nutriva"]
       interval: 5s
       timeout: 5s
       retries: 10
 
 volumes:
-  nutriscan_postgres_data:
+  nutriva_postgres_data:

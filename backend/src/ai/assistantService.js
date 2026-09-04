@@ -110,7 +110,7 @@ export function parseStructuredResponse(response) {
   return { ...validation.data, source: "anthropic" };
 }
 
-// Codigos neutros de provedor: a API publica do NutriScan nao expoe a marca.
+// Codigos neutros de provedor: a API publica do NutriVa nao expoe a marca.
 //
 // ATENCAO: as classes de erro do SDK nao definem `name`. Toda instancia herda
 // `name === "Error"`, e um timeout chega com `status` e `code` indefinidos.

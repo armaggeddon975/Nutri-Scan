@@ -1,8 +1,8 @@
-# Arquitetura NutriScan v0.6.8
+# Arquitetura NutriVa v0.6.8
 
 ## Visao geral
 
-NutriScan tem tres areas principais:
+NutriVa tem tres areas principais:
 
 - Frontend React/Vite em `src/`.
 - Backend Express/PostgreSQL em `backend/`.
@@ -89,14 +89,14 @@ um segundo motor simplificado baseado em `hasTagMatch()` ou `hasTermMatch()`.
 ```text
 React
   -> /api/assistant/chat
-  -> Backend NutriScan
+  -> Backend NutriVa
   -> allergySnapshot deterministico
   -> Anthropic Messages API
   -> Claude Sonnet 5
 ```
 
 Na v0.6.3 a camada de IA migrou de OpenAI para Anthropic. O contrato publico do
-NutriScan nao mudou: o frontend continua chamando `POST /api/assistant/chat` e
+NutriVa nao mudou: o frontend continua chamando `POST /api/assistant/chat` e
 nao sabe qual provedor respondeu. Trocar de provedor de novo no futuro exige
 mexer apenas em `backend/src/ai/`.
 
@@ -196,8 +196,8 @@ Para producao, a arquitetura web deve preferir frontend e API sob a mesma origem
 logica, por exemplo:
 
 ```text
-https://nutriscan.com
-https://nutriscan.com/api
+https://nutriva.com
+https://nutriva.com/api
 ```
 
 Nenhum deploy foi feito nesta etapa.

@@ -9,6 +9,9 @@
 
 services:
   - type: web
+    # Nome preservado: o servico ja existe no Render com este nome e a URL
+    # publica deriva dele. Renomear aqui nao renomeia o servico existente, e
+    # renomear no painel troca a URL. Fica para uma migracao planejada.
     name: nutriscan
     runtime: node
     plan: free

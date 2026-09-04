@@ -72,7 +72,7 @@ test("exemplos de health na documentacao usam a versao atual", async () => {
 test("CHANGELOG registra a versao atual", async () => {
   const changelog = await readText("CHANGELOG.md");
   assert.ok(
-    changelog.includes(`## NutriScan v${env.version}`),
+    changelog.includes(`## NutriVa v${env.version}`),
     `CHANGELOG.md nao tem secao para v${env.version}`,
   );
 });

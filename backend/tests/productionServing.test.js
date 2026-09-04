@@ -16,12 +16,12 @@ import { createApp } from "../src/app.js";
 const tempRoots = [];
 
 function makeDist({ withBuild }) {
-  const root = mkdtempSync(path.join(os.tmpdir(), "nutriscan-dist-"));
+  const root = mkdtempSync(path.join(os.tmpdir(), "nutriva-dist-"));
   tempRoots.push(root);
 
   if (withBuild) {
     mkdirSync(path.join(root, "assets"), { recursive: true });
-    writeFileSync(path.join(root, "index.html"), "<!doctype html><title>NutriScan</title>");
+    writeFileSync(path.join(root, "index.html"), "<!doctype html><title>NutriVa</title>");
     writeFileSync(path.join(root, "assets", "app.js"), "console.log('build');");
     // Arquivo sensivel dentro da raiz servida, para provar que so o que existe
     // em dist/ e exposto e que nada de fora vaza.
@@ -64,7 +64,7 @@ test("com build presente, o app e servido e os assets tambem", async () => {
     const home = await fetchInfo(baseUrl, "/");
     assert.equal(home.status, 200);
     assert.match(home.type, /text\/html/);
-    assert.match(home.body, /NutriScan/);
+    assert.match(home.body, /NutriVa/);
 
     const asset = await fetchInfo(baseUrl, "/assets/app.js");
     assert.equal(asset.status, 200);

@@ -515,7 +515,7 @@ test("blocos de conteudo sao lidos por tipo, nunca por posicao", () => {
   );
 });
 
-test("erros REAIS do SDK viram codigos neutros da API do NutriScan", () => {
+test("erros REAIS do SDK viram codigos neutros da API do NutriVa", () => {
   // Regressao da v0.6.4: objetos sinteticos como { name: "APIConnectionTimeoutError" }
   // nunca sao produzidos pelo SDK, entao um teste feito com eles fica verde
   // defendendo um ramo inalcancavel. Aqui as instancias sao reais.

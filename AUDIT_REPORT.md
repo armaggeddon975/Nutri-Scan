@@ -1,4 +1,4 @@
-# Relatorio de Auditoria - NutriScan v0.6.8
+# Relatorio de Auditoria - NutriVa v0.6.8
 
 Data: 2026-08-27
 
@@ -120,7 +120,7 @@ RESPOSTA ENTREGUE AO USUARIO
     "source": "deterministic_engine",
     "conflicts": [{ "id": "milk", "label": "Leite/lactose" }],
     "profileSource": "request",
-    "alert": "Alerta do NutriScan: este produto tem Leite/lactose no seu
+    "alert": "Alerta do NutriVa: este produto tem Leite/lactose no seu
               perfil de alergias...",
     "minimumSafety": "caution",
     "safetyFloorApplied": true
@@ -342,7 +342,7 @@ O modelo e configuravel por `ANTHROPIC_MODEL` e vive em um unico lugar
 
 ```text
 React
-  -> NutriScan Backend
+  -> NutriVa Backend
   -> Anthropic Messages API
 ```
 
@@ -555,7 +555,7 @@ genericos anteriores. Nenhum `.env` real existe no projeto nem entrou no pacote.
 ## ZIP
 
 ```text
-releases/nutriscan-v0.6.6-auditoria.zip
+releases/nutriva-v0.6.6-auditoria.zip
 ```
 
 O SHA-256 do pacote e publicado em `releases/SHA256SUMS.txt`, fora do ZIP:
@@ -566,7 +566,7 @@ Validado programaticamente: 111 entradas com CRC integro, 0 caminhos com barra i
 
 ## Conclusao
 
-A migracao esta completa e o contrato publico do NutriScan nao mudou: o frontend
+A migracao esta completa e o contrato publico do NutriVa nao mudou: o frontend
 continua chamando `POST /api/assistant/chat` sem saber qual IA respondeu.
 
 O gate de E2E real segue bloqueado por ambiente, agora por dois requisitos:
