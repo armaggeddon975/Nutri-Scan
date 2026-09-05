@@ -21,7 +21,7 @@ export function AccountPage({
       <PageHeader
         eyebrow="Conta"
         title="Entre na sua conta."
-        subtitle="Com a conta, suas alergias ficam salvas e aparecem em qualquer aparelho."
+        subtitle="Suas alergias salvas em qualquer aparelho."
       />
 
       {currentUser ? (
@@ -147,14 +147,14 @@ export function AccountPage({
 
           <aside className="account-card account-benefits">
             <h3>Por que criar uma conta?</h3>
-            <p>O app lembra suas alergias e aplica os alertas quando voce consulta ou escaneia alimentos.</p>
+            <p>O app lembra suas alergias e avisa quando houver risco.</p>
             <div className="guide-item">
               <ShieldAlert size={20} aria-hidden="true" />
-              <span>Alergias sincronizadas ao entrar em outro dispositivo.</span>
+              <span>Suas alergias em qualquer aparelho.</span>
             </div>
             <div className="guide-item">
               <Bot size={20} aria-hidden="true" />
-              <span>Assistente usando o perfil e o produto atual.</span>
+              <span>O assistente conhece suas alergias.</span>
             </div>
           </aside>
         </section>

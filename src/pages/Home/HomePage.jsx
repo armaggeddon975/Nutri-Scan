@@ -7,25 +7,25 @@ const SHORTCUTS = [
     id: "consulta",
     icon: Search,
     title: "Buscar alimento",
-    copy: "Procure pelo nome ou pelo código de barras.",
+    copy: "Pelo nome ou pelo código.",
   },
   {
     id: "scan",
     icon: Camera,
     title: "Escanear código",
-    copy: "Aponte a câmera para o código do produto.",
+    copy: "Aponte para o código de barras.",
   },
   {
     id: "chat",
     icon: Bot,
-    title: "Perguntar ao assistente",
-    copy: "Tire dúvidas sobre o rótulo do produto aberto.",
+    title: "Perguntar",
+    copy: "Tire dúvidas sobre o produto.",
   },
   {
     id: "guia",
     icon: ClipboardList,
     title: "Guia de rótulos",
-    copy: "O que observar em cada alergia.",
+    copy: "O que olhar em cada alergia.",
   },
 ];
 
@@ -35,11 +35,8 @@ export function HomePage({ selectedAllergies, productAnalysis, onNavigate, onSea
   return (
     <>
       <section className="hero">
-        <h1>Entenda o rótulo antes de comprar.</h1>
-        <p>
-          Busque ou escaneie um produto e veja ingredientes, tabela nutricional e o que conflita
-          com as suas alergias.
-        </p>
+        <h1>Veja o que tem no alimento.</h1>
+        <p>Escaneie o código de barras e saiba se pode comer.</p>
         <div className="hero-actions">
           <button className="primary-button" type="button" onClick={() => onNavigate("scan")}>
             <Camera size={18} aria-hidden="true" />
@@ -65,13 +62,13 @@ export function HomePage({ selectedAllergies, productAnalysis, onNavigate, onSea
         <span>
           <strong>
             {hasProfile
-              ? `${selectedAllergies.length} alergia(s) no seu perfil`
-              : "Nenhuma alergia configurada"}
+              ? `${selectedAllergies.length} ${selectedAllergies.length === 1 ? "alergia marcada" : "alergias marcadas"}`
+              : "Nenhuma alergia marcada"}
           </strong>
           <small>
             {hasProfile
-              ? "Todo produto aberto é conferido contra essa lista."
-              : "Configure para que o app avise sobre conflitos."}
+              ? "Todo produto é conferido."
+              : "Marque as suas e o app avisa."}
           </small>
         </span>
         <span className="profile-strip-action">
@@ -80,7 +77,7 @@ export function HomePage({ selectedAllergies, productAnalysis, onNavigate, onSea
       </button>
 
       <section aria-label="Experimente" className="samples">
-        <h2>Experimente com um destes</h2>
+        <h2>Experimente</h2>
         <div className="chip-list">
           {SAMPLE_QUERIES.map((sample) => (
             <button type="button" key={sample} onClick={() => onSearchAndOpen(sample)}>
@@ -94,8 +91,7 @@ export function HomePage({ selectedAllergies, productAnalysis, onNavigate, onSea
           ))}
         </div>
         <p className="samples-note">
-          {LOCAL_FOODS.length} alimentos disponíveis sem internet, mais a base global Open Food
-          Facts.
+          {LOCAL_FOODS.length} alimentos funcionam sem internet.
         </p>
       </section>
 

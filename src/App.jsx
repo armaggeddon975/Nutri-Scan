@@ -137,7 +137,7 @@ function App() {
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
   const [authStatus, setAuthStatus] = useState({
     type: "ready",
-    message: "Entre ou crie uma conta para salvar suas alergias.",
+    message: "Entre na conta para salvar suas alergias.",
   });
   const [assistantLoading, setAssistantLoading] = useState(false);
   const [assistantConnection, setAssistantConnection] = useState({
@@ -148,12 +148,12 @@ function App() {
   const [assistantMessages, setAssistantMessages] = useState([
     {
       role: "assistant",
-      text: "Oi, eu sou o Nutri Assistente. Pode conversar comigo normalmente. Eu consigo falar sobre alimentos, rótulos, alergias, sintomas leves e também te ajudar a entender o produto que você escanear.",
+      text: "Oi! Pode perguntar sobre alimentos, rótulos e alergias.",
     },
   ]);
   const [status, setStatus] = useState({
     type: "ready",
-    message: "Busque por alimento, digite um código ou ligue a câmera.",
+    message: "Busque um alimento ou ligue a câmera.",
   });
 
   const restoreGuestSession = useCallback((message, type = "ready") => {
@@ -196,8 +196,8 @@ function App() {
         if (!active) return;
         restoreGuestSession(
           error.status === 401
-            ? "Entre ou crie uma conta para salvar suas alergias."
-            : "Recursos de conta estão temporariamente indisponíveis. O modo visitante continua funcionando.",
+            ? "Entre na conta para salvar suas alergias."
+            : "Conta fora do ar. O app continua funcionando.",
           error.status === 401 ? "ready" : "warning",
         );
       });
@@ -346,7 +346,7 @@ function App() {
           setStatus({
             type: "warning",
             message:
-              "A busca por nome está indisponível no momento. Use o código de barras ou um dos exemplos.",
+              "Busca por nome fora do ar. Tente pelo código de barras.",
           });
         }
         return;
@@ -373,7 +373,7 @@ function App() {
         lastDetectedRef.current = "";
         setStatus({
           type: "error",
-          message: "Não foi possível consultar o produto. Verifique sua conexão e tente novamente.",
+          message: "Não consegui buscar. Verifique sua internet.",
         });
       }
     },
@@ -453,7 +453,7 @@ function App() {
           setTorch({ available: false, on: false });
           setStatus({
             type: "error",
-            message: "A câmera foi interrompida. Ligue novamente ou digite o código.",
+            message: "A câmera parou. Ligue de novo ou digite o código.",
           });
         },
       );
@@ -468,7 +468,7 @@ function App() {
       setScannerState("scanning");
       setStatus({
         type: "ready",
-        message: "Câmera ativa. Encaixe o código de barras no quadro.",
+        message: "Câmera ligada. Aponte para o código.",
       });
     } catch (error) {
       setScannerState("idle");
@@ -503,7 +503,7 @@ function App() {
         setSelectedAllergies(confirmedAllergiesRef.current);
         setAuthStatus({
           type: "error",
-          message: "Nao consegui salvar suas alergias de visitante. O armazenamento pode estar bloqueado.",
+          message: "Não consegui salvar aqui no aparelho.",
         });
       }
       return;
@@ -533,7 +533,7 @@ function App() {
 
       if (error.status === 401 && error.code === "UNAUTHENTICATED") {
         restoreGuestSession(
-          "Sua sessao expirou. O perfil visitante foi restaurado.",
+          "Sua sessão expirou. Entre de novo para salvar.",
           "warning",
         );
         return;
@@ -543,7 +543,7 @@ function App() {
         setSelectedAllergies(confirmedAllergiesRef.current);
         setAuthStatus({
           type: "error",
-          message: "Nao consegui salvar suas alergias no servidor. Tente novamente.",
+          message: "Não consegui salvar. Tente de novo.",
         });
       }
     }
@@ -578,7 +578,7 @@ function App() {
     if (!email || !password || (authMode === "register" && !name)) {
       setAuthStatus({
         type: "warning",
-        message: "Preencha os campos necessários para continuar.",
+        message: "Preencha os campos para continuar.",
       });
       return;
     }
@@ -609,14 +609,14 @@ function App() {
         setAuthForm({ name: "", email: "", password: "" });
         setAuthStatus({
           type: "success",
-          message: "Conta online criada. Suas alergias foram salvas nesse perfil.",
+          message: "Conta criada. Suas alergias estão salvas.",
         });
       } catch (error) {
         setAuthStatus({
           type: error.status === 409 ? "warning" : "error",
           message:
             error.message ||
-            "Não consegui criar a conta online. O modo visitante continua funcionando.",
+            "Não consegui criar a conta. O app continua funcionando.",
         });
       }
       return;
@@ -653,7 +653,7 @@ function App() {
             setAuthForm({ name: "", email: "", password: "" });
             setAuthStatus({
               type: "success",
-              message: "Perfil local atualizado para sincronização online.",
+              message: "Perfil atualizado.",
             });
             return;
           }
@@ -670,7 +670,7 @@ function App() {
 
       setAuthStatus({
         type: "error",
-        message: "Servidor de contas indisponível. O modo visitante continua funcionando.",
+        message: "Conta fora do ar. O app continua funcionando.",
       });
     }
   };
@@ -682,7 +682,7 @@ function App() {
       // Mesmo se o servidor estiver indisponivel, a interface volta para o perfil visitante.
     }
 
-    restoreGuestSession("Voce saiu da conta. Perfil visitante restaurado.");
+    restoreGuestSession("Você saiu da conta.");
   };
 
   const submitAssistant = async (event) => {

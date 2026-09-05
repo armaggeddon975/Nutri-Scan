@@ -1,4 +1,4 @@
-import { Leaf, Search, User } from "lucide-react";
+import { Search, User } from "lucide-react";
 
 // Barra superior fixa. Ela carrega a busca global, que antes so existia dentro
 // da pagina Consulta: agora da para procurar um alimento de qualquer tela.
@@ -12,9 +12,9 @@ export function TopBar({ query, currentUser, onQueryChange, onSubmitSearch, onNa
           onClick={() => onNavigate("home")}
           aria-label="NutriVa, ir para a tela principal"
         >
-          <span className="brand-mark" aria-hidden="true">
-            <Leaf size={22} />
-          </span>
+          {/* O simbolo e a logo da DG, nao um icone de biblioteca. Fica
+              decorativo porque o botao ja se anuncia pelo aria-label acima. */}
+          <img className="brand-mark" src="/dg-simbolo.png" alt="" aria-hidden="true" />
           <span className="brand-name">NutriVa</span>
         </button>
 

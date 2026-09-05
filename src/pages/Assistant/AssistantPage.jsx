@@ -22,7 +22,7 @@ export function AssistantPage({
       <PageHeader
         eyebrow="Assistente"
         title="Tire suas dúvidas sobre alimentos."
-        subtitle="Pergunte sobre um alimento, uma alergia ou o produto que você acabou de escanear."
+        subtitle="Pergunte sobre qualquer alimento."
       />
       <article className="assistant-card assistant-page">
         <div className="panel-heading">

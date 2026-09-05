@@ -9,8 +9,8 @@ export function AllergiesPage({ currentUser, selectedAllergies, productAnalysis,
         title="Marque o que você não pode comer."
         subtitle={
           currentUser
-            ? `Tudo que estiver marcado aqui fica salvo na conta de ${currentUser.name}.`
-            : "Depois de marcar, o app avisa quando o alimento tiver esse ingrediente."
+            ? `Salvo na conta de ${currentUser.name}.`
+            : "Depois disso, o app avisa em cada produto."
         }
       />
       <section className="allergy-page-grid">

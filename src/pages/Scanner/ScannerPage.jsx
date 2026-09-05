@@ -64,7 +64,7 @@ export function ScannerPage({
             </div>
           )}
           <form className="search-card" onSubmit={onSubmitSearch}>
-            <label htmlFor="barcode-page">Digitar código manualmente</label>
+            <label htmlFor="barcode-page">Ou digite o código</label>
             <div className="input-row">
               <input
                 id="barcode-page"

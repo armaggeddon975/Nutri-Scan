@@ -16,8 +16,8 @@ export function ProductAnalysis({
     return (
       <section className="empty-state">
         <Barcode size={80} strokeWidth={1.25} aria-hidden="true" />
-        <h3>Nenhum alimento selecionado</h3>
-        <p>Busque por nome, experimente um exemplo ou escaneie um código de barras.</p>
+        <h3>Nenhum alimento aberto</h3>
+        <p>Escaneie um código ou busque pelo nome.</p>
       </section>
     );
   }
@@ -72,7 +72,7 @@ export function ProductAnalysis({
             <span>
               {productScore.notes.length
                 ? productScore.notes.join(" ")
-                : product.localInsight || "Sem alertas relevantes cadastrados."}
+                : product.localInsight || "Nada que exija atenção."}
             </span>
           </div>
         </div>
@@ -104,7 +104,7 @@ export function ProductAnalysis({
               </tbody>
             </table>
           ) : (
-            <p className="empty-copy">Tabela nutricional não cadastrada para este produto.</p>
+            <p className="empty-copy">Sem tabela nutricional. Confira a embalagem.</p>
           )}
         </article>
       </section>
@@ -115,7 +115,7 @@ export function ProductAnalysis({
             <h4>Ingredientes</h4>
           </div>
           <p className="ingredients-copy">
-            {getIngredients(product) || "Ingredientes não cadastrados para este produto."}
+            {getIngredients(product) || "Sem ingredientes. Confira a embalagem."}
           </p>
         </article>
 
@@ -154,7 +154,7 @@ export function ProductAnalysis({
             ) : allergyScan.hasData ? (
               <span className="quiet-tag">Nenhum alergênico detectado</span>
             ) : (
-              <span className="quiet-tag">Produto sem ingredientes cadastrados na base</span>
+              <span className="quiet-tag">Sem ingredientes para conferir</span>
             )}
             {[...(product.labels_tags || []), ...(product.categories_tags || [])]
               .filter(Boolean)

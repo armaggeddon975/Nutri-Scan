@@ -18,12 +18,19 @@
   --line: #dde2d5;
   --line-strong: #c4cdb4;
 
-  /* Texto. Os tres tons foram escolhidos por medicao de contraste sobre o
-     off-white: 12.8:1, 7.2:1 e 4.9:1. Nenhum deles desce abaixo de AA, porque
-     quem le este app tem dificuldade de visao. */
-  --ink: #283024;
-  --ink-2: #4f5647;
-  --ink-3: #67705c;
+  /* Texto.
+     ---------------------------------------------------------------------
+     Escurecido em 05/09/2026 a pedido do dono: a leitura precisa ser facil
+     para quem enxerga mal, e o cinza-esverdeado anterior ainda pedia esforco.
+     Os tres tons guardam um resto de verde da marca para nao virarem cinza
+     de sistema, mas ficam perto do preto.
+
+     O terceiro tom, `--ink-3`, e o piso: nada de texto pode ser mais claro do
+     que ele. Antes ele marcava 4.9:1 sobre o off-white, quase no limite do AA;
+     agora sobra folga de verdade. */
+  --ink: #14180f;
+  --ink-2: #333a2b;
+  --ink-3: #4b533f;
 
   /* Marca - DG Nutricao
      -------------------
@@ -80,13 +87,13 @@
      papeis diferentes em telas diferentes. Mexer em um valor daqui muda o app
      inteiro de forma coerente - era isso que faltava quando os 58 tamanhos
      viviam soltos pelo arquivo. */
-  --t-xs: 0.875rem; /* 14px - rotulo de aba, selo, texto de apoio */
-  --t-sm: 0.9375rem; /* 15px - legenda, unidade de medida */
-  --t-base: 1rem; /* 16px - piso do texto de leitura */
-  --t-md: 1.0625rem; /* 17px - botao, item de lista */
-  --t-lg: 1.125rem; /* 18px - texto corrido, campo de formulario */
-  --t-xl: 1.25rem; /* 20px - titulo de cartao */
-  --t-2xl: 1.375rem; /* 22px - nome do produto, marca */
+  --t-xs: 0.9375rem; /* 15px - rotulo de aba, selo, texto de apoio */
+  --t-sm: 1rem; /* 16px - legenda, unidade de medida */
+  --t-base: 1.0625rem; /* 17px - piso do texto de leitura */
+  --t-md: 1.1875rem; /* 19px - botao, item de lista */
+  --t-lg: 1.25rem; /* 20px - texto corrido, campo de formulario */
+  --t-xl: 1.375rem; /* 22px - titulo de cartao */
+  --t-2xl: 1.625rem; /* 26px - nome do produto, marca */
 
   /* Alvo minimo de toque. 44px e o minimo das diretrizes de acessibilidade;
      48px da folga para mao tremida e dedo grosso, que e o caso real aqui. */
@@ -219,10 +226,12 @@ p {
   display: flex;
   align-items: center;
   gap: 12px;
-  width: min(1280px, 100%);
+  /* Largura cheia, sem coluna centralizada: a marca e o menu lateral encostam
+     na borda esquerda da janela em vez de flutuarem no meio da tela. O recuo
+     que sobra e so o respiro para o texto nao colar no vidro. */
+  width: 100%;
   height: 100%;
-  margin: 0 auto;
-  padding: 0 clamp(12px, 3vw, 24px);
+  padding: 0 clamp(12px, 2vw, 20px);
 }
 
 .brand {
@@ -243,17 +252,20 @@ p {
   background: var(--bar-2);
 }
 
-/* Simbolo do NutriVa. E do produto, nao da DG: a barra anuncia o app, e a
-   assinatura da DG fica no rodape. Usa os dois verdes da identidade, entao as
-   duas marcas se parecem sem se confundir. */
+/* Simbolo da marca: o monograma da DG Nutricao, recortado do arquivo original
+   da logo (`public/dg-simbolo.png`). Antes havia aqui um icone de folha do
+   pacote lucide - um desenho generico, de biblioteca, que nao era a marca de
+   ninguem.
+
+   O arquivo tem fundo branco e a barra tambem e branca, entao o simbolo assenta
+   sem moldura. `multiply` garante que continue assim caso a barra receba um
+   tom levemente diferente do branco puro. */
 .brand-mark {
-  display: grid;
-  place-items: center;
+  display: block;
+  flex: 0 0 auto;
   width: 40px;
   height: 40px;
-  border-radius: 10px;
-  background: linear-gradient(140deg, var(--brand), var(--sage));
-  color: #ffffff;
+  mix-blend-mode: multiply;
 }
 
 .brand-name {
@@ -264,6 +276,17 @@ p {
   color: var(--brand-ink);
 }
 
+/* `margin-inline: auto` resolve a posicao dos tres elementos de uma vez.
+   -----------------------------------------------------------------------
+   A busca tem teto de 520px para nao virar um campo gigante no monitor. Sem
+   esta linha, a sobra de espaco ficava toda DEPOIS do botao de conta: em tela
+   larga a marca, a busca e o "Entrar" apareciam amontoados na esquerda com um
+   vazio enorme na direita.
+
+   A margem automatica faz a sobra ser dividida igualmente dos dois lados da
+   busca, o que centraliza a busca e empurra o "Entrar" para a borda direita.
+   Em tela estreita nao existe sobra, a margem vale zero e o layout do celular
+   fica exatamente como estava. */
 .topbar-search {
   display: flex;
   align-items: center;
@@ -271,6 +294,7 @@ p {
   flex: 1 1 auto;
   min-width: 0;
   max-width: 520px;
+  margin-inline: auto;
   height: 46px;
   padding: 0 12px;
   border: 1px solid var(--bar-line);
@@ -360,12 +384,14 @@ p {
   }
 }
 
+/* O mesmo recuo do `.topbar-inner`, de proposito: e o que mantem o icone do
+   menu lateral na mesma linha vertical da logo, la em cima. Mexer em um sem o
+   outro desalinha os dois. */
 .app-body {
   display: grid;
   grid-template-columns: 1fr;
-  width: min(1280px, 100%);
-  margin: 0 auto;
-  padding: 0 clamp(12px, 3vw, 24px);
+  width: 100%;
+  padding: 0 clamp(12px, 2vw, 20px);
 }
 
 .content {
@@ -441,11 +467,27 @@ p {
     gap: 28px;
   }
 
+  /* Alinhamento da coluna de navegacao.
+     ---------------------------------------------------------------------
+     Dois ajustes, os dois medidos na tela e nao no olho:
+
+     `margin-left` negativo de 6px: cada item tem 12px de recuo interno para o
+     fundo do item ativo nao encostar no texto, e o botao da marca tem 6px de
+     recuo proprio. A conta e 12 - 6 = 6: assim o icone do menu nasce na mesma
+     linha vertical da logo desenhada, nao da caixa invisivel do botao. O fundo
+     do item ativo passa a sangrar 6px para fora, que e o comportamento normal
+     de menu lateral.
+
+     `top` sem os 16px extras: o conteudo comeca colado na barra de cima, e os
+     dois tem o mesmo respiro interno de 22px. Com os 16px a mais, o primeiro
+     item do menu nascia 16px abaixo do titulo da pagina. Sem eles, os dois
+     comecam na mesma altura, e o respiro ao rolar continua vindo do padding. */
   .rail {
     display: block;
     position: sticky;
-    top: calc(var(--topbar-h) + 16px);
+    top: var(--topbar-h);
     align-self: start;
+    margin-left: -6px;
     padding: 22px 0;
   }
 
@@ -521,7 +563,7 @@ p {
 
 .page-header h2 {
   margin: 0;
-  font-size: clamp(1.625rem, 1.3rem + 1.3vw, 2.125rem);
+  font-size: clamp(1.875rem, 1.5rem + 1.5vw, 2.5rem);
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.25;
@@ -542,7 +584,7 @@ p {
 .hero h1 {
   margin: 0;
   max-width: 20ch;
-  font-size: clamp(1.875rem, 1.4rem + 2.2vw, 2.625rem);
+  font-size: clamp(2.125rem, 1.6rem + 2.4vw, 3rem);
   font-weight: 700;
   letter-spacing: -0.025em;
   line-height: 1.15;
@@ -597,8 +639,14 @@ p {
 }
 
 /* Faixa do perfil de alergias: o estado mais importante da tela inicial. */
+/* Com o texto maior, os tres pedacos desta faixa (icone, aviso e acao) deixaram
+   de caber numa linha so no celular: o icone era esmagado de 20px para 7px e o
+   aviso ficava numa coluna estreita, quebrando em quatro linhas. Agora a faixa
+   quebra de propria vontade - a acao desce para a linha de baixo - e o icone e
+   proibido de encolher. */
 .profile-strip {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   width: 100%;
@@ -610,14 +658,21 @@ p {
   text-align: left;
 }
 
+.profile-strip > svg {
+  flex: 0 0 auto;
+}
+
 .profile-strip.on {
   border-color: var(--ok-line);
   background: var(--ok-soft);
   color: var(--brand-ink);
 }
 
-.profile-strip span {
+/* `12rem` e o ponto de quebra: acima disso o aviso fica na mesma linha do
+   icone; abaixo, a acao desce sozinha em vez de espremer o texto. */
+.profile-strip > span:not(.profile-strip-action) {
   display: flex;
+  flex: 1 1 12rem;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
@@ -987,8 +1042,13 @@ p {
    Scanner
    ========================================================================= */
 
+/* `minmax(0, 1fr)` em vez do `1fr` implicito: coluna de grid nao encolhe
+   abaixo do conteudo minimo por padrao, e com a fonte maior o campo de codigo
+   e o video passaram a exigir mais que a largura do celular - o que empurrava
+   a pagina inteira para o lado em 320px. */
 .scan-page-grid {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 
@@ -1010,8 +1070,11 @@ p {
   background: #101613;
 }
 
+/* `<video>` tem largura natural de 300px. Sem soltar o minimo, ele nao cabe
+   num aparelho de 320px depois do recuo da pagina. */
 .camera-preview {
   width: 100%;
+  min-width: 0;
   height: 100%;
   object-fit: cover;
 }

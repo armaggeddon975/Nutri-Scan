@@ -10,7 +10,7 @@ export function GuidePage() {
       <section className="guide-band guide-page">
         <div className="guide-item">
           <ClipboardList size={20} aria-hidden="true" />
-          <span>Leia ingredientes antes da tabela quando houver alergia.</span>
+          <span>Tem alergia? Leia os ingredientes primeiro.</span>
         </div>
         <div className="guide-item">
           <CircleGauge size={20} aria-hidden="true" />
@@ -18,7 +18,7 @@ export function GuidePage() {
         </div>
         <div className="guide-item">
           <ShieldAlert size={20} aria-hidden="true" />
-          <span>Produto sem dado cadastrado deve ser conferido no rótulo físico.</span>
+          <span>Sem informação aqui? Confira a embalagem.</span>
         </div>
       </section>
       <section className="page-grid">
@@ -26,7 +26,7 @@ export function GuidePage() {
           <article className="page-card" key={option.id}>
             <ShieldAlert size={22} aria-hidden="true" />
             <h3>{option.label}</h3>
-            <p>Observe termos como {option.terms.slice(0, 4).join(", ")} nos ingredientes.</p>
+            <p>Procure por: {option.terms.slice(0, 4).join(", ")}.</p>
           </article>
         ))}
       </section>
