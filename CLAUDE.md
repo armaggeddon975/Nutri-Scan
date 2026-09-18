@@ -1,4 +1,4 @@
-# NutriVa
+# NutriScan
 
 App web de leitura de rotulos e alergias. React/Vite em `src/`, Express/PostgreSQL
 em `backend/`, motor deterministico compartilhado em `shared/`.

@@ -1,4 +1,4 @@
-import { Barcode, CircleGauge, Utensils } from "lucide-react";
+import { Barcode, CircleGauge, Heart, Utensils } from "lucide-react";
 
 import { formatTag } from "../../utils/formatting";
 import { getIngredients, getProductName } from "../../utils/product";
@@ -11,6 +11,8 @@ export function ProductAnalysis({
   allergyScan,
   productScore,
   onSelectProduct,
+  isFavorite = false,
+  onToggleFavorite,
 }) {
   if (!product) {
     return (
@@ -40,6 +42,19 @@ export function ProductAnalysis({
           <div className="product-title">
             <p>{product.brands || product.source || "Origem não informada"}</p>
             <h3>{getProductName(product)}</h3>
+            {/* O botao fica no cabecalho do produto, nao numa barra de acoes
+                separada: e ali que a pessoa esta olhando quando decide. */}
+            {onToggleFavorite ? (
+              <button
+                type="button"
+                className={isFavorite ? "favorite-button on" : "favorite-button"}
+                onClick={onToggleFavorite}
+                aria-pressed={isFavorite}
+              >
+                <Heart size={20} aria-hidden="true" />
+                {isFavorite ? "Nos favoritos" : "Favoritar"}
+              </button>
+            ) : null}
             <div className="product-meta">
               <span>{product.source}</span>
               {product.quantity && <span>{product.quantity}</span>}

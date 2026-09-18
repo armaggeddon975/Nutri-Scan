@@ -1,6 +1,6 @@
 import logoDG from "../../assets/dg-nutricao.jpg";
 
-// Assinatura de quem esta por tras do produto. O NutriVa e o aplicativo; a DG
+// Assinatura de quem esta por tras do produto. O NutriScan e o aplicativo; a DG
 // Nutricao e quem assina. Por isso a logo completa vive aqui, no rodape, e nao
 // na barra de cima: la em cima o app precisa dizer o proprio nome.
 //

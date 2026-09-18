@@ -113,6 +113,19 @@ export function buildStrictRequirements(report, { anthropicFlagEnabled = false }
     ["deterministicEngine", report.deterministicEngine === "PASSED"],
     ["fallback", report.fallback === "PASSED"],
     ["privacy", report.privacy === "PASSED"],
+
+    // v0.7.0 - historico, favoritos e sincronizacao.
+    //
+    // Sao requisitos BASE, e nao condicionais a flag da Anthropic: eles
+    // dependem apenas de PostgreSQL real. Amarra-los a IA deixaria o gate
+    // aprovar uma execucao sem banco que nunca exercitou sincronizacao.
+    //
+    // Cada um cobre uma promessa diferente, e por isso sao tres e nao um:
+    // gravar em A e ler em B (historico), o mesmo para favoritos, e o veredito
+    // continuar sendo recalculado depois de o perfil mudar.
+    ["historySync", report.historySync === "PASSED"],
+    ["favoritesSync", report.favoritesSync === "PASSED"],
+    ["verdictFreshness", report.verdictFreshness === "PASSED"],
   ];
 
   if (anthropicFlagEnabled) {

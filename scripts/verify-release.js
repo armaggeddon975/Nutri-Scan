@@ -69,8 +69,18 @@ async function main() {
     ["doctor", () => npmCommand(["run", "doctor"], { inherit: true })],
     ["frontend build", () => npmCommand(["run", "build"], { inherit: true })],
     ["backend tests", () => npmCommand(["--prefix", "backend", "test"], { inherit: true })],
-    ["frontend audit", () => npmCommand(["audit", "--audit-level=high"], { inherit: true })],
-    ["backend audit", () => npmCommand(["--prefix", "backend", "audit", "--audit-level=high"], { inherit: true })],
+    // Limiar `moderate`, e nao `high`.
+    //
+    // Na v0.6.9 o backend acumulou tres avisos moderate em `qs`, puxado por
+    // `express` e `body-parser`: bypass de array-limit e DoS via isBuffer
+    // controlado por atacante. O gate reportou [OK] mesmo assim, porque
+    // `--audit-level=high` ignora moderate. Num backend Express que faz parsing
+    // de query string em request nao autenticado, DoS moderado nao e ruido.
+    //
+    // Se um moderate novo aparecer e nao tiver correcao, o caminho e reportar e
+    // decidir - nunca subir o limiar de volta para esconder o aviso.
+    ["frontend audit", () => npmCommand(["audit", "--audit-level=moderate"], { inherit: true })],
+    ["backend audit", () => npmCommand(["--prefix", "backend", "audit", "--audit-level=moderate"], { inherit: true })],
   ];
 
   for (const [label, command] of steps) {

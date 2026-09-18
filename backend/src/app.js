@@ -12,6 +12,8 @@ import { authRoutes } from "./routes/authRoutes.js";
 import { assistantRoutes } from "./routes/assistantRoutes.js";
 import { healthRoutes } from "./routes/healthRoutes.js";
 import { profileRoutes } from "./routes/profileRoutes.js";
+import { historyRoutes } from "./routes/historyRoutes.js";
+import { favoritesRoutes } from "./routes/favoritesRoutes.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorMiddleware.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -80,6 +82,8 @@ export function createApp(options = {}) {
   app.use("/api/assistant", assistantRoutes);
   app.use("/api/auth", authRoutes);
   app.use("/api/profile", profileRoutes);
+  app.use("/api/history", historyRoutes);
+  app.use("/api/favorites", favoritesRoutes);
 
   if (hasBuild) {
     // Qualquer rota que nao seja da API devolve o app. Rota de API inexistente

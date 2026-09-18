@@ -1,8 +1,318 @@
-# Relatorio de Auditoria - NutriVa v0.6.9
+# Relatorio de Auditoria - NutriScan v0.7.0
 
 Data: 2026-09-18
 
 ## Escopo
+
+Historico de consultas, favoritos e sincronizacao entre dispositivos, mais as
+quatro pendencias herdadas da auditoria externa da v0.6.9.
+
+Preservado sem alteracao: `shared/allergenEngine.js`,
+`shared/productAllergenAdapter.js`, todo o `backend/src/ai/`, autenticacao,
+scrypt, sessoes e o schema existente. `shared/allergyVerdict.js` nao foi tocado.
+
+## Parte zero - as quatro pendencias
+
+### P1 - o produto volta a se chamar NutriScan
+
+O prompt de versao afirmava que a arvore de trabalho ja tinha voltado para
+NutriScan e que faltava apenas verificar. **A premissa estava errada.** A
+verificacao encontrou:
+
+```text
+package.json               name=nutriva
+backend/package.json       name=nutriva-backend
+package-lock.json          nutriva
+backend/package-lock.json  nutriva-backend
+87 ocorrencias em 32 arquivos
+```
+
+O historico tem um unico commit de renomeacao, `f740658`
+("Renomeia o produto de NutriScan para NutriVa"), de 04/09/2026. Nao houve
+reversao nenhuma. A divergencia foi levada ao dono do projeto antes de qualquer
+alteracao, porque renomear o produto e decisao dele, nao do executor; ele
+confirmou NutriScan.
+
+Normalizacao aplicada a todos os 32 arquivos. Excecoes, cada uma justificada:
+
+```text
+CHANGELOG.md                 registro do que aconteceu, inclusive a renomeacao
+AUDIT_REPORT / E2E_REPORT    apenas a secao historica, que cita o nome vigente
+                             na epoca de cada versao
+```
+
+Tres identificadores NAO mudaram, e nunca mudaram em nenhuma das trocas:
+
+```text
+nutriscan:users             localStorage - trocar faz o app perder contas locais
+nutriscan:guest-allergies   localStorage - trocar apaga alergias do visitante
+nutriscan_session           cookie - trocar desloga todo mundo em producao
+```
+
+`backend/tests/productName.test.js` passa a reprovar se o nome antigo voltar a
+codigo, manifesto, lockfile ou interface, e exige que os quatro manifestos
+declarem `nutriscan`. A lista de excecoes esta justificada por escrito dentro do
+proprio arquivo.
+
+### P2 - o gate ignorava vulnerabilidade moderate
+
+Reproduzido: `npm --prefix backend audit` reportava tres avisos moderate em
+`qs`, puxado por `express` e `body-parser` - GHSA-x5fp-wj9c-mxmx (bypass de
+array-limit) e GHSA-4mjr-xmp4-gh2g (DoS via isBuffer controlado por atacante).
+O gate reportava `[OK]` porque as duas linhas de audit usavam
+`--audit-level=high`.
+
+`npm audit fix` resolveu nos dois pacotes, sem breaking change e sem `--force`.
+O limiar do gate desceu para `moderate`, e
+`backend/tests/auditThreshold.test.js` reprova se alguem subir de volta ou
+remover uma das duas etapas de audit.
+
+### P3 - render.yaml sem registro
+
+Entrada retroativa no CHANGELOG e secao de deploy no README, descrevendo o
+blueprint, o motivo de `--include=dev` no build e o motivo de o PostgreSQL ficar
+no Neon e nao no Render.
+
+### P4 - versao publicada divergindo da versao em execucao
+
+`scripts/version-check.js` compara a versao de `package.json` com a anunciada
+por `/api/health` de um deploy. Exit 0 quando batem, exit 1 quando divergem, e
+exit 1 tambem quando nao da para consultar - nao conseguir perguntar nao e
+aprovacao.
+
+Exercitado nos tres caminhos. Contra producao, ele encontrou a divergencia real
+que motivou o item:
+
+```text
+[FAIL] version:check - repositorio declara 0.7.0 e o deploy anuncia 0.6.8
+```
+
+## Modelo de dados
+
+```sql
+CREATE TABLE IF NOT EXISTS product_history (
+  id uuid PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  product_code text NOT NULL,
+  product_name text NOT NULL,
+  product_brand text,
+  image_url text,
+  viewed_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT product_history_user_product_unique UNIQUE (user_id, product_code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_history_user_viewed
+  ON product_history (user_id, viewed_at DESC);
+
+CREATE TABLE IF NOT EXISTS product_favorites (
+  id uuid PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  product_code text NOT NULL,
+  product_name text NOT NULL,
+  product_brand text,
+  image_url text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT product_favorites_user_product_unique UNIQUE (user_id, product_code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_favorites_user_created
+  ON product_favorites (user_id, created_at DESC);
+```
+
+Nenhuma coluna guarda veredito de alergia, nivel de risco ou alergenico
+detectado. O perfil muda com o tempo, e um veredito congelado vira informacao de
+seguranca errada - o produto seguro em marco deixa de ser quando a pessoa marca
+uma alergia nova em abril.
+
+## Decisoes, e por que
+
+### Limites
+
+```text
+historico   100 itens, poda o mais antigo em silencio
+favoritos   200 itens, recusa com 409 e nao poda
+```
+
+Cem produtos distintos cobrem meses de compra real; acima disso a lista deixa de
+ser navegavel. A poda silenciosa e aceitavel ali porque o registro e automatico:
+o usuario nunca pediu para guardar o item 101.
+
+Favorito e intencao explicita. Descartar um em silencio para caber outro
+apagaria uma escolha que a pessoa fez de proposito. Por isso o limite vira erro,
+e quem decide o que sai e ela. O numero existe para limitar abuso, nao uso real.
+
+### Conflito de escrita concorrente
+
+Ultima escrita vence, medida pelo **relogio do servidor** (`now()` no
+`ON CONFLICT DO UPDATE`), nunca por horario enviado pelo cliente. Aceitar
+horario do cliente permitiria a um relogio adiantado fixar um registro no topo
+da lista para sempre.
+
+Nome e marca tambem sao atualizados na revisita: a Open Food Facts corrige
+cadastro com o tempo, e o registro mais novo e o mais fiel.
+
+### Deduplicacao no banco, nao na aplicacao
+
+A dedup acontece no `ON CONFLICT` da restricao de unicidade. Um SELECT seguido
+de INSERT deixaria duas requisicoes simultaneas do mesmo produto passarem as
+duas pelo SELECT que nao encontra nada - a checagem e a insercao nao sao
+atomicas entre si, e so o banco resolve isso.
+
+### Isolamento no SQL
+
+Toda consulta filtra por `user_id` dentro do SQL. Filtrar na aplicacao depois de
+ler deixaria a linha de outro usuario sair da tabela, chegar ao processo e
+depender de um `if` para nao vazar.
+
+Caso que exigiu atencao: a poda apaga por exclusao ("tudo menos os N mais
+recentes"). Se a subconsulta que escolhe os N nao filtrasse por usuario, ela
+escolheria os mais recentes da tabela inteira, e a poda de um usuario ativo
+apagaria o historico de todos os outros. Ha teste especifico para isso.
+
+### Remocao cruzada responde 404, nao 403
+
+Item de outro usuario e item inexistente produzem resposta identica. Se um
+devolvesse 403 e o outro 404, a diferenca contaria ao atacante quais ids existem
+na conta alheia.
+
+### Visitante
+
+Historico e favoritos de quem nao tem conta vivem apenas no navegador, em
+`src/services/guestCollections.js`. A separacao em relacao a
+`collectionsService.js` e deliberada: uma funcao unica que decidisse sozinha
+entre banco e `localStorage` seria o lugar exato onde um visitante acabaria
+gravando no servidor por engano.
+
+Nao foi implementada migracao automatica do dado local para a conta no login,
+conforme instruido. Registrando a opiniao, sem agir sobre ela: se um dia for
+desejada, precisa de tela de confirmacao - a pessoa pode ter marcado produtos em
+um aparelho emprestado.
+
+## Validacao por mutacao
+
+Oito mutantes, cada um reintroduzindo um defeito especifico. Suite inteira
+executada com o defeito presente.
+
+```text
+M-I1    listar historico sem filtrar por usuario                    MORTO
+M-I2    remover item por id sem conferir o dono                     MORTO
+M-I2b   poda escolhendo os mais recentes da tabela inteira          MORTO
+M-I3    confiar em userId enviado pelo cliente                      MORTO
+M-F3    favoritos sem restricao de unicidade no banco               MORTO
+M-A1    guardar o veredito de alergia junto com o historico         MORTO
+M-A2a   piso de risco removido: a resposta do modelo vence          MORTO
+M-A2b   nao descartar o allergyVerdict vindo do modelo         SOBREVIVEU
+```
+
+### O sobrevivente, e por que ele sobreviveu
+
+**M-A2b e um mutante equivalente, e isso foi provado, nao suposto.**
+
+A mutacao troca:
+
+```js
+const { allergyVerdict: _fromModel, ...rest } = modelResponse || {};
+// por
+const { ...rest } = modelResponse || {};
+```
+
+Executando as duas versoes lado a lado com uma resposta que tenta injetar o
+proprio veredito, a saida e identica byte a byte:
+
+```text
+ORIGINAL  safety: caution | veredito.source: deterministic_engine | status: conflict
+MUTANTE   safety: caution | veredito.source: deterministic_engine | status: conflict
+saidas identicas: true
+```
+
+A razao: a chave `allergyVerdict:` e escrita **depois** do spread `...rest`, e
+portanto sobrescreve qualquer valor que tenha vindo do modelo. O destructuring
+e defesa em profundidade e documentacao de intencao, nao a barreira efetiva.
+
+Ha ainda uma segunda barreira antes desta: `assistantResponseSchema` e
+`.strict()`, entao uma resposta do modelo contendo `allergyVerdict` seria
+rejeitada com `AI_SCHEMA_INVALID` sem nunca chegar a esta funcao.
+
+Nenhum teste foi escrito para matar este mutante, porque nao ha comportamento
+observavel que o distinga do original. Escrever um seria testar a forma do
+codigo e nao o seu efeito.
+
+## Estado dos gates nesta versao
+
+```text
+npm run build                      SUCCESS
+npm --prefix backend test          170 testes, 146 pass, 0 fail, 24 skip
+npm audit --audit-level=moderate   0 vulnerabilidades  (exit 0)
+backend audit --audit-level=moderate  0 vulnerabilidades  (exit 0)
+secret scan                        0 segredos reais
+node scripts/verify-release.js     exit 0
+npm run verify:e2e                 FAIL BEFORE CALL, exit 1
+```
+
+Os 24 skips sao os testes que exigem PostgreSQL real ou Claude real. SKIP nao
+conta como PASS em nenhum gate.
+
+```json
+{ "status": "ok", "database": "connected", "ai": "configured", "aiProvider": "anthropic", "version": "0.7.0" }
+```
+
+## Gate E2E
+
+`buildStrictRequirements` passou de 14 para 17 requisitos. Os tres novos -
+`historySync`, `favoritesSync` e `verdictFreshness` - sao base, e nao
+condicionais a flag da Anthropic, porque dependem apenas de PostgreSQL.
+Amarra-los a IA deixaria o gate aprovar uma execucao sem banco que nunca
+exercitou sincronizacao.
+
+`backend/tests/e2eGate.test.js` ganhou um teste que nomeia os 14 requisitos
+anteriores e prova, um a um, que cada um ainda reprova sozinho quando ausente.
+
+Executado neste ambiente, o gate reprovou antes de qualquer chamada paga:
+
+```text
+[FAIL] verify:e2e - RUN_ANTHROPIC_INTEGRATION_TESTS=true e obrigatorio no gate
+E2E completo. FAIL BEFORE CALL: nenhuma chamada paga foi feita.
+exit code 1
+```
+
+Este e o resultado correto sem banco e sem chave. Declarar PASS aqui seria falha
+grave.
+
+## O que NAO foi executado nesta versao
+
+Registrado como ausencia, e nao convertido em aprovacao.
+
+POSTGRESQL REAL: NAO EXECUTADO. Ambiente sem `DATABASE_URL`. Em consequencia,
+os testes H1, F1, F3 comportamental, S1, S2, S3, I1 e I2 comportamentais, D1 e a
+reaplicacao da migration ficaram em SKIP, com motivo declarado na saida.
+
+O que foi possivel provar sem banco esta em `backend/tests/collections.test.js`:
+forma do SQL emitido, ordem das checagens no servico, ausencia de coluna de
+veredito na migration, presenca da restricao de unicidade e da cascata. Isso e
+mais fraco que comportamento, e esta escrito assim de proposito - afirmar
+"usuario A nao le dado de B" sem banco seria afirmar o que nao foi executado.
+
+CLAUDE REAL: NAO EXECUTADO. `ANTHROPIC_API_KEY` ausente. Nenhuma chamada paga
+foi feita e nenhuma chave foi inventada.
+
+VERIFY:E2E: NAO EXECUTADO ate o fim, por consequencia dos dois itens acima.
+
+CAMERA REAL: NAO EXECUTADO, como na v0.6.9. Ambiente sem webcam.
+
+## Conclusao
+
+As tres features estao implementadas com isolamento no SQL, unicidade e cascata
+no banco, identidade derivada da sessao e nenhum veredito congelado. As quatro
+pendencias estao fechadas, e duas delas ganharam teste permanente para nao
+voltarem.
+
+O ponto que exige atencao do auditor e a ausencia de PostgreSQL neste ambiente:
+a cobertura das features e estrutural, nao comportamental, e a prova de
+isolamento entre dois usuarios reais depende de uma execucao com banco.
+
+## Historico de auditorias anteriores
+
+## Auditoria da v0.6.9
 
 Versao de interface. Nenhuma regra de alergia, autenticacao ou IA foi tocada.
 
@@ -167,7 +477,7 @@ Os 6 testes pulados sao os destrutivos de banco, que exigem
 nao conta como PASS.
 
 ```json
-{ "status": "ok", "database": "connected", "ai": "configured", "aiProvider": "anthropic", "version": "0.6.9" }
+{ "status": "ok", "database": "connected", "ai": "configured", "aiProvider": "anthropic", "version": "0.7.0" }
 ```
 
 ## O que NAO foi executado nesta versao
@@ -203,8 +513,6 @@ motor deterministico de alergia sai identico.
 
 O ponto que exige atencao do auditor e a camera: e a correcao central da versao
 e a unica sem prova em dispositivo real.
-
-## Historico de auditorias anteriores
 
 ## Auditoria externa independente da v0.6.7 e correcoes da v0.6.8
 

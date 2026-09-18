@@ -3,6 +3,7 @@ import {
   Bot,
   Camera,
   ClipboardList,
+  Heart,
   Home,
   LogIn,
   Search,
@@ -23,6 +24,7 @@ import { AllergiesPage } from "./pages/Allergies/AllergiesPage";
 import { AssistantPage } from "./pages/Assistant/AssistantPage";
 import { AccountPage } from "./pages/Account/AccountPage";
 import { GuidePage } from "./pages/Guide/GuidePage";
+import { CollectionsPage } from "./pages/Collections/CollectionsPage";
 import { askAiAssistant } from "./services/aiAssistantService";
 import { decideAssistantFallback, resolveAssistantSuccess } from "./services/assistantFallback";
 import { buildAllergyVerdict } from "../shared/allergyVerdict.js";
@@ -31,6 +33,25 @@ import { getMe, loginAccount, logoutAccount, registerAccount } from "./services/
 import { findLocalFoods } from "./services/foodService";
 import { fetchProductByBarcode, searchProductsByName } from "./services/openFoodFactsService";
 import { updateProfileAllergies } from "./services/profileService";
+import {
+  clearHistory as apiClearHistory,
+  deleteFavorite as apiDeleteFavorite,
+  deleteHistoryItem as apiDeleteHistoryItem,
+  fetchFavorites,
+  fetchHistory,
+  recordProductView,
+  toggleFavorite as apiToggleFavorite,
+  toProductRef,
+} from "./services/collectionsService";
+import {
+  clearGuestHistory,
+  readGuestFavorites,
+  readGuestHistory,
+  recordGuestView,
+  removeGuestFavorite,
+  removeGuestHistoryItem,
+  toggleGuestFavorite,
+} from "./services/guestCollections";
 import {
   SCAN_OPTIONS,
   buildVideoConstraints,
@@ -51,7 +72,7 @@ import { getProductName } from "./utils/product";
 import { cleanBarcode, isBarcodeQuery, normalizeText } from "./utils/text";
 import { hashPassword, hasSecureCrypto, legacyHashPassword } from "./utils/security";
 
-const VALID_PAGES = ["home", "consulta", "scan", "alergias", "chat", "guia", "conta"];
+const VALID_PAGES = ["home", "consulta", "scan", "alergias", "chat", "guia", "meus", "conta"];
 
 function getPublicUser(user) {
   if (!user) return null;
@@ -128,6 +149,12 @@ function App() {
   const [localMatches, setLocalMatches] = useState([]);
   const [scannerState, setScannerState] = useState("idle");
   const [torch, setTorch] = useState({ available: false, on: false });
+  const [history, setHistory] = useState([]);
+  const [favorites, setFavorites] = useState([]);
+  const [collectionsStatus, setCollectionsStatus] = useState({
+    type: "ready",
+    message: "Abra um produto para ele aparecer aqui.",
+  });
   const [currentUser, setCurrentUser] = useState(null);
   const [selectedAllergies, setSelectedAllergies] = useState(() => getInitialAllergies());
   const selectedAllergiesRef = useRef(selectedAllergies);
@@ -279,6 +306,65 @@ function App() {
     window.scrollTo({ top: 0, behavior: "instant" });
   }, [activePage]);
 
+  // Fonte de verdade por estado de sessao: com conta, o PostgreSQL; sem conta,
+  // o proprio navegador. Trocar de usuario recarrega tudo do zero em vez de
+  // mesclar - misturar as duas origens e como dado de um vaza para o outro.
+  const refreshCollections = useCallback(async () => {
+    if (!currentUserRef.current) {
+      setHistory(readGuestHistory());
+      setFavorites(readGuestFavorites());
+      return;
+    }
+
+    try {
+      const [historico, favoritos] = await Promise.all([fetchHistory(), fetchFavorites()]);
+      setHistory(historico.items || []);
+      setFavorites(favoritos.items || []);
+    } catch (error) {
+      // Lista vazia com aviso, nunca lista local no lugar da do servidor:
+      // mostrar dado de visitante para quem esta logado seria inventar estado.
+      setHistory([]);
+      setFavorites([]);
+      setCollectionsStatus({
+        type: "warning",
+        message: "Não consegui carregar seus produtos. Tente de novo.",
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshCollections();
+  }, [currentUser, refreshCollections]);
+
+  // Registrar a consulta acontece em um lugar so, quando o produto abre. O
+  // servidor deduplica por produto, entao reabrir o mesmo item atualiza a data
+  // em vez de criar linha nova.
+  useEffect(() => {
+    if (!product) return;
+    const referencia = toProductRef(product, getProductName(product));
+    if (!referencia) return;
+
+    if (!currentUserRef.current) {
+      setHistory(recordGuestView(referencia));
+      return;
+    }
+
+    let ativo = true;
+    recordProductView(referencia)
+      .then(() => fetchHistory())
+      .then((resposta) => {
+        if (ativo) setHistory(resposta.items || []);
+      })
+      .catch(() => {
+        // Falhar ao registrar historico nao pode atrapalhar a leitura do
+        // rotulo, que e o motivo de a pessoa estar ali.
+      });
+
+    return () => {
+      ativo = false;
+    };
+  }, [product]);
+
   useEffect(() => {
     chatLogRef.current?.scrollTo({
       top: chatLogRef.current.scrollHeight,
@@ -293,6 +379,85 @@ function App() {
       type: "success",
       message: `${getProductName(nextProduct)} carregado.`,
     });
+  }, []);
+
+  const favoriteCodes = useMemo(
+    () => new Set(favorites.map((item) => item.productCode)),
+    [favorites],
+  );
+
+  const handleToggleFavorite = useCallback(async () => {
+    const referencia = toProductRef(product, product ? getProductName(product) : "");
+    if (!referencia) return;
+
+    if (!currentUserRef.current) {
+      const resultado = toggleGuestFavorite(referencia);
+      setFavorites(resultado.itens);
+      setCollectionsStatus({
+        type: resultado.limite ? "warning" : "success",
+        message: resultado.limite
+          ? "Limite de favoritos atingido neste aparelho."
+          : `${resultado.favoritado ? "Marcado" : "Desmarcado"}. Sem conta, fica só aqui.`,
+      });
+      return;
+    }
+
+    try {
+      const resultado = await apiToggleFavorite(referencia);
+      const favoritos = await fetchFavorites();
+      setFavorites(favoritos.items || []);
+      setCollectionsStatus({
+        type: "success",
+        message: resultado.favoritado ? "Produto favoritado." : "Favorito removido.",
+      });
+    } catch (error) {
+      setCollectionsStatus({
+        type: "error",
+        message: error.message || "Não consegui salvar o favorito.",
+      });
+    }
+  }, [product]);
+
+  const handleRemoveHistoryItem = useCallback(async (item) => {
+    if (!currentUserRef.current) {
+      setHistory(removeGuestHistoryItem(item.id));
+      return;
+    }
+    try {
+      await apiDeleteHistoryItem(item.id);
+      const historico = await fetchHistory();
+      setHistory(historico.items || []);
+    } catch (error) {
+      setCollectionsStatus({ type: "error", message: "Não consegui remover o item." });
+    }
+  }, []);
+
+  const handleClearHistory = useCallback(async () => {
+    if (!currentUserRef.current) {
+      setHistory(clearGuestHistory());
+      return;
+    }
+    try {
+      await apiClearHistory();
+      setHistory([]);
+      setCollectionsStatus({ type: "success", message: "Histórico limpo." });
+    } catch (error) {
+      setCollectionsStatus({ type: "error", message: "Não consegui limpar o histórico." });
+    }
+  }, []);
+
+  const handleRemoveFavorite = useCallback(async (item) => {
+    if (!currentUserRef.current) {
+      setFavorites(removeGuestFavorite(item.id));
+      return;
+    }
+    try {
+      await apiDeleteFavorite(item.id);
+      const favoritos = await fetchFavorites();
+      setFavorites(favoritos.items || []);
+    } catch (error) {
+      setCollectionsStatus({ type: "error", message: "Não consegui remover o favorito." });
+    }
   }, []);
 
   const searchProduct = useCallback(
@@ -779,6 +944,8 @@ function App() {
       allergyScan={allergyScan}
       productScore={productScore}
       onSelectProduct={selectProduct}
+      isFavorite={Boolean(product?.code) && favoriteCodes.has(String(product.code))}
+      onToggleFavorite={handleToggleFavorite}
     />
   );
 
@@ -792,12 +959,18 @@ function App() {
     { id: "alergias", label: "Minhas alergias", shortLabel: "Alergias", icon: ShieldAlert },
     { id: "chat", label: "Assistente", shortLabel: "Assistente", icon: Bot },
     { id: "guia", label: "Guia de rótulos", shortLabel: "Guia", icon: ClipboardList },
+    { id: "meus", label: "Meus produtos", shortLabel: "Meus", icon: Heart },
     { id: "conta", label: currentUser ? "Minha conta" : "Entrar", icon: currentUser ? User : LogIn },
   ];
 
   // O celular mostra os cinco destinos de uso diario. Conta fica na barra de
-  // cima e Guia tem cartao proprio na tela principal.
-  const tabItems = navItems.filter((item) => item.id !== "conta" && item.id !== "guia");
+  // cima; Guia e Meus produtos tem cartao proprio na tela principal.
+  //
+  // Nao adicionar uma sexta aba e decisao de legibilidade: em 320px os cinco
+  // rotulos ja ocupam 60px cada, e o rotulo e o que nao pode encolher.
+  const tabItems = navItems.filter(
+    (item) => item.id !== "conta" && item.id !== "guia" && item.id !== "meus",
+  );
 
   const renderActivePage = () => {
     if (activePage === "consulta") {
@@ -871,6 +1044,25 @@ function App() {
           onSubmitAuth={submitAuth}
           onLogout={logout}
           onToggleAllergy={toggleAllergy}
+        />
+      );
+    }
+
+    if (activePage === "meus") {
+      return (
+        <CollectionsPage
+          currentUser={currentUser}
+          history={history}
+          favorites={favorites}
+          status={collectionsStatus}
+          onOpenProduct={(codigo) => {
+            setQuery(codigo);
+            searchProduct(codigo);
+            navigateTo("scan");
+          }}
+          onRemoveHistoryItem={handleRemoveHistoryItem}
+          onClearHistory={handleClearHistory}
+          onRemoveFavorite={handleRemoveFavorite}
         />
       );
     }

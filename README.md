@@ -1,6 +1,6 @@
-# NutriVa v0.6.9
+# NutriScan v0.7.0
 
-NutriVa e um app web para consultar alimentos por nome ou codigo de barras,
+NutriScan e um app web para consultar alimentos por nome ou codigo de barras,
 ver tabela nutricional, identificar ingredientes sensiveis e conversar com um
 assistente sobre rotulos e alergias.
 
@@ -53,7 +53,7 @@ Crie `backend/.env` a partir de `backend/.env.example`:
 ```env
 PORT=3000
 NODE_ENV=development
-DATABASE_URL=postgresql://usuario:senha@localhost:5432/nutriva
+DATABASE_URL=postgresql://usuario:senha@localhost:5432/nutriscan
 DATABASE_SSL=false
 FRONTEND_ORIGIN=http://localhost:5173
 SESSION_TTL_DAYS=30
@@ -213,6 +213,92 @@ E2E_WRITE_REPORT        grava E2E_LAST_RUN.json sanitizado
 
 Contas temporarias usam o dominio reservado `@example.test` e sao removidas ao
 final, inclusive quando algum passo falha.
+
+## Historico e favoritos
+
+Todo produto aberto entra no historico. Reabrir o mesmo produto atualiza o
+registro em vez de criar outra linha, entao a lista nao enche de repeticao.
+
+Favoritar e um toque no botao do proprio produto. As duas listas ficam em
+**Meus produtos**.
+
+```text
+com conta   PostgreSQL e a fonte de verdade; aparece em qualquer aparelho
+sem conta   fica so no navegador daquele aparelho, e a tela avisa isso
+```
+
+Nao existe migracao automatica do que foi salvo sem conta para a conta no
+login. Mover dado local para o servidor sem o usuario pedir e mudanca de
+contrato: ele pode ter marcado produtos num aparelho emprestado.
+
+### Limites
+
+```text
+historico   100 itens; ao estourar, o mais antigo sai sozinho
+favoritos   200 itens; ao estourar, a API recusa com 409
+```
+
+A diferenca e proposital. O historico e automatico, e descartar o item mais
+antigo nao desfaz escolha nenhuma. Favorito e intencao explicita: apagar um em
+silencio para caber outro apagaria uma decisao do usuario, entao quem decide o
+que sai e ele.
+
+### O veredito de alergia nunca e guardado
+
+As tabelas guardam apenas identidade do produto - codigo, nome, marca e imagem.
+Nenhum veredito, nivel de risco ou lista de alergenicos.
+
+O perfil de alergia muda com o tempo. Um veredito congelado em marco vira
+informacao de seguranca errada em abril, quando a pessoa marca uma alergia nova.
+O veredito e sempre recalculado pelo motor deterministico na hora de exibir, com
+o perfil atual.
+
+## Deploy
+
+O deploy e descrito por `render.yaml`, um blueprint do Render versionado no
+repositorio. Um unico web service serve a API e o frontend ja compilado, na
+mesma origem - o que evita CORS e cookie de terceiro.
+
+```text
+servico    web, runtime node, plano free, nome "nutriscan"
+health     /api/health
+build      npm ci --include=dev && npm --prefix backend ci && npm run build
+           && npm run db:migrate
+start      npm start
+```
+
+`--include=dev` no build e obrigatorio: com `NODE_ENV=production` o `npm ci`
+descarta devDependencies, e o Vite, que compila o frontend, e devDependency.
+Sem isso o build morre com "vite: not found".
+
+O PostgreSQL fica no **Neon**, nao no Render: o plano gratuito do Render expira
+em 90 dias e apaga os dados.
+
+Variaveis marcadas `sync: false` nao vivem no arquivo. Elas sao preenchidas no
+painel do Render para nao entrarem no Git:
+
+```text
+DATABASE_URL        string de conexao do Neon
+ANTHROPIC_API_KEY   sem ela o assistente cai para a resposta local
+```
+
+### Conferir a versao publicada
+
+Publicar sem incrementar a versao faz `/api/health` anunciar um numero que nao
+corresponde ao codigo em execucao. Ja aconteceu: os commits `9622ad8` e
+`168ae69` foram ao ar sob o numero 0.6.8.
+
+```bash
+npm run version:check -- https://exemplo.onrender.com
+```
+
+Compara a versao de `package.json` com a que o deploy anuncia em `/api/health`.
+Exit 0 quando batem, exit 1 quando divergem. Falha de consulta tambem e exit 1:
+nao conseguir perguntar nao e aprovacao.
+
+Este comando nao roda em CI de proposito. Exigir rede em CI transforma
+indisponibilidade de terceiro em build vermelho, e o objetivo dele e conferir um
+deploy, nao barrar um commit.
 
 ## Seguranca
 

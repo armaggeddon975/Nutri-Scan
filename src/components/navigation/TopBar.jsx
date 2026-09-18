@@ -10,12 +10,12 @@ export function TopBar({ query, currentUser, onQueryChange, onSubmitSearch, onNa
           type="button"
           className="brand"
           onClick={() => onNavigate("home")}
-          aria-label="NutriVa, ir para a tela principal"
+          aria-label="NutriScan, ir para a tela principal"
         >
           {/* O simbolo e a logo da DG, nao um icone de biblioteca. Fica
               decorativo porque o botao ja se anuncia pelo aria-label acima. */}
           <img className="brand-mark" src="/dg-simbolo.png" alt="" aria-hidden="true" />
-          <span className="brand-name">NutriVa</span>
+          <span className="brand-name">NutriScan</span>
         </button>
 
         <form className="topbar-search" onSubmit={onSubmitSearch} role="search">

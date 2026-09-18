@@ -1,5 +1,149 @@
 # Changelog
 
+## NutriScan v0.7.0 - 2026-09-18
+
+Historico de consultas, favoritos e sincronizacao entre dispositivos, mais
+quatro pendencias herdadas da auditoria externa da v0.6.9.
+
+### P1 - o produto volta a se chamar NutriScan
+
+Em 04/09/2026 o produto foi renomeado para "NutriVa" pelo commit `f740658`. Em
+18/09/2026 a decisao foi revertida. Nenhuma das duas trocas teve versao propria,
+entao o residuo passou despercebido e o ZIP auditado da v0.6.9 saiu com
+`nutriva` em `package.json`, em `backend/package.json` e nos dois lockfiles.
+
+A varredura encontrou 87 ocorrencias em 32 arquivos. Todas foram normalizadas,
+exceto as do CHANGELOG e as da secao historica do AUDIT_REPORT, que sao registro
+do que aconteceu.
+
+Tres identificadores NAO mudaram, de proposito, e nunca mudaram em nenhuma das
+trocas:
+
+```text
+nutriscan:users             localStorage - trocar faz o app perder as contas locais
+nutriscan:guest-allergies   localStorage - trocar apaga as alergias do visitante
+nutriscan_session           cookie - trocar desloga todo mundo em producao
+```
+
+`backend/tests/productName.test.js` passa a falhar se o nome antigo voltar a
+codigo, manifesto, lockfile ou interface, e a exigir que os quatro manifestos
+declarem `nutriscan`. As excecoes estao justificadas por escrito no proprio
+arquivo.
+
+O nome do banco de desenvolvimento em `docker-compose.yml` e em
+`backend/.env.example` tambem voltou para `nutriscan`. Quem tiver um volume
+local antigo precisa recria-lo; producao usa Neon e nao e afetada.
+
+### Historico de consultas
+
+Todo produto aberto entra no historico do usuario. A deduplicacao acontece na
+restricao de unicidade `(user_id, product_code)` do banco, e nao num SELECT
+seguido de INSERT: duas requisicoes simultaneas do mesmo produto passariam as
+duas por um SELECT que nao encontra nada, e so o banco resolve isso sem corrida.
+
+Limite de 100 itens. Ao estourar, o mais antigo sai em silencio - o registro e
+automatico, e o usuario nunca pediu para guardar o item 101.
+
+### Favoritos
+
+Marcar e desmarcar pelo botao do proprio produto. Unicidade garantida pela
+restricao do banco, nao pela aplicacao.
+
+Limite de 200 itens que **nao poda**: estourar devolve `409`
+`FAVORITES_LIMIT_REACHED`. Favorito e escolha explicita do usuario, e descartar
+a mais antiga para caber a nova apagaria uma decisao dele - o oposto do caso do
+historico.
+
+### Sincronizacao
+
+O PostgreSQL e a fonte de verdade. `localStorage` e estado React servem apenas
+de cache de leitura do lado do cliente, nunca de fonte.
+
+Conflito de escrita concorrente resolve por **ultima escrita vence, medida pelo
+relogio do servidor** (`now()` no `ON CONFLICT DO UPDATE`), nunca por horario
+enviado pelo cliente. Nome e marca tambem sao atualizados na revisita, porque a
+Open Food Facts corrige cadastro com o tempo e o registro mais novo e o mais
+fiel.
+
+### Visitante
+
+Quem nao tem conta guarda historico e favoritos apenas no navegador, em
+`src/services/guestCollections.js`. Esse arquivo e separado de
+`collectionsService.js` de proposito: uma funcao unica que decidisse sozinha
+entre banco e `localStorage` seria o lugar exato onde um visitante acabaria
+gravando no servidor por engano.
+
+Nao ha migracao automatica do dado local para a conta no login. Mover dado sem o
+usuario pedir e mudanca de contrato, nao detalhe de implementacao.
+
+### O veredito de alergia nunca e congelado
+
+As tabelas novas guardam somente identidade de produto. Nenhuma coluna de
+veredito, risco ou alergenico detectado - e ha teste que falha se alguma
+aparecer.
+
+O perfil de alergia muda; um veredito guardado no passado vira informacao de
+seguranca errada. O veredito e sempre recalculado pelo motor deterministico na
+exibicao, com o perfil atual. Esta regra e de seguranca, nao de arquitetura.
+
+### Banco
+
+Migration `002_history_favorites.sql`, idempotente, com chave estrangeira em
+cascata, restricao de unicidade `(user_id, product_code)` nas duas tabelas e
+indice `(user_id, data DESC)` que serve a consulta real da tela.
+
+### Gate E2E
+
+Tres subgates novos em `buildStrictRequirements`: `historySync`,
+`favoritesSync` e `verdictFreshness`. Sao requisitos base, nao condicionais a
+flag da Anthropic, porque dependem apenas de PostgreSQL real.
+
+O modo strict passou de 14 para 17 requisitos. `backend/tests/e2eGate.test.js`
+ganhou um teste que nomeia os 14 anteriores e prova, um a um, que cada um ainda
+reprova sozinho.
+
+### P3 - render.yaml entra no registro, retroativamente
+
+O blueprint de deploy `render.yaml` foi adicionado na v0.6.8 sem aparecer no
+CHANGELOG nem no README. O conteudo nao tem risco - as credenciais estao
+marcadas `sync: false` e ficam no painel do Render, fora do Git - mas a omissao
+e do mesmo tipo do achado M1: o repositorio contendo algo que a documentacao nao
+menciona.
+
+O que o blueprint define, registrado agora:
+
+```text
+servico    web, runtime node, plano free, nome "nutriscan"
+health     /api/health
+build      npm ci --include=dev && npm --prefix backend ci && npm run build
+           && npm run db:migrate
+start      npm start
+banco      PostgreSQL no Neon, nao no Render: o plano gratuito do Render expira
+           em 90 dias e apaga os dados
+segredos   DATABASE_URL e ANTHROPIC_API_KEY com sync: false
+```
+
+`--include=dev` no build e obrigatorio: com `NODE_ENV=production` o `npm ci`
+descarta devDependencies, e o Vite, que compila o frontend, e devDependency.
+
+### P4 - divergencia entre versao publicada e versao em execucao
+
+Os commits `9622ad8` e `168ae69` foram publicados sob o numero 0.6.8, deixando
+`/api/health` anunciando versao que nao correspondia ao codigo em execucao.
+
+`scripts/version-check.js` passa a comparar as duas em um comando:
+
+```bash
+npm run version:check -- https://exemplo.onrender.com
+```
+
+Ele responde exit 0 quando batem e exit 1 quando divergem. Falha de consulta
+tambem e exit 1 - nao conseguir perguntar nao e aprovacao.
+
+Nao roda em CI de proposito: exigir rede em CI transforma indisponibilidade de
+terceiro em build vermelho, e o objetivo e conferir um deploy, nao barrar um
+commit.
+
 ## NutriVa v0.6.9 - 2026-09-18
 
 Versao de interface. Nenhuma regra de alergia, autenticacao ou IA foi tocada: o

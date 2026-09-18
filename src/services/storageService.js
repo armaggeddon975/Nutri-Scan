@@ -1,9 +1,11 @@
 import { DEFAULT_ALLERGIES, VALID_ALLERGY_IDS } from "../data/allergens";
 
-// Prefixo "nutriscan:" preservado de proposito na renomeacao para NutriVa.
-// Estas chaves vivem no localStorage do navegador de quem ja usa o app: trocar
-// o prefixo nao migra nada, apenas faz o app deixar de encontrar as alergias e
-// as contas locais ja salvas. O nome interno nao vaza para a interface.
+// Estas chaves vivem no localStorage do navegador de quem ja usa o app.
+// Trocar o prefixo nao migra nada: apenas faz o app deixar de encontrar as
+// alergias e as contas locais ja salvas. Por isso o prefixo atravessou as trocas
+// de nome do produto sem mudar - ele nao aparece na interface, entao nao havia
+// motivo para arriscar o dado de ninguem. O registro das trocas esta no
+// CHANGELOG.
 export const USERS_STORAGE_KEY = "nutriscan:users";
 export const GUEST_ALLERGIES_KEY = "nutriscan:guest-allergies";
 

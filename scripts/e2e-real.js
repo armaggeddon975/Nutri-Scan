@@ -261,6 +261,9 @@ async function main() {
     sessionSchema: "NOT_EXECUTED",
     multiDevice: "NOT_EXECUTED",
     isolation: "NOT_EXECUTED",
+    historySync: "NOT_EXECUTED",
+    favoritesSync: "NOT_EXECUTED",
+    verdictFreshness: "NOT_EXECUTED",
     logout: "NOT_EXECUTED",
     deterministicEngine: "NOT_EXECUTED",
     assistantGuest: "NOT_EXECUTED",
@@ -432,8 +435,8 @@ async function main() {
 
       const db = await createDbClient(env);
       const stamp = Date.now();
-      const emailA = `nutriva-e2e-${stamp}@example.test`;
-      const emailB = `nutriva-e2e-b-${stamp}@example.test`;
+      const emailA = `nutriscan-e2e-${stamp}@example.test`;
+      const emailB = `nutriscan-e2e-b-${stamp}@example.test`;
       const password = `E2E-${stamp}-senha`;
       const clientA = new CookieClient("A", baseUrl);
       const clientB = new CookieClient("B", baseUrl);
@@ -587,6 +590,114 @@ async function main() {
         assertAllergies(profileAAfterIso.data.user, ["milk", "peanut"]);
         report.isolation = "PASSED";
         log("OK", "isolation", "contas permanecem isoladas");
+
+        // ------------------------------------------------------------------
+        // v0.7.0 - historico, favoritos e frescor do veredito
+        //
+        // Sao tres subgates separados de proposito. Um unico "colecoes"
+        // esconderia qual das tres promessas quebrou, e o auditor externo
+        // precisa saber se o problema foi sincronizar, isolar ou recalcular.
+        // ------------------------------------------------------------------
+        const produtoTeste = {
+          productCode: `e2e-${stamp}`,
+          productName: "Produto de teste E2E",
+          productBrand: "Marca de teste",
+          imageUrl: null,
+        };
+
+        // historySync: A grava, B le, e a conta de isolamento nao ve nada.
+        const gravouHistorico = await clientA.request("/history", {
+          method: "POST",
+          body: produtoTeste,
+        });
+        assert(gravouHistorico.response.status === 201, "POST /history deve retornar 201");
+
+        const historicoB = await clientB.request("/history");
+        assert(historicoB.response.status === 200, "GET /history no dispositivo B deve retornar 200");
+        assert(
+          (historicoB.data.items || []).some((item) => item.productCode === produtoTeste.productCode),
+          "dispositivo B nao viu o historico gravado por A",
+        );
+
+        const historicoIso = await clientIso.request("/history");
+        assert(
+          !(historicoIso.data.items || []).some((item) => item.productCode === produtoTeste.productCode),
+          "conta de isolamento enxergou historico de outra conta",
+        );
+        report.historySync = "PASSED";
+        log("OK", "history sync", "A gravou, B leu, conta isolada nao viu");
+
+        // favoritesSync: mesma prova para favoritos.
+        const gravouFavorito = await clientA.request("/favorites", {
+          method: "POST",
+          body: produtoTeste,
+        });
+        assert(gravouFavorito.response.status === 201, "POST /favorites deve retornar 201");
+
+        const favoritosB = await clientB.request("/favorites");
+        assert(
+          (favoritosB.data.items || []).some((item) => item.productCode === produtoTeste.productCode),
+          "dispositivo B nao viu o favorito gravado por A",
+        );
+
+        const favoritosIso = await clientIso.request("/favorites");
+        assert(
+          !(favoritosIso.data.items || []).some((item) => item.productCode === produtoTeste.productCode),
+          "conta de isolamento enxergou favorito de outra conta",
+        );
+
+        // Remover item de outra conta responde igual a item inexistente.
+        const idDoFavoritoDeA = (favoritosB.data.items || []).find(
+          (item) => item.productCode === produtoTeste.productCode,
+        )?.id;
+        const tentativaIso = await clientIso.request(`/favorites/${idDoFavoritoDeA}`, {
+          method: "DELETE",
+        });
+        assert(
+          tentativaIso.response.status === 404,
+          `remocao cruzada devolveu ${tentativaIso.response.status}, esperado 404`,
+        );
+        report.favoritesSync = "PASSED";
+        log("OK", "favorites sync", "A gravou, B leu, remocao cruzada recusada com 404");
+
+        // verdictFreshness: o item salvo nao carrega veredito, entao mudar o
+        // perfil de alergia muda o que a tela mostra. Esta e a prova de que
+        // nada foi congelado.
+        const historicoAntes = await clientA.request("/history");
+        const itemSalvo = (historicoAntes.data.items || []).find(
+          (item) => item.productCode === produtoTeste.productCode,
+        );
+        assert(itemSalvo, "item de historico sumiu antes da checagem de veredito");
+        for (const campo of ["allergyVerdict", "safety", "conflicts", "verdict", "allergens"]) {
+          assert(
+            itemSalvo[campo] === undefined,
+            `item de historico carrega campo de veredito congelado: ${campo}`,
+          );
+        }
+
+        const perfilAntes = await clientA.request("/profile");
+        await clientA.request("/profile/allergies", {
+          method: "PUT",
+          body: { allergies: ["soy"] },
+        });
+        const perfilDepois = await clientA.request("/profile");
+        assert(
+          JSON.stringify(perfilAntes.data.user.allergies) !==
+            JSON.stringify(perfilDepois.data.user.allergies),
+          "o perfil de alergia nao mudou: a checagem de frescor seria vazia",
+        );
+
+        const historicoDepois = await clientA.request("/history");
+        const itemDepois = (historicoDepois.data.items || []).find(
+          (item) => item.productCode === produtoTeste.productCode,
+        );
+        assert(itemDepois, "item de historico sumiu depois da mudanca de perfil");
+        assert(
+          JSON.stringify(itemSalvo) === JSON.stringify(itemDepois),
+          "o item guardado mudou junto com o perfil: ele carrega estado que nao deveria",
+        );
+        report.verdictFreshness = "PASSED";
+        log("OK", "verdict freshness", "item salvo sem veredito; perfil muda sem alterar o registro");
 
         const logout = await clientA.request("/auth/logout", { method: "POST" });
         assert(logout.response.status === 200, "logout deve retornar 200");

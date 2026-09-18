@@ -1,4 +1,4 @@
-# API NutriVa v0.6.9
+# API NutriScan v0.7.0
 
 Base local: `http://localhost:3000/api`
 
@@ -19,7 +19,7 @@ Exemplo:
   "database": "not_configured",
   "ai": "not_configured",
   "aiProvider": "anthropic",
-  "version": "0.6.9"
+  "version": "0.7.0"
 }
 ```
 
@@ -91,7 +91,7 @@ Resposta:
     "conflicts": [{ "id": "milk", "label": "Leite/lactose" }],
     "traces": [],
     "profileSource": "postgresql",
-    "alert": "Alerta do NutriVa: este produto tem Leite/lactose no seu perfil de alergias...",
+    "alert": "Alerta do NutriScan: este produto tem Leite/lactose no seu perfil de alergias...",
     "minimumSafety": "caution",
     "safetyFloorApplied": true
   }
@@ -182,6 +182,118 @@ Body:
   "allergies": ["milk", "gluten"]
 }
 ```
+
+## Historico e favoritos (v0.7.0)
+
+Todas as rotas desta secao **exigem sessao valida**. A identidade vem sempre do
+cookie de sessao; `userId` enviado no corpo e ignorado pelo schema de entrada.
+
+Sem sessao, a resposta e `401` em todas elas. Visitante nao grava no
+PostgreSQL: o historico e os favoritos de quem nao tem conta vivem apenas no
+navegador e nunca chegam a estas rotas.
+
+### O que NAO e guardado
+
+Nenhuma destas rotas devolve veredito de alergia, nivel de risco ou lista de
+alergenicos, porque as tabelas nao guardam nada disso. O perfil de alergia muda
+com o tempo, e um veredito congelado vira informacao de seguranca errada. O
+veredito e sempre recalculado pelo motor deterministico no momento da exibicao,
+com o perfil atual.
+
+### Corpo comum de produto
+
+`POST /api/history`, `POST /api/favorites` e `POST /api/favorites/toggle`
+aceitam o mesmo objeto:
+
+```json
+{
+  "productCode": "7891000100103",
+  "productName": "Leite Condensado Integral",
+  "productBrand": "Nestle",
+  "imageUrl": "https://images.openfoodfacts.org/exemplo.jpg"
+}
+```
+
+`productCode` e `productName` sao obrigatorios. `productBrand` e `imageUrl` sao
+opcionais e aceitam `null`. `imageUrl` precisa ser `https`. Qualquer outra chave
+enviada e descartada pelo schema.
+
+### `GET /api/history`
+
+Lista do mais recente para o mais antigo.
+
+```json
+{
+  "items": [
+    {
+      "id": "6f1b...",
+      "productCode": "7891000100103",
+      "productName": "Leite Condensado Integral",
+      "productBrand": "Nestle",
+      "imageUrl": "https://images.openfoodfacts.org/exemplo.jpg",
+      "viewedAt": "2026-09-18T14:03:11.204Z"
+    }
+  ]
+}
+```
+
+### `POST /api/history`
+
+Registra a consulta. Consultar o mesmo produto de novo **atualiza** o registro
+existente em vez de criar outro: a deduplicacao acontece na restricao de
+unicidade `(user_id, product_code)` do banco.
+
+Resposta `201` com `{ "item": { ... } }`.
+
+Limite de **100 itens por usuario**. Ao estourar, o mais antigo sai em silencio
+- o historico e um registro automatico, e descartar o item 101 nao desfaz
+escolha nenhuma do usuario.
+
+### `DELETE /api/history/:id`
+
+Remove um item. Resposta `200` com `{ "id": "..." }`.
+
+Item de outro usuario e item inexistente produzem a **mesma** resposta `404`. Se
+um devolvesse `403` e o outro `404`, a diferenca contaria ao atacante quais ids
+existem na conta alheia.
+
+### `DELETE /api/history`
+
+Limpa tudo. Resposta `200` com `{ "removed": 12 }`.
+
+### `GET /api/favorites`
+
+Mesma forma do historico, com `createdAt` no lugar de `viewedAt`.
+
+### `POST /api/favorites`
+
+Adiciona. Resposta `201` quando cria, `200` quando o produto ja estava marcado -
+marcar de novo nao e erro, e ruido de rede ou toque duplo.
+
+Limite de **200 itens por usuario**. Diferente do historico, aqui o limite
+**nao poda**: estourar devolve `409` com codigo `FAVORITES_LIMIT_REACHED`.
+Favorito e escolha explicita, e descartar a mais antiga em silencio apagaria uma
+decisao do usuario.
+
+### `POST /api/favorites/toggle`
+
+Marca se nao estiver marcado, desmarca se estiver. Usado pelo botao da
+interface, que conhece o codigo do produto mas nao o id da linha.
+
+```json
+{ "favoritado": true, "favorito": { "id": "...", "productCode": "..." } }
+```
+
+### `DELETE /api/favorites/:id`
+
+Remove um favorito. Mesma regra de `404` do historico.
+
+### Limite de requisicoes
+
+As rotas desta secao compartilham um limite de **300 requisicoes por 10
+minutos** por IP. E mais folgado que o de autenticacao, que protege senha, e que
+o do assistente, que custa por chamada - cada produto aberto gera um `POST` de
+historico.
 
 ## Erros
 

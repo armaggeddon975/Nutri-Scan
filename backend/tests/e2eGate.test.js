@@ -184,9 +184,31 @@ const reportCompleto = {
   deterministicEngine: "PASSED",
   fallback: "PASSED",
   privacy: "PASSED",
+  historySync: "PASSED",
+  favoritesSync: "PASSED",
+  verdictFreshness: "PASSED",
   anthropicReal: "EXECUTED_GENERIC_AND_PRODUCT",
   assistantAuthenticated: "PASSED",
 };
+
+// Os 14 requisitos que o modo strict exigia ate a v0.6.9, antes de historico e
+// favoritos existirem. A v0.7.0 acrescenta tres; nenhum destes pode sumir.
+const REQUISITOS_ANTES_DA_V070 = [
+  "backendProcess",
+  "database",
+  "migrations",
+  "auth",
+  "sessionSchema",
+  "multiDevice",
+  "isolation",
+  "logout",
+  "assistantAuthority",
+  "deterministicEngine",
+  "fallback",
+  "privacy",
+  "anthropicReal",
+  "assistantAuthenticated",
+];
 
 test("E: strict exige que o backend tenha sido iniciado pelo proprio runner", () => {
   assert.deepEqual(findMissingRequirements(reportCompleto, { anthropicFlagEnabled: true }), []);
@@ -210,7 +232,7 @@ test("E: strict exige que o backend tenha sido iniciado pelo proprio runner", ()
   );
 
   // A lista de requisitos nunca pode ficar vazia: isso seria strict sem prova.
-  assert.ok(buildStrictRequirements(reportCompleto, { anthropicFlagEnabled: true }).length >= 14);
+  assert.ok(buildStrictRequirements(reportCompleto, { anthropicFlagEnabled: true }).length >= 17);
 });
 
 // A14 da v0.6.8: o conserto de diagnostico do runner (B2) nao pode custar
@@ -233,6 +255,9 @@ test("D2: o conjunto de requisitos do modo strict e exatamente este", () => {
     "deterministicEngine",
     "fallback",
     "privacy",
+    "historySync",
+    "favoritesSync",
+    "verdictFreshness",
   ]);
 
   const chavesComFlag = buildStrictRequirements(reportCompleto, { anthropicFlagEnabled: true }).map(
@@ -378,4 +403,44 @@ test("D: PASS exige pre-condicao autorizada e todas as etapas em exit 0", () => 
   // Pre-condicao recusada nunca vira PASS, mesmo com tudo verde depois.
   assert.equal(decideGateOutcome({ preconditions: recusado, steps: todasOk }).pass, false);
   assert.match(decideGateOutcome({ preconditions: recusado, steps: todasOk }).reason, /FAIL BEFORE CALL/);
+});
+
+// A12 da v0.7.0 - nenhum requisito antigo pode ser perdido.
+//
+// O teste D2 acima trava o conjunto EXATO, entao ele ja quebraria se algo
+// sumisse. Este existe separado porque diz outra coisa: ele nomeia os 14
+// requisitos que existiam antes desta versao e prova, um a um, que cada um
+// AINDA reprova sozinho. D2 responde "a lista e esta"; este responde "os
+// antigos continuam valendo", que e a pergunta do auditor.
+test("A12: os 14 requisitos anteriores a v0.7.0 continuam exigidos, um a um", () => {
+  const atuais = buildStrictRequirements(reportCompleto, { anthropicFlagEnabled: true }).map(
+    ([chave]) => chave,
+  );
+
+  for (const chave of REQUISITOS_ANTES_DA_V070) {
+    assert.ok(atuais.includes(chave), `requisito antigo "${chave}" sumiu da lista`);
+
+    assert.deepEqual(
+      findMissingRequirements({ ...reportCompleto, [chave]: "NOT_EXECUTED" }, { anthropicFlagEnabled: true }),
+      [chave],
+      `requisito antigo "${chave}" deixou de reprovar sozinho`,
+    );
+  }
+
+  assert.equal(REQUISITOS_ANTES_DA_V070.length, 14);
+  assert.equal(atuais.length, 17, "a v0.7.0 acrescenta exatamente tres requisitos");
+});
+
+test("A12: os tres requisitos novos tambem reprovam sozinhos", () => {
+  for (const chave of ["historySync", "favoritesSync", "verdictFreshness"]) {
+    assert.deepEqual(
+      findMissingRequirements({ ...reportCompleto, [chave]: "NOT_EXECUTED" }, { anthropicFlagEnabled: true }),
+      [chave],
+    );
+    // Sem a flag da Anthropic eles continuam exigidos: dependem de banco, nao de IA.
+    assert.deepEqual(
+      findMissingRequirements({ ...reportCompleto, [chave]: "NOT_EXECUTED" }, { anthropicFlagEnabled: false }),
+      [chave],
+    );
+  }
 });
