@@ -1,5 +1,121 @@
 # Changelog
 
+## NutriVa v0.6.9 - 2026-09-18
+
+Versao de interface. Nenhuma regra de alergia, autenticacao ou IA foi tocada: o
+motor deterministico, o veredito autoral do servidor e o contrato da API
+publica saem identicos da v0.6.8.
+
+Ela fecha duas entregas que ja estavam em producao sem numero proprio - os
+commits `9622ad8` e `168ae69` foram publicados sob o numero 0.6.8, o que deixou
+o `/api/health` anunciando uma versao que nao correspondia ao que rodava. Esta
+entrada existe para encerrar essa divergencia.
+
+### Leitura do codigo de barras
+
+A camera se desligava sozinha ao mirar um produto real. O callback de leitura
+tratava qualquer erro diferente de `NotFoundException` como falha fatal e
+chamava `stop()`, mas a `@zxing/browser` lanca `ChecksumException` e
+`FormatException` o tempo todo enquanto a pessoa enquadra o codigo - borrado,
+cortado, com reflexo. A propria biblioteca segue tentando nesses casos; o app
+matava a camera no primeiro quadro imperfeito.
+
+```text
+erro transitorio    camera continua ligada   (era: desligava)
+resolucao           1920x1080 pedida         (era: padrao da camera, ~640x480)
+foco                continuo                 (era: o que viesse)
+tentativas por seg  10                       (era: 2)
+confirmacao         2 leituras iguais        (era: aceita a primeira)
+lanterna            botao, quando suportada  (era: inexistente)
+```
+
+A confirmacao por leitura dupla custa cerca de 100ms e evita abrir o produto
+errado - num app de alergia isso e informacao de seguranca errada na tela.
+
+### Busca de produtos
+
+Medicao contra a API publica da Open Food Facts em 04/09/2026: o endpoint
+`/api/v2/search` respondia 503 em cerca de metade das chamadas, e a resposta de
+erro nao traz cabecalho CORS, entao no navegador a falha chegava como erro de
+CORS. Sem nenhuma retentativa, uma falha virava "nao encontrei".
+
+Os tempos foram calibrados por medicao, nao por estimativa: o endpoint principal
+leva ~7,8s para falhar e o reserva responde em ~0,8s. Por isso o principal nao e
+insistido - tres tentativas ali passavam de 20s com a tela parada em
+"Procurando...".
+
+```text
+/api/v2/search    1 tentativa, timeout 5s
+/cgi/search.pl    2 tentativas, timeout 5s, espera de 300ms
+/api/v3/product   3 tentativas, timeout 8s, esperas de 400ms e 1200ms
+```
+
+A consulta por codigo, que e o caminho critico do scanner, mantem retentativa
+porque a alternativa e a pessoa escanear o produto de novo.
+
+### Identidade visual DG Nutricao
+
+A logo da DG Nutricao entrou no produto. O NutriVa continua sendo o nome do
+aplicativo e a DG assina, com a logo completa no rodape.
+
+Os dois verdes foram medidos nos pixels do arquivo original: oliva `#5a6942` e
+salvia `#859372`. A folha de estilo anterior afirmava tirar as cores da logo,
+mas usava `--lime: #a8cc3b`, um verde-limao que nao existe no arquivo.
+
+O salvia reprova em contraste para texto (3.27:1 sobre branco), entao ele so
+aparece em borda, fundo e desenho. O simbolo da barra e o favicone deixaram de
+ser um icone de folha generico do pacote `lucide` e passaram a usar o monograma
+da DG, recortado do arquivo da logo.
+
+### Legibilidade
+
+O app nascera numa escala pequena: 51 dos 58 tamanhos de fonte estavam abaixo de
+16px, alguns em 11px, espalhados como valores soltos por 1.662 linhas de CSS.
+Foram substituidos por tokens `--t-xs` a `--t-2xl`, mais `--touch` para alvo de
+toque.
+
+```text
+menor texto do app   15px    (era 11px)
+texto corrido        20px    (era 15px)
+nome do produto      26px    (era 17px)
+alvo de toque        48px    (era 36-44px)
+entrelinha padrao    1.55    (era o padrao do navegador, ~1.2)
+```
+
+Os tres tons de texto foram escurecidos e passaram a marcar 16.9:1, 11.1:1 e
+7.6:1 sobre o fundo off-white, contra 12.8:1, 7.2:1 e 4.9:1.
+
+A fonte maior estourou duas caixas, corrigidas aqui: a faixa de alergia da tela
+inicial esmagava o icone de 20px para 7px, e em 320px a pagina passou a rolar
+para o lado porque coluna de grid nao encolhe abaixo do conteudo minimo e
+`<input>` e `<video>` tem largura natural propria.
+
+### Linguagem
+
+Vinte e um textos de tela e dezessete mensagens de estado reescritos, uma ideia
+por frase. Mensagem de erro passou a dizer o que fazer, nao o que houve:
+
+```text
+antes  "Tabela nutricional nao cadastrada para este produto."
+agora  "Sem tabela nutricional. Confira a embalagem."
+```
+
+### Dependencias
+
+`npm audit fix` no frontend resolveu um aviso `high` em `browserslist` e um
+`moderate` em `baseline-browser-mapping`, ambos dependencia transitiva de build
+via `@vitejs/plugin-react`. O aviso era anterior a esta versao e travava o
+`verify-release.js`. O build sai com os mesmos hashes de asset depois da troca.
+
+### Testes
+
+Dezenove testes novos, cobrindo o que quebrou:
+
+```text
+backend/tests/scannerReliability.test.js       10 testes
+backend/tests/openFoodFactsResilience.test.js   9 testes
+```
+
 ## Renomeacao NutriScan -> NutriVa - 2026-09-04
 
 O produto passou a se chamar NutriVa, seguindo a marca. A troca foi feita em

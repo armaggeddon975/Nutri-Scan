@@ -1,8 +1,212 @@
-# Relatorio de Auditoria - NutriVa v0.6.8
+# Relatorio de Auditoria - NutriVa v0.6.9
 
-Data: 2026-08-27
+Data: 2026-09-18
 
-## Auditoria externa independente da v0.6.7
+## Escopo
+
+Versao de interface. Nenhuma regra de alergia, autenticacao ou IA foi tocada.
+
+Preservado sem alteracao: `shared/allergenEngine.js`,
+`shared/productAllergenAdapter.js`, `shared/allergyVerdict.js`, todo o
+`backend/src/ai/`, autenticacao, scrypt, sessoes, schema PostgreSQL e o contrato
+publico da API. O veredito deterministico continua sendo campo autoral do
+servidor, com as duas barreiras da v0.6.8 intactas.
+
+O que mudou: leitura do codigo de barras, resiliencia da busca na Open Food
+Facts, identidade visual da DG Nutricao, escala tipografica, contraste de texto
+e linguagem da interface. Detalhe por item no CHANGELOG.
+
+## Por que esta versao existe
+
+Os commits `9622ad8` e `168ae69` foram publicados em producao sob o numero
+0.6.8. O `/api/health` passou a anunciar uma versao que nao correspondia ao
+codigo em execucao, e sem numero novo nao havia pacote de auditoria - a pasta
+`releases/` ficou sem registro dessas duas entregas.
+
+Esta versao encerra a divergencia. Ela nao introduz funcionalidade alem do que
+ja estava no ar; ela nomeia o que ja estava no ar.
+
+## D1 - a camera se desligava ao mirar um produto real
+
+### Causa raiz
+
+O callback de leitura em `src/App.jsx` tratava qualquer erro diferente de
+`NotFoundException` como falha fatal e chamava `stop()`.
+
+A `@zxing/browser` lanca `ChecksumException` e `FormatException` continuamente
+enquanto a pessoa enquadra o codigo - borrado, cortado, com reflexo. Verificado
+em `node_modules/@zxing/browser/esm/common/BrowserCodeReader.js`: o laco interno
+da propria biblioteca segue tentando nesses tres casos.
+
+Consequencia: apontar a camera para um codigo de barras real era exatamente o
+que derrubava o scanner. A tela mostrava "A camera foi interrompida".
+
+### Correcao
+
+`isTransientScanError` passou a reconhecer os tres erros de mira como normais.
+Falha real de camera continua sendo fatal.
+
+Verificado no navegador com as classes reais da biblioteca, nao com objetos
+sinteticos:
+
+```text
+NotFoundException          camera continua ligada
+ChecksumException          camera continua ligada
+FormatException            camera continua ligada
+Error("stream perdido")    camera desliga
+```
+
+Alem disso: `decodeFromConstraints` no lugar de `decodeFromVideoDevice`, porque
+o segundo ignora resolucao e aceita o padrao da camera (~640x480), onde um
+EAN-13 quase nao tem pixel por barra. A camera passou a ser pedida com
+1920x1080 ideal e foco continuo, e o intervalo entre tentativas caiu de 500ms
+(padrao da biblioteca) para 100ms.
+
+### Confirmacao por leitura dupla
+
+`src/utils/barcodeConfirm.js`, novo. Exige a mesma leitura duas vezes seguidas
+antes de aceitar o codigo. Custa cerca de 100ms e evita abrir o produto errado,
+que num app de alergia e informacao de seguranca errada na tela.
+
+## D2 - busca de produtos falhava sem retentativa
+
+Medicao contra a API publica em 04/09/2026: `/api/v2/search` respondia 503 em
+cerca de metade das chamadas. A resposta de erro nao traz cabecalho CORS, entao
+no navegador a falha chega como erro de CORS. Sem retentativa, uma falha virava
+"nao encontrei" com a base no ar.
+
+Os tempos foram calibrados por medicao no navegador, nao por estimativa:
+
+```text
+/api/v2/search   falha em ~7,8s quando esta fora
+/cgi/search.pl   responde em ~0,8s
+```
+
+Por isso o endpoint principal nao ganha retentativa - o reserva chega antes de
+uma segunda tentativa terminar. Tres tentativas no principal deixavam a tela
+parada em "Procurando..." por mais de 20s.
+
+Evidencia da correcao agindo, colhida do console do navegador: no termo
+"queijo", o endpoint principal E a primeira tentativa do reserva foram
+bloqueados, e a retentativa salvou a busca. Nos quatro termos medidos, o codigo
+anterior teria falhado.
+
+## D3 - a paleta contradizia a propria logo
+
+`src/styles.css` trazia o comentario "cor tirada da logo" e usava
+`--lime: #a8cc3b`. As cores foram medidas nos pixels do arquivo entregue
+(`src/assets/dg-nutricao.jpg`, 1254x1254): oliva `#5b6a43` e salvia `#859373`.
+Verde-limao nao existe no arquivo.
+
+Restricao que acompanha a paleta, medida antes de aplicar: o salvia marca
+3.27:1 sobre branco e reprova para texto. Ele so aparece em borda, fundo e
+desenho; texto e icone usam o oliva (5.94:1) ou os tons de tinta.
+
+## D4 - escala tipografica pequena demais para o publico
+
+51 dos 58 tamanhos de fonte estavam abaixo de 16px, tres deles em 11px,
+espalhados como valores soltos por 1.662 linhas de CSS. O publico declarado do
+produto tem idade avancada e le rotulo para decidir sobre alergia.
+
+```text
+menor texto do app   11px -> 15px
+texto corrido        15px -> 20px
+alvo de toque        36px -> 48px
+contraste do texto   12.8:1, 7.2:1, 4.9:1  ->  16.9:1, 11.1:1, 7.6:1
+```
+
+Dois defeitos que a fonte maior expos e que foram corrigidos junto: a faixa de
+alergia da tela inicial esmagava o icone de 20px para 7px, e em 320px a pagina
+passou a rolar lateralmente, porque coluna de grid nao encolhe abaixo do
+conteudo minimo e `<input>` e `<video>` tem largura natural propria (256px e
+300px).
+
+## Verificacao de interface por medicao
+
+Auditoria automatizada sobre o que esta renderizado - cor computada de cada
+elemento contra o fundo real herdado, e comparacao de `scrollWidth` com
+`clientWidth` para detectar estouro.
+
+```text
+320px    7 telas   0 estouros   0 rolagem lateral
+375px    7 telas   0 reprovacoes de contraste   menor fonte 15px
+1360px   7 telas   0 reprovacoes de contraste   menor fonte 16px
+```
+
+Correcao de um erro de metodo desta auditoria: as primeiras execucoes usaram os
+hashes `#inicio` e `#assistente`. Os identificadores reais do app sao `home` e
+`chat`, e como ele ignora hash invalido em vez de redirecionar, essas duas
+voltas do laco ficavam na tela anterior - a tela do Assistente nunca era
+auditada e a de Alergias era contada duas vezes. Refeito com os sete
+identificadores corretos; o Assistente passou sem reprovacao.
+
+## Dependencias
+
+`npm audit fix` no frontend resolveu um aviso `high` em `browserslist` e um
+`moderate` em `baseline-browser-mapping`, dependencia transitiva de build via
+`@vitejs/plugin-react` -> `@babel/core`. O aviso e anterior a esta versao e
+travava o `verify-release.js`.
+
+Conferido que a troca nao alterou o produto: o build sai com os mesmos hashes de
+asset de antes da correcao.
+
+## Estado dos gates nesta versao
+
+```text
+npm run build                      SUCCESS
+npm --prefix backend test          124 testes, 118 pass, 0 fail, 6 skip
+npm audit --audit-level=high       0 vulnerabilidades  (exit 0)
+backend audit --audit-level=high   0 vulnerabilidades  (exit 0)
+secret scan                        0 segredos reais
+node scripts/verify-release.js     exit 0
+verify:e2e                         NAO EXECUTADO
+```
+
+Os 6 testes pulados sao os destrutivos de banco, que exigem
+`RUN_DB_INTEGRATION_TESTS=true`, mais o de integracao real da Anthropic. SKIP
+nao conta como PASS.
+
+```json
+{ "status": "ok", "database": "connected", "ai": "configured", "aiProvider": "anthropic", "version": "0.6.9" }
+```
+
+## O que NAO foi executado nesta versao
+
+Registrado como ausencia, e nao convertido em aprovacao.
+
+CAMERA REAL: NAO EXECUTADO. Esta e a ausencia mais relevante do pacote. O
+defeito D1 e sobre leitura de codigo de barras, e o ambiente de trabalho nao tem
+webcam. A logica esta coberta por 10 testes e foi verificada no navegador com as
+classes reais da `@zxing/library`, mas ninguem apontou um telefone para uma
+embalagem. A resolucao pedida, o foco continuo e o ganho de velocidade de
+leitura sao, hoje, mudancas fundamentadas e nao mudancas comprovadas em campo.
+
+POSTGRESQL REAL: NAO EXECUTADO. Ambiente sem `DATABASE_URL`.
+
+CLAUDE REAL: NAO EXECUTADO. `ANTHROPIC_API_KEY` ausente e
+`RUN_ANTHROPIC_INTEGRATION_TESTS` desabilitado. Nenhuma chamada paga foi feita e
+nenhuma chave foi inventada.
+
+VERIFY:E2E: NAO EXECUTADO, por consequencia dos dois itens acima. O PASS
+registrado no E2E_REPORT da v0.6.8 pertence aquela versao e aquela execucao; ele
+nao foi herdado aqui.
+
+Esta versao nao toca em banco, sessao nem IA, entao a ausencia desses gates nao
+esconde risco nas areas alteradas. Ela significa que a cobertura desta entrega e
+de interface, e nao de integracao.
+
+## Conclusao
+
+Os quatro defeitos desta versao estao corrigidos e verificados por execucao de
+comando e por medicao no navegador. O contrato publico da API nao mudou e o
+motor deterministico de alergia sai identico.
+
+O ponto que exige atencao do auditor e a camera: e a correcao central da versao
+e a unica sem prova em dispositivo real.
+
+## Historico de auditorias anteriores
+
+## Auditoria externa independente da v0.6.7 e correcoes da v0.6.8
 
 Um auditor externo instalou PostgreSQL real, rodou a suite inteira contra ele
 (84 testes, 83 pass, 1 skip, 0 fail), executou a bateria adversarial do gate
@@ -227,8 +431,6 @@ npm run verify:e2e                 PASS com PostgreSQL real e Claude real
 Os 6 testes pulados sao os destrutivos de banco, que exigem
 `RUN_DB_INTEGRATION_TESTS=true`, mais o de integracao real da Anthropic. SKIP
 nao conta como PASS em nenhum gate.
-
-## Historico de auditorias anteriores
 
 ## Auditoria pelo gauntlet-loop
 

@@ -1,4 +1,4 @@
-# Nutri Assistente IA - v0.6.8
+# Nutri Assistente IA - v0.6.9
 
 ## Fluxo
 

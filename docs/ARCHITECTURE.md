@@ -1,4 +1,4 @@
-# Arquitetura NutriVa v0.6.8
+# Arquitetura NutriVa v0.6.9
 
 ## Visao geral
 

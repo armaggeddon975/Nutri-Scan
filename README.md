@@ -1,4 +1,4 @@
-# NutriVa v0.6.8
+# NutriVa v0.6.9
 
 NutriVa e um app web para consultar alimentos por nome ou codigo de barras,
 ver tabela nutricional, identificar ingredientes sensiveis e conversar com um

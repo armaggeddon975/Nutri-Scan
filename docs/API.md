@@ -1,4 +1,4 @@
-# API NutriVa v0.6.8
+# API NutriVa v0.6.9
 
 Base local: `http://localhost:3000/api`
 
@@ -19,7 +19,7 @@ Exemplo:
   "database": "not_configured",
   "ai": "not_configured",
   "aiProvider": "anthropic",
-  "version": "0.6.8"
+  "version": "0.6.9"
 }
 ```
 
