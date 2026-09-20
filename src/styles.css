@@ -1,112 +1,137 @@
 /* =========================================================================
    NutriScan - folha de estilo
    =========================================================================
-   Regras da casa:
+   Direcao visual (11/09/2026): editorial e elegante. A interface passou a
+   conversar com a logo da DG Nutricao - monograma serifado, fino, folha
+   delicada - em vez de parecer um painel administrativo generico.
+
+   Regras da casa, que a direcao nova nao revoga:
    - cor forte significa risco de alergia, nao decoracao;
    - verde so aparece na marca, no item ativo e na acao principal;
-   - sombra e sutil: a hierarquia vem de espaco e peso de texto, nao de blur;
-   - nada de gradiente decorativo no fundo.
+   - texto nunca abaixo de 14px; texto corrido a partir de 16px. O publico le
+     rotulo de alimento para decidir sobre alergia, e enxerga mal;
+   - alvo de toque de 48px ou mais;
+   - hierarquia vem de espaco, fio e peso de texto. Cartao com borda de 1px e
+     sombra sumiu: superficie tonal sobre o creme faz o mesmo trabalho sem
+     picotar a tela em caixinhas;
+   - nada de gradiente decorativo.
    ========================================================================= */
 
 :root {
   color-scheme: light;
 
-  /* Superficies neutras - off-white da identidade DG, nao cinza azulado. */
-  --bg: #f8f8f5;
-  --surface: #ffffff;
-  --surface-2: #f4f5f0;
-  --line: #dde2d5;
-  --line-strong: #c4cdb4;
+  /* Superficies
+     -----------
+     Creme quente em vez do off-white frio de antes. A logo e desenhada sobre
+     branco puro e continua assim; o resto da tela recua meio tom para a marca
+     e o conteudo respirarem. `--surface-2` (areia) e o fundo de campo, chip e
+     bloco de apoio; nao tem borda, e o proprio contraste com o creme que
+     desenha a forma. */
+  --bg: #f5f2ea;
+  --surface: #fbfaf5;
+  --surface-2: #ece8dc;
+  --line: #ddd8c8;
+  --line-strong: #c9c3ae;
 
-  /* Texto.
-     ---------------------------------------------------------------------
-     Escurecido em 05/09/2026 a pedido do dono: a leitura precisa ser facil
-     para quem enxerga mal, e o cinza-esverdeado anterior ainda pedia esforco.
-     Os tres tons guardam um resto de verde da marca para nao virarem cinza
-     de sistema, mas ficam perto do preto.
+  /* Chrome: barra de cima, menu lateral e abas do celular.
+     -------------------------------------------------------
+     Oliva escuro com texto creme (11/09/2026, a pedido da equipe de design;
+     uma versao em salvia claro foi testada antes e rejeitada). E um tom abaixo
+     do oliva da marca, para o item ativo do menu - que usa o oliva da marca -
+     e o botao principal do conteudo continuarem sendo o verde "vivo" da tela.
+     Creme sobre este fundo da 8.8:1 de contraste; o creme atenuado, 5:1.
 
-     O terceiro tom, `--ink-3`, e o piso: nada de texto pode ser mais claro do
-     que ele. Antes ele marcava 4.9:1 sobre o off-white, quase no limite do AA;
-     agora sobra folga de verdade. */
-  --ink: #14180f;
-  --ink-2: #333a2b;
-  --ink-3: #4b533f;
+     A logo da DG e verde sobre branco e nao sobrevive a fundo escuro, entao no
+     pe do menu a assinatura e so texto (ver `BrandSignature`, variante "text"). */
+  --chrome: #3d472b;
+  --chrome-line: rgba(245, 242, 234, 0.12);
+  --chrome-ink: #f5f2ea;
+  --chrome-ink-2: rgba(245, 242, 234, 0.72);
+  --chrome-field: rgba(245, 242, 234, 0.1);
+  --chrome-hover: rgba(245, 242, 234, 0.1);
+  --chrome-active: #5a6942;
+
+  /* Texto
+     -----
+     Tres tons, os tres com um resto de verde da marca para nao virarem cinza
+     de sistema. `--ink-3` e o piso: 5.4:1 sobre o creme, com folga sobre o
+     minimo AA de 4.5. Nada de texto pode ser mais claro do que ele. */
+  --ink: #1c2016;
+  --ink-2: #3b4232;
+  --ink-3: #5c6450;
 
   /* Marca - DG Nutricao
      -------------------
-     Os dois verdes foram medidos nos pixels da propria logo em
-     `src/assets/dg-nutricao.jpg`: o oliva do "D" (#5b6a43) e o salvia do "G" e
-     da folha (#859373). A versao anterior desta folha dizia tirar a cor da
-     logo, mas usava um verde-limao saturado que nao existe no arquivo - e limao
-     e justamente o tom que tira da marca a leitura de sobriedade.
-
-     O salvia reprova em contraste para texto (3.27:1 sobre branco), entao ele
-     so aparece em borda, fundo e desenho. Texto e icone usam o oliva (5.94:1)
-     ou os tons de tinta acima. */
+     Os dois verdes foram medidos na propria logo (`src/assets/dg-nutricao.jpg`):
+     oliva do "D" (#5b6a43) e salvia do "G" e da folha (#859373). O salvia
+     reprova em contraste para texto (3.3:1 sobre branco), entao so aparece em
+     desenho e em fundo suave. Texto e icone usam o oliva ou os tons de tinta. */
   --brand: #5a6942;
   --brand-hover: #46522f;
   --brand-ink: #46522f;
-  --brand-soft: #eceee5;
+  --brand-soft: #dfe3d4;
   --brand-line: #c4cdb4;
   --sage: #859372;
-  --sage-soft: #dde2d5;
 
-  /* Barra superior. A identidade da marca pede fundo claro com detalhe em
-     oliva, entao a barra deixou de ser grafite: a logo e escura sobre claro e
-     nao teria como aparecer sobre fundo preto sem uma versao invertida. */
-  --bar: #ffffff;
-  --bar-2: #f4f5f0;
-  --bar-line: #dde2d5;
-
-  /* Significado */
-  --danger: #b4231c;
-  --danger-soft: #fdecea;
-  --danger-line: #f3c6c2;
+  /* Significado. Vermelho e risco no perfil; ambar e "pode conter" ou outro
+     alergenico declarado; verde-escuro e "sem conflito". Nenhum deles aparece
+     como enfeite. */
+  --danger: #a8221b;
+  --danger-soft: #f9e7e4;
+  --danger-line: #e8b8b2;
   --warn: #8a5a00;
-  --warn-soft: #fff4dd;
-  --warn-line: #f0dcae;
-  --ok: #0d7a48;
-  --ok-soft: #e8f4ed;
-  --ok-line: #bfdfcd;
+  --warn-soft: #f7efdc;
+  --warn-line: #ead9a8;
+  --ok: #2f6b45;
+  --ok-soft: #e5efe6;
+  --ok-line: #bcd6c3;
 
-  /* Forma */
-  --r-card: 12px;
-  --r-control: 10px;
+  /* Forma. Bloco grande e bem arredondado; controle e pilula. A pilula e o
+     que faz botao, campo e chip parecerem da mesma familia sem borda. */
+  --r-card: 24px;
+  --r-block: 16px;
   --r-pill: 999px;
-  --shadow: 0 1px 2px rgba(19, 26, 23, 0.06), 0 1px 3px rgba(19, 26, 23, 0.04);
-  --shadow-lift: 0 4px 12px rgba(19, 26, 23, 0.08);
 
-  /* Escala tipografica
-     ------------------
-     O publico do app tem idade mais avancada e le rotulo de alimento para
-     decidir sobre alergia: texto pequeno aqui nao e questao de estetica, e
-     risco. A escala antiga comecava em 11px e concentrava quase tudo em 14-15px.
-     Esta comeca em 14px e coloca o texto corrido em 18px.
+  /* Tipografia
+     ----------
+     Duas familias, empacotadas no build (ver `src/main.jsx`):
+     - Cormorant Garamond, serifa fina e alta, para titulo, nome de produto,
+       veredito e cabecalho de secao. E ela que puxa a logo para a interface.
+       Como e uma serifa leve, so entra a partir de 26px e com peso 500 ou 600;
+       abaixo disso perde a leitura.
+     - Instrument Sans, humanista, para tudo que e lido de perto: corpo, botao,
+       menu, tabela, campo. */
+  --font-display: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  --font-body: "Instrument Sans", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
 
-     Os nomes sao de tamanho, nao de funcao, porque o mesmo degrau serve a
-     papeis diferentes em telas diferentes. Mexer em um valor daqui muda o app
-     inteiro de forma coerente - era isso que faltava quando os 58 tamanhos
-     viviam soltos pelo arquivo. */
-  --t-xs: 0.9375rem; /* 15px - rotulo de aba, selo, texto de apoio */
-  --t-sm: 1rem; /* 16px - legenda, unidade de medida */
-  --t-base: 1.0625rem; /* 17px - piso do texto de leitura */
-  --t-md: 1.1875rem; /* 19px - botao, item de lista */
-  --t-lg: 1.25rem; /* 20px - texto corrido, campo de formulario */
-  --t-xl: 1.375rem; /* 22px - titulo de cartao */
-  --t-2xl: 1.625rem; /* 26px - nome do produto, marca */
+  /* Escala. Os nomes sao de tamanho, nao de funcao, porque o mesmo degrau
+     serve a papeis diferentes em telas diferentes; mexer aqui muda o app
+     inteiro de forma coerente.
 
-  /* Alvo minimo de toque. 44px e o minimo das diretrizes de acessibilidade;
-     48px da folga para mao tremida e dedo grosso, que e o caso real aqui. */
+     Reduzida um degrau em 11/09/2026 a pedido da equipe de design: a escala
+     anterior (15 a 30px) foi considerada grande demais no computador. Esta
+     comeca em 14px e coloca o texto corrido em 16-17px - ainda acima do padrao
+     do navegador, que e o que o publico mais velho precisa. Se o dono pedir de
+     volta o tamanho anterior, e so somar 1px em cada degrau. */
+  --t-xs: 0.875rem; /* 14px - rotulo de aba, selo, sobretitulo em caixa alta */
+  --t-sm: 0.9375rem; /* 15px - legenda, unidade de medida */
+  --t-base: 1rem; /* 16px - piso do texto corrido */
+  --t-md: 1.0625rem; /* 17px - botao, item de menu, linha de tabela */
+  --t-lg: 1.125rem; /* 18px - texto corrido, campo de formulario */
+  --t-xl: 1.25rem; /* 20px - subtitulo da abertura */
+  --t-2xl: 1.5rem; /* 24px - titulo de atalho (serifa) */
+  --t-3xl: 1.75rem; /* 28px - cabecalho de secao (serifa) */
+
+  /* Alvo minimo de toque. 44px e o minimo das diretrizes; 48px da folga para
+     mao tremida e dedo grosso, que e o caso real aqui. */
   --touch: 48px;
 
-  --topbar-h: 68px;
+  --rail-w: 256px;
   --tabbar-h: 76px;
 
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
-  /* Entrelinha padrao do app. Sem isso, todo texto que nao declara a sua fica
-     com o padrao do navegador (~1.2), que e apertado demais para leitura longa
-     e piora justamente quando a fonte cresce. */
+  font-family: var(--font-body);
+  /* Entrelinha padrao. Sem isto, o texto que nao declara a sua fica com o
+     ~1.2 do navegador, apertado demais para leitura longa em fonte grande. */
   line-height: 1.55;
   color: var(--ink);
   background: var(--bg);
@@ -170,8 +195,8 @@ p {
 /* Foco visivel em tudo que recebe teclado. */
 :focus-visible {
   outline: 2px solid var(--brand);
-  outline-offset: 2px;
-  border-radius: 6px;
+  outline-offset: 3px;
+  border-radius: var(--r-block);
 }
 
 .sr-only {
@@ -191,8 +216,8 @@ p {
   top: -60px;
   left: 12px;
   z-index: 60;
-  padding: 10px 16px;
-  border-radius: var(--r-control);
+  padding: 10px 18px;
+  border-radius: var(--r-pill);
   background: var(--brand);
   color: #ffffff;
   font-weight: 600;
@@ -204,9 +229,29 @@ p {
   top: 12px;
 }
 
+/* Sobretitulo em caixa alta: o unico texto pequeno e espacado do app. Marca o
+   inicio de uma tela ou de um bloco, como numa revista. */
+.eyebrow {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
 /* =========================================================================
    Esqueleto
-   ========================================================================= */
+   =========================================================================
+   Celular: barra de cima (marca, conta e busca), conteudo, abas fixas embaixo.
+   Computador: coluna de menu a esquerda, da altura da janela, com a marca no
+   topo e a assinatura da DG embaixo; a barra de cima encolhe para busca e
+   conta e passa a viver dentro da coluna de conteudo.
+
+   O DOM e o mesmo nos dois casos. No computador, `.app-body` vira
+   `display: contents` e o menu e o conteudo passam a ser filhos diretos da
+   grade de `.app`, o que permite ao menu ocupar as duas linhas (barra e
+   conteudo) da mesma coluna. */
 
 .app {
   min-height: 100dvh;
@@ -216,190 +261,139 @@ p {
   position: sticky;
   top: 0;
   z-index: 40;
-  height: var(--topbar-h);
-  border-bottom: 1px solid var(--bar-line);
-  background: var(--bar);
-  color: var(--ink);
+  border-bottom: 1px solid var(--chrome-line);
+  background: var(--chrome);
+  color: var(--chrome-ink);
+}
+
+/* Foco visivel sobre o chrome escuro: o anel em oliva sumiria. */
+.topbar :focus-visible,
+.rail :focus-visible,
+.tabbar :focus-visible {
+  outline-color: var(--chrome-ink);
 }
 
 .topbar-inner {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "brand account"
+    "search search";
   align-items: center;
-  gap: 12px;
-  /* Largura cheia, sem coluna centralizada: a marca e o menu lateral encostam
-     na borda esquerda da janela em vez de flutuarem no meio da tela. O recuo
-     que sobra e so o respiro para o texto nao colar no vidro. */
+  gap: 12px 12px;
   width: 100%;
-  height: 100%;
-  padding: 0 clamp(12px, 2vw, 20px);
+  padding: 12px clamp(16px, 4vw, 24px) 14px;
 }
 
 .brand {
+  grid-area: brand;
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 6px 8px 6px 6px;
+  min-width: 0;
+  padding: 6px 8px;
+  margin-left: -8px;
   border: 0;
-  border-radius: var(--r-control);
+  border-radius: var(--r-pill);
   background: transparent;
-}
-
-.brand {
-  color: var(--ink);
+  color: var(--chrome-ink);
 }
 
 .brand:hover {
-  background: var(--bar-2);
+  background: var(--chrome-hover);
 }
 
-/* Simbolo da marca: o monograma da DG Nutricao, recortado do arquivo original
-   da logo (`public/dg-simbolo.png`). Antes havia aqui um icone de folha do
-   pacote lucide - um desenho generico, de biblioteca, que nao era a marca de
-   ninguem.
-
-   O arquivo tem fundo branco e a barra tambem e branca, entao o simbolo assenta
-   sem moldura. `multiply` garante que continue assim caso a barra receba um
-   tom levemente diferente do branco puro. */
-.brand-mark {
+/* Logo do NutriScan sobre o chrome escuro.
+   O arquivo e verde-escuro e salvia sobre transparente; sobre o oliva escuro o
+   verde-escuro sumiria. `brightness(0) invert(1)` transforma o desenho inteiro
+   em branco e a opacidade puxa para o creme do texto: logo monocromatica sobre
+   fundo escuro, que e a pratica normal de marca. A versao colorida serve para
+   fundos claros - por exemplo, o icone ou materiais externos. */
+.brand-logo {
   display: block;
-  flex: 0 0 auto;
-  width: 40px;
   height: 40px;
-  mix-blend-mode: multiply;
+  width: auto;
+  max-width: 100%;
+  filter: brightness(0) invert(1);
+  opacity: 0.94;
 }
 
-.brand-name {
-  font-size: var(--t-2xl);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--brand-ink);
-}
-
-/* `margin-inline: auto` resolve a posicao dos tres elementos de uma vez.
-   -----------------------------------------------------------------------
-   A busca tem teto de 520px para nao virar um campo gigante no monitor. Sem
-   esta linha, a sobra de espaco ficava toda DEPOIS do botao de conta: em tela
-   larga a marca, a busca e o "Entrar" apareciam amontoados na esquerda com um
-   vazio enorme na direita.
-
-   A margem automatica faz a sobra ser dividida igualmente dos dois lados da
-   busca, o que centraliza a busca e empurra o "Entrar" para a borda direita.
-   Em tela estreita nao existe sobra, a margem vale zero e o layout do celular
-   fica exatamente como estava. */
 .topbar-search {
+  grid-area: search;
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex: 1 1 auto;
+  gap: 12px;
   min-width: 0;
-  max-width: 520px;
-  margin-inline: auto;
-  height: 46px;
-  padding: 0 12px;
-  border: 1px solid var(--bar-line);
+  height: 54px;
+  padding: 0 20px;
+  border: 1px solid var(--chrome-line);
   border-radius: var(--r-pill);
-  background: var(--bar-2);
-  color: var(--ink-3);
+  background: var(--chrome-field);
+  color: var(--chrome-ink-2);
 }
 
 .topbar-search:focus-within {
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(90, 105, 66, 0.18);
+  border-color: var(--chrome-ink-2);
+  background: rgba(245, 242, 234, 0.16);
 }
 
-/* O campo ocupa toda a altura da pilula: sem isso ele fica com 30px no meio de
-   uma caixa de 46px, e o toque que cai na borda nao abre o teclado. */
+/* O campo ocupa toda a altura da pilula: sem isso o toque que cai na borda
+   nao abre o teclado. */
 .topbar-search input {
   width: 100%;
   min-width: 0;
   height: 100%;
   border: 0;
   background: transparent;
-  color: var(--ink);
+  color: var(--chrome-ink);
   font-size: var(--t-lg);
   outline: none;
 }
 
 .topbar-search input::placeholder {
-  color: var(--ink-3);
+  color: var(--chrome-ink-2);
 }
 
 .topbar-account {
+  grid-area: account;
   display: flex;
   align-items: center;
-  gap: 7px;
+  justify-content: center;
+  gap: 8px;
   flex: 0 0 auto;
-  height: 46px;
-  padding: 0 14px;
-  border: 1px solid var(--bar-line);
+  width: var(--touch);
+  height: var(--touch);
+  padding: 0;
+  border: 1px solid var(--chrome-line);
   border-radius: var(--r-pill);
-  background: transparent;
-  color: var(--ink);
+  background: var(--chrome-field);
+  color: var(--chrome-ink);
   font-size: var(--t-md);
   font-weight: 600;
   white-space: nowrap;
 }
 
 .topbar-account:hover {
-  border-color: var(--brand);
-  background: var(--bar-2);
+  background: rgba(245, 242, 234, 0.18);
 }
 
-.topbar :focus-visible {
-  outline-color: var(--brand);
+/* No celular a conta e so o icone: o nome do usuario nao cabe ao lado da
+   marca sem espremer a busca. */
+.topbar-account span {
+  display: none;
 }
 
-/* Em 360px os tres elementos nao cabem e a busca fica com espaco para duas
-   letras. A marca e a conta viram so icone: a busca global e mais util no
-   celular do que o nome escrito, que as abas de baixo ja contextualizam. */
-/* 320px e o menor aparelho que o app declara suportar (`body { min-width }`).
-   Nessa largura a dica de busca ainda encostava na borda. O que encolhe aqui e
-   o espaco entre os elementos, nunca a fonte: o texto e justamente a coisa que
-   nao pode diminuir neste app. */
-@media (max-width: 380px) {
-  .topbar-inner {
-    gap: 8px;
-    padding: 0 10px;
-  }
-
-  .brand {
-    padding: 4px;
-  }
-}
-
-@media (max-width: 639px) {
-  .brand-name {
-    display: none;
-  }
-
-  .topbar-account span {
-    display: none;
-  }
-
-  .topbar-account {
-    width: 46px;
-    padding: 0;
-    justify-content: center;
-  }
-}
-
-/* O mesmo recuo do `.topbar-inner`, de proposito: e o que mantem o icone do
-   menu lateral na mesma linha vertical da logo, la em cima. Mexer em um sem o
-   outro desalinha os dois. */
 .app-body {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   width: 100%;
-  padding: 0 clamp(12px, 2vw, 20px);
 }
 
 .content {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 40px;
   min-width: 0;
-  padding: 22px 0 calc(var(--tabbar-h) + 28px);
+  padding: 28px clamp(16px, 4vw, 24px) calc(var(--tabbar-h) + 32px);
 }
 
 /* Menu lateral: so no computador. */
@@ -417,10 +411,9 @@ p {
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
   height: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-  border-top: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: saturate(180%) blur(8px);
+  padding: 4px 8px env(safe-area-inset-bottom, 0px);
+  border-top: 1px solid var(--chrome-line);
+  background: var(--chrome);
 }
 
 .tab-item {
@@ -428,15 +421,15 @@ p {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: 4px;
   min-height: var(--touch);
   border: 0;
   background: transparent;
-  color: var(--ink-3);
+  color: var(--chrome-ink-2);
 }
 
 .tab-item.active {
-  color: var(--brand-ink);
+  color: var(--chrome-ink);
 }
 
 .tab-icon {
@@ -447,13 +440,13 @@ p {
 
 .tab-dot {
   position: absolute;
-  top: -1px;
-  right: -3px;
-  width: 7px;
-  height: 7px;
-  border: 1.5px solid var(--surface);
+  top: -2px;
+  right: -4px;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--chrome);
   border-radius: 50%;
-  background: var(--danger);
+  background: #e5736c;
 }
 
 .tab-label {
@@ -462,39 +455,57 @@ p {
 }
 
 @media (min-width: 960px) {
-  .app-body {
-    grid-template-columns: 216px minmax(0, 1fr);
-    gap: 28px;
+  .app {
+    display: grid;
+    grid-template-columns: var(--rail-w) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
-  /* Alinhamento da coluna de navegacao.
-     ---------------------------------------------------------------------
-     Dois ajustes, os dois medidos na tela e nao no olho:
+  .app-body {
+    display: contents;
+  }
 
-     `margin-left` negativo de 6px: cada item tem 12px de recuo interno para o
-     fundo do item ativo nao encostar no texto, e o botao da marca tem 6px de
-     recuo proprio. A conta e 12 - 6 = 6: assim o icone do menu nasce na mesma
-     linha vertical da logo desenhada, nao da caixa invisivel do botao. O fundo
-     do item ativo passa a sangrar 6px para fora, que e o comportamento normal
-     de menu lateral.
-
-     `top` sem os 16px extras: o conteudo comeca colado na barra de cima, e os
-     dois tem o mesmo respiro interno de 22px. Com os 16px a mais, o primeiro
-     item do menu nascia 16px abaixo do titulo da pagina. Sem eles, os dois
-     comecam na mesma altura, e o respiro ao rolar continua vindo do padding. */
+  /* A coluna de menu ocupa as duas linhas da grade e fica presa no topo com a
+     altura da janela: a marca em cima e a assinatura embaixo nao rolam. */
   .rail {
-    display: block;
+    grid-column: 1;
+    grid-row: 1 / span 2;
     position: sticky;
-    top: var(--topbar-h);
-    align-self: start;
-    margin-left: -6px;
-    padding: 22px 0;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    padding: 32px 20px 28px 28px;
+    border-right: 1px solid var(--chrome-line);
+    background: var(--chrome);
+    color: var(--chrome-ink);
+  }
+
+  .rail-brand {
+    display: flex;
+    align-items: center;
+    align-self: flex-start;
+    margin: 0 0 36px;
+    padding: 6px 10px;
+    border: 0;
+    border-radius: var(--r-pill);
+    background: transparent;
+    color: var(--chrome-ink);
+  }
+
+  .rail-brand:hover {
+    background: var(--chrome-hover);
+  }
+
+  .rail-brand .brand-logo {
+    height: 56px;
   }
 
   .rail ul {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    flex: 1 1 auto;
+    gap: 4px;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -503,44 +514,98 @@ p {
   .rail-item {
     display: flex;
     align-items: center;
-    gap: 11px;
+    gap: 14px;
     width: 100%;
-    padding: 9px 12px;
+    min-height: 52px;
+    padding: 0 16px;
     border: 0;
-    border-radius: var(--r-control);
+    border-radius: var(--r-pill);
     background: transparent;
-    color: var(--ink-2);
-    font-size: var(--t-lg);
+    color: var(--chrome-ink-2);
+    font-size: var(--t-md);
     font-weight: 500;
     text-align: left;
   }
 
   .rail-item:hover {
-    background: var(--surface-2);
-    color: var(--ink);
+    background: var(--chrome-hover);
+    color: var(--chrome-ink);
   }
 
+  /* Item ativo: pilula no oliva da marca, um tom acima do fundo. E o unico
+     verde "vivo" do chrome, o que faz a tela atual saltar de longe. */
   .rail-item.active {
-    background: var(--brand-soft);
-    color: var(--brand-ink);
-    font-weight: 650;
+    background: var(--chrome-active);
+    color: var(--chrome-ink);
+    font-weight: 600;
   }
 
   .rail-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 26px;
+    height: 26px;
     margin-left: auto;
-    padding: 1px 7px;
+    padding: 0 8px;
     border-radius: var(--r-pill);
-    background: var(--danger-soft);
+    background: var(--chrome-ink);
     color: var(--danger);
     font-size: var(--t-xs);
     font-weight: 700;
   }
 
+  /* A barra de cima passa a viver na coluna de conteudo, so com busca e conta.
+     A marca dela some: ja esta no topo do menu. */
+  .topbar {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .topbar-inner {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "search account";
+    gap: 24px;
+    padding: 18px clamp(32px, 5vw, 72px) 18px clamp(28px, 4vw, 64px);
+  }
+
+  .topbar .brand {
+    display: none;
+  }
+
+  /* `margin-inline: auto` centraliza a busca na sobra e empurra a conta para
+     a borda direita. A busca tem teto de 560px para nao virar um campo gigante
+     no monitor. */
+  .topbar-search {
+    max-width: 560px;
+    margin-inline: 0 auto;
+    height: 56px;
+  }
+
+  .topbar-account {
+    width: auto;
+    height: 56px;
+    padding: 0 22px 0 18px;
+  }
+
+  .topbar-account span {
+    display: inline;
+  }
+
   .content {
-    padding: 22px 0 64px;
+    grid-column: 2;
+    grid-row: 2;
+    gap: 56px;
+    padding: 40px clamp(32px, 5vw, 72px) 64px clamp(28px, 4vw, 64px);
   }
 
   .tabbar {
+    display: none;
+  }
+
+  /* A assinatura da DG aparece uma vez por tela: no computador, no pe do
+     menu; a do rodape do conteudo se esconde. */
+  .content > .brand-signature {
     display: none;
   }
 }
@@ -550,28 +615,26 @@ p {
    ========================================================================= */
 
 .page-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   margin: 0;
-}
-
-.eyebrow {
-  margin: 0 0 4px;
-  color: var(--ink-3);
-  font-size: var(--t-sm);
-  font-weight: 600;
-  letter-spacing: 0.02em;
 }
 
 .page-header h2 {
   margin: 0;
-  font-size: clamp(1.875rem, 1.5rem + 1.5vw, 2.5rem);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.25;
+  max-width: 22ch;
+  font-family: var(--font-display);
+  font-size: clamp(2.125rem, 1.7rem + 1.6vw, 3rem);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.05;
+  text-wrap: pretty;
 }
 
 .page-subtitle {
-  margin: 6px 0 0;
-  max-width: 62ch;
+  margin: 0;
+  max-width: 60ch;
   color: var(--ink-2);
   font-size: var(--t-lg);
   line-height: 1.55;
@@ -581,40 +644,67 @@ p {
    Tela principal
    ========================================================================= */
 
-.hero h1 {
-  margin: 0;
-  max-width: 20ch;
-  font-size: clamp(2.125rem, 1.6rem + 2.4vw, 3rem);
-  font-weight: 700;
-  letter-spacing: -0.025em;
-  line-height: 1.15;
+.home-opening {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 32px;
+  align-items: center;
 }
 
-.hero p {
-  margin: 10px 0 0;
-  max-width: 56ch;
+@media (min-width: 960px) {
+  .home-opening {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 64px;
+  }
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.hero h1 {
+  margin: 0;
+  max-width: 14ch;
+  font-family: var(--font-display);
+  font-size: clamp(2.5rem, 1.8rem + 2.6vw, 4rem);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.02;
+  text-wrap: pretty;
+}
+
+.hero > p {
+  margin: 0;
+  max-width: 32ch;
   color: var(--ink-2);
   font-size: var(--t-xl);
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
 .hero-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 18px;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
 }
 
+/* Botoes
+   ------
+   Pilula. A acao principal e o unico bloco de oliva cheio da tela; a secundaria
+   e tonal, sem borda, e le como "tambem da para fazer isso" sem competir. */
 .primary-button,
 .secondary-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-height: var(--touch);
-  padding: 0 18px;
-  border: 1px solid transparent;
-  border-radius: var(--r-control);
+  gap: 10px;
+  min-height: 56px;
+  padding: 0 26px;
+  border: 0;
+  border-radius: var(--r-pill);
   font-size: var(--t-lg);
   font-weight: 600;
 }
@@ -629,132 +719,170 @@ p {
 }
 
 .secondary-button {
-  border-color: var(--line-strong);
-  background: var(--surface);
+  background: var(--surface-2);
   color: var(--ink);
 }
 
 .secondary-button:hover:not(:disabled) {
-  background: var(--surface-2);
-}
-
-/* Faixa do perfil de alergias: o estado mais importante da tela inicial. */
-/* Com o texto maior, os tres pedacos desta faixa (icone, aviso e acao) deixaram
-   de caber numa linha so no celular: o icone era esmagado de 20px para 7px e o
-   aviso ficava numa coluna estreita, quebrando em quatro linhas. Agora a faixa
-   quebra de propria vontade - a acao desce para a linha de baixo - e o icone e
-   proibido de encolher. */
-.profile-strip {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 14px 16px;
-  border: 1px solid var(--warn-line);
-  border-radius: var(--r-card);
-  background: var(--warn-soft);
-  color: var(--warn);
-  text-align: left;
-}
-
-.profile-strip > svg {
-  flex: 0 0 auto;
-}
-
-.profile-strip.on {
-  border-color: var(--ok-line);
-  background: var(--ok-soft);
+  background: var(--brand-soft);
   color: var(--brand-ink);
 }
 
-/* `12rem` e o ponto de quebra: acima disso o aviso fica na mesma linha do
-   icone; abaixo, a acao desce sozinha em vez de espremer o texto. */
-.profile-strip > span:not(.profile-strip-action) {
+/* Cartao do perfil de alergias: o estado mais importante da tela inicial.
+   Divide a primeira dobra com o titulo. Sem alergia marcada e ambar (aviso);
+   com alergia marcada e salvia (a marca cuidando). */
+.profile-strip {
   display: flex;
-  flex: 1 1 12rem;
   flex-direction: column;
-  gap: 2px;
-  min-width: 0;
+  align-items: flex-start;
+  gap: 14px;
+  width: 100%;
+  padding: 26px 24px 24px;
+  border: 0;
+  border-radius: var(--r-card);
+  background: var(--warn-soft);
+  color: var(--ink);
+  text-align: left;
+}
+
+.profile-strip .eyebrow,
+.profile-strip svg {
+  color: var(--warn);
+}
+
+.profile-strip.on {
+  background: var(--brand-soft);
+}
+
+.profile-strip.on .eyebrow,
+.profile-strip.on svg {
+  color: var(--brand-ink);
+}
+
+.profile-strip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
 }
 
 .profile-strip strong {
-  font-size: var(--t-lg);
+  font-family: var(--font-display);
+  font-size: clamp(1.75rem, 1.4rem + 1.2vw, 2.375rem);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  text-wrap: pretty;
 }
 
 .profile-strip small {
-  color: inherit;
+  color: var(--ink-2);
   font-size: var(--t-base);
-  opacity: 0.85;
+  line-height: 1.5;
 }
 
 .profile-strip-action {
-  margin-left: auto;
-  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  color: var(--brand-ink);
   font-size: var(--t-md);
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 6px;
+}
+
+.profile-strip:not(.on) .profile-strip-action {
+  color: var(--warn);
+}
+
+@media (min-width: 960px) {
+  .profile-strip {
+    gap: 20px;
+    padding: 40px 40px 36px;
+  }
+}
+
+/* Experimente */
+.samples {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.samples-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 18px;
 }
 
 .samples h2,
 .shortcut-grid h2 {
-  margin: 0 0 10px;
-  font-size: var(--t-xl);
-  font-weight: 650;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.625rem, 1.4rem + 0.7vw, 1.875rem);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
 }
 
 .samples-note {
-  margin: 10px 0 0;
+  margin: 0;
   color: var(--ink-3);
   font-size: var(--t-base);
 }
 
+/* Chips: pilula tonal, sem borda, com o alvo de toque completo. */
 .chip-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
 }
 
 .chip-list button {
   min-height: var(--touch);
-  padding: 0 14px;
-  border: 1px solid var(--line);
+  padding: 0 20px;
+  border: 0;
   border-radius: var(--r-pill);
-  background: var(--surface);
+  background: var(--surface-2);
   color: var(--ink-2);
   font-size: var(--t-md);
   font-weight: 500;
 }
 
 .chip-list button:hover {
-  border-color: var(--brand-line);
   background: var(--brand-soft);
   color: var(--brand-ink);
 }
 
+/* Atalhos: lista editorial. Cada item nasce de um fio, o titulo em serifa e o
+   icone em oliva. Sem caixa - o fio e o espaco fazem a separacao. */
 .shortcut-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0 40px;
 }
 
 .shortcut {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 6px;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-card);
-  background: var(--surface);
+  gap: 8px;
+  padding: 24px 0 20px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
   color: var(--ink);
   text-align: left;
-  box-shadow: var(--shadow);
 }
 
-.shortcut:hover {
-  border-color: var(--brand-line);
-  box-shadow: var(--shadow-lift);
+.shortcut:hover strong {
+  color: var(--brand-ink);
 }
 
 .shortcut svg {
@@ -762,7 +890,11 @@ p {
 }
 
 .shortcut strong {
-  font-size: var(--t-lg);
+  font-family: var(--font-display);
+  font-size: var(--t-2xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
 }
 
 .shortcut span {
@@ -772,12 +904,14 @@ p {
 }
 
 /* =========================================================================
-   Cartoes e blocos genericos
-   ========================================================================= */
+   Blocos genericos
+   =========================================================================
+   Um bloco e papel sobre creme: um tom mais claro que o fundo, raio grande,
+   sem borda e sem sombra. */
 
 .page-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
 }
 
@@ -785,12 +919,10 @@ p {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 7px;
-  padding: 16px;
-  border: 1px solid var(--line);
+  gap: 8px;
+  padding: 22px;
   border-radius: var(--r-card);
   background: var(--surface);
-  box-shadow: var(--shadow);
 }
 
 .page-card svg {
@@ -799,38 +931,39 @@ p {
 
 .page-card h3 {
   margin: 0;
-  font-size: var(--t-lg);
-  font-weight: 650;
+  font-family: var(--font-display);
+  font-size: var(--t-2xl);
+  font-weight: 600;
+  line-height: 1.1;
 }
 
 .page-card p {
   margin: 0;
   color: var(--ink-2);
-  font-size: var(--t-md);
+  font-size: var(--t-base);
   line-height: 1.5;
 }
 
 .page-card button {
   min-height: var(--touch);
   margin-top: 4px;
-  padding: 0 14px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-control);
-  background: var(--surface);
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
   font-size: var(--t-md);
   font-weight: 600;
 }
 
 .page-card button:hover {
-  background: var(--surface-2);
+  background: var(--brand-soft);
+  color: var(--brand-ink);
 }
 
 .info-block {
-  padding: 16px;
-  border: 1px solid var(--line);
+  padding: 22px 24px;
   border-radius: var(--r-card);
   background: var(--surface);
-  box-shadow: var(--shadow);
 }
 
 .block-heading {
@@ -838,13 +971,16 @@ p {
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 10px;
+  margin-bottom: 14px;
 }
 
 .block-heading h4 {
   margin: 0;
-  font-size: var(--t-lg);
-  font-weight: 650;
+  font-family: var(--font-display);
+  font-size: var(--t-3xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
 }
 
 .block-heading span {
@@ -855,15 +991,18 @@ p {
 .panel-heading {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   margin-bottom: 12px;
 }
 
 .panel-heading h2,
 .panel-heading h4 {
   margin: 0;
-  font-size: var(--t-xl);
-  font-weight: 650;
+  font-family: var(--font-display);
+  font-size: var(--t-3xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
 }
 
 .panel-heading svg {
@@ -872,12 +1011,14 @@ p {
 
 /* =========================================================================
    Busca e formularios
-   ========================================================================= */
+   =========================================================================
+   Campo e pilula tonal, sem borda. O foco desenha a borda em oliva e um halo
+   suave; e o unico momento em que o campo ganha contorno. */
 
 .search-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .search-card label {
@@ -888,34 +1029,41 @@ p {
 
 .input-row {
   display: flex;
-  gap: 8px;
+  gap: 10px;
 }
 
 .input-row input {
   flex: 1 1 auto;
   min-width: 0;
-  min-height: var(--touch);
-  padding: 0 14px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-control);
-  background: var(--surface);
+  min-height: 56px;
+  padding: 0 22px;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--ink);
   font-size: var(--t-lg);
+}
+
+.input-row input::placeholder,
+.field-with-icon input::placeholder,
+.assistant-form input::placeholder {
+  color: var(--ink-3);
 }
 
 .input-row input:focus-visible {
   border-color: var(--brand);
   outline: none;
-  box-shadow: 0 0 0 3px var(--brand-soft);
+  box-shadow: 0 0 0 3px rgba(90, 105, 66, 0.18);
 }
 
 .input-row button {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: var(--touch);
-  padding: 0 18px;
+  gap: 10px;
+  min-height: 56px;
+  padding: 0 24px;
   border: 0;
-  border-radius: var(--r-control);
+  border-radius: var(--r-pill);
   background: var(--brand);
   color: #ffffff;
   font-size: var(--t-lg);
@@ -934,58 +1082,56 @@ p {
 
 .field-with-icon svg {
   position: absolute;
-  left: 12px;
+  left: 20px;
   color: var(--ink-3);
   pointer-events: none;
 }
 
 .field-with-icon input {
   width: 100%;
-  min-height: var(--touch);
-  padding: 0 14px 0 38px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-control);
-  background: var(--surface);
+  min-height: 56px;
+  padding: 0 22px 0 50px;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--ink);
   font-size: var(--t-lg);
 }
 
 .field-with-icon input:focus-visible {
   border-color: var(--brand);
   outline: none;
-  box-shadow: 0 0 0 3px var(--brand-soft);
+  box-shadow: 0 0 0 3px rgba(90, 105, 66, 0.18);
 }
 
+/* Linha de alergia com caixa de marcar. Papel sobre creme; marcada, vira
+   salvia. A caixa tem 24px porque enxergar se esta marcada e a informacao que
+   decide se o alerta vai aparecer. */
 .check-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: var(--touch);
-  padding: 0 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-control);
+  gap: 12px;
+  min-height: 52px;
+  padding: 0 16px;
+  border-radius: var(--r-block);
   background: var(--surface);
-  font-size: var(--t-lg);
+  font-size: var(--t-md);
   cursor: pointer;
 }
 
 .check-row:hover {
-  border-color: var(--line-strong);
   background: var(--surface-2);
 }
 
 .check-row:has(input:checked) {
-  border-color: var(--brand-line);
   background: var(--brand-soft);
   color: var(--brand-ink);
   font-weight: 600;
 }
 
-/* A linha inteira ja e clicavel, entao 18px bastavam para o toque. O problema e
-   enxergar: com 18px fica dificil ter certeza, de relance, se a alergia esta
-   marcada ou nao - e essa e a informacao que decide se o alerta vai aparecer. */
 .check-row input {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   flex: 0 0 auto;
   accent-color: var(--brand);
 }
@@ -998,10 +1144,9 @@ p {
 .assistant-status {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 11px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-control);
+  gap: 10px;
+  padding: 12px 18px;
+  border-radius: var(--r-block);
   background: var(--surface);
   color: var(--ink-2);
   font-size: var(--t-md);
@@ -1009,21 +1154,18 @@ p {
 
 .status-line.success,
 .assistant-status.success {
-  border-color: var(--ok-line);
   background: var(--ok-soft);
-  color: var(--brand-ink);
+  color: var(--ok);
 }
 
 .status-line.warning,
 .assistant-status.warning {
-  border-color: var(--warn-line);
   background: var(--warn-soft);
   color: var(--warn);
 }
 
 .status-line.error,
 .assistant-status.error {
-  border-color: var(--danger-line);
   background: var(--danger-soft);
   color: var(--danger);
 }
@@ -1042,19 +1184,17 @@ p {
    Scanner
    ========================================================================= */
 
-/* `minmax(0, 1fr)` em vez do `1fr` implicito: coluna de grid nao encolhe
-   abaixo do conteudo minimo por padrao, e com a fonte maior o campo de codigo
-   e o video passaram a exigir mais que a largura do celular - o que empurrava
-   a pagina inteira para o lado em 320px. */
+/* `minmax(0, 1fr)`: coluna de grid nao encolhe abaixo do conteudo minimo por
+   padrao, e o video empurrava a pagina para o lado em 320px. */
 .scan-page-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
+  gap: 20px;
 }
 
 @media (min-width: 860px) {
   .scan-page-grid {
-    grid-template-columns: minmax(0, 1.15fr) minmax(260px, 0.85fr);
+    grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
     align-items: start;
   }
 }
@@ -1065,9 +1205,8 @@ p {
   place-items: center;
   aspect-ratio: 4 / 3;
   overflow: hidden;
-  border: 1px solid var(--line);
   border-radius: var(--r-card);
-  background: #101613;
+  background: #14180f;
 }
 
 /* `<video>` tem largura natural de 300px. Sem soltar o minimo, ele nao cabe
@@ -1084,24 +1223,22 @@ p {
   inset: 0;
   display: grid;
   place-items: center;
-  color: rgba(255, 255, 255, 0.35);
+  color: rgba(251, 250, 245, 0.35);
 }
 
 .scan-frame {
   position: absolute;
   inset: 16% 12%;
-  border: 2px solid rgba(255, 255, 255, 0.85);
-  border-radius: 10px;
+  border: 2px solid rgba(251, 250, 245, 0.85);
+  border-radius: 14px;
 }
 
 .scan-controls {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
-/* Desligar camera e lanterna ficam lado a lado, e quebram para duas linhas em
-   tela estreita em vez de espremer o texto do botao. */
 .scan-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1121,21 +1258,22 @@ p {
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  padding: 40px 20px;
+  padding: 48px 24px;
   border: 1px dashed var(--line-strong);
   border-radius: var(--r-card);
-  background: var(--surface);
+  background: transparent;
   text-align: center;
 }
 
 .empty-state svg {
-  color: var(--line-strong);
+  color: var(--sage);
 }
 
 .empty-state h3 {
-  margin: 6px 0 0;
-  font-size: var(--t-xl);
-  font-weight: 650;
+  margin: 8px 0 0;
+  font-family: var(--font-display);
+  font-size: var(--t-3xl);
+  font-weight: 600;
 }
 
 .empty-state p {
@@ -1148,12 +1286,13 @@ p {
 
 .content-grid {
   display: grid;
-  gap: 16px;
+  gap: 20px;
 }
 
 @media (min-width: 980px) {
   .content-grid {
-    grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+    grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
+    gap: 24px;
     align-items: start;
   }
 }
@@ -1162,76 +1301,100 @@ p {
 .insight-column {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
   min-width: 0;
 }
 
+/* Cabecalho do produto: sem caixa. Imagem em bloco tonal, marca como
+   sobretitulo, nome em serifa grande, metadados em chips. */
 .product-header {
   display: flex;
-  gap: 14px;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-card);
-  background: var(--surface);
-  box-shadow: var(--shadow);
+  align-items: flex-start;
+  gap: 20px;
+  padding: 4px 0;
 }
 
 .product-image-wrap {
   display: grid;
-  flex: 0 0 84px;
+  flex: 0 0 96px;
   place-items: center;
-  width: 84px;
-  height: 84px;
+  width: 96px;
+  height: 96px;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--r-control);
+  border-radius: var(--r-card);
   background: var(--surface-2);
-  color: var(--ink-3);
+  color: var(--sage);
+}
+
+@media (min-width: 640px) {
+  .product-header {
+    gap: 28px;
+  }
+
+  .product-image-wrap {
+    flex-basis: 128px;
+    width: 128px;
+    height: 128px;
+  }
 }
 
 .product-image {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  /* A foto vem do Open Food Facts com fundo branco; sobre a areia ela
+     desenhava um quadrado. */
+  mix-blend-mode: multiply;
 }
 
 .product-title {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   min-width: 0;
 }
 
 .product-title p {
-  margin: 0 0 2px;
+  margin: 0;
   color: var(--ink-3);
-  font-size: var(--t-base);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 .product-title h3 {
-  margin: 0 0 8px;
-  font-size: var(--t-2xl);
-  font-weight: 700;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.875rem, 1.5rem + 1.5vw, 3rem);
+  font-weight: 500;
   letter-spacing: -0.015em;
-  line-height: 1.3;
+  line-height: 1.05;
   overflow-wrap: break-word;
 }
 
 .product-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
+  margin-top: 2px;
 }
 
 .product-meta span {
-  padding: 3px 9px;
-  border: 1px solid var(--line);
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 14px;
   border-radius: var(--r-pill);
   background: var(--surface-2);
   color: var(--ink-2);
-  font-size: var(--t-sm);
+  font-size: var(--t-base);
   font-weight: 500;
 }
 
+/* Nutri-Score: a escala oficial A-E e a unica cor "de fora" que o app usa, e
+   so aqui. */
 .nutri-score {
-  border-color: transparent !important;
   color: #ffffff !important;
   font-weight: 700 !important;
 }
@@ -1253,12 +1416,11 @@ p {
 }
 
 .nutri-score.grade-e {
-  background: var(--danger) !important;
+  background: #b4231c !important;
 }
 
 /* `getNutriScoreClass` devolve "unknown" quando o produto nao tem nota. */
 .nutri-score.grade-unknown {
-  border-color: var(--line-strong) !important;
   background: var(--surface-2) !important;
   color: var(--ink-2) !important;
   font-weight: 600 !important;
@@ -1272,74 +1434,97 @@ p {
 
 .match-strip button {
   min-height: var(--touch);
-  padding: 0 12px;
-  border: 1px solid var(--line);
+  padding: 0 16px;
+  border: 0;
   border-radius: var(--r-pill);
-  background: var(--surface);
+  background: var(--surface-2);
   color: var(--ink-2);
   font-size: var(--t-base);
   font-weight: 500;
 }
 
 .match-strip button.active {
-  border-color: var(--brand);
   background: var(--brand-soft);
   color: var(--brand-ink);
-  font-weight: 650;
+  font-weight: 600;
 }
 
+/* Veredito do produto: o bloco mais importante da tela. O titulo em serifa
+   grande e a cor de fundo dizem tudo antes de o texto ser lido. */
 .analysis-banner {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 14px 16px;
-  border: 1px solid var(--line);
+  gap: 16px;
+  padding: 24px 24px 22px;
   border-radius: var(--r-card);
   background: var(--surface-2);
 }
 
+@media (min-width: 640px) {
+  .analysis-banner {
+    gap: 22px;
+    padding: 30px 32px 28px;
+  }
+}
+
 .analysis-banner svg {
   flex: 0 0 auto;
-  margin-top: 1px;
+  width: 30px;
+  height: 30px;
+  margin-top: 4px;
   color: var(--brand);
 }
 
-/* O icone acompanha o veredito: check verde ao lado de "Requer cuidado"
-   contradiz o texto. */
+/* O icone e o titulo acompanham o veredito: check verde ao lado de "Requer
+   cuidado" contradiz o texto. */
 .analysis-banner.danger {
-  border-color: var(--danger-line);
   background: var(--danger-soft);
 }
 
-.analysis-banner.danger svg {
+.analysis-banner.danger svg,
+.analysis-banner.danger strong {
   color: var(--danger);
 }
 
 .analysis-banner.warn {
-  border-color: var(--warn-line);
   background: var(--warn-soft);
 }
 
-.analysis-banner.warn svg {
+.analysis-banner.warn svg,
+.analysis-banner.warn strong {
   color: var(--warn);
+}
+
+.analysis-banner.good {
+  background: var(--ok-soft);
+}
+
+.analysis-banner.good svg,
+.analysis-banner.good strong {
+  color: var(--ok);
 }
 
 .analysis-banner div {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 8px;
 }
 
 .analysis-banner strong {
-  font-size: var(--t-lg);
+  font-family: var(--font-display);
+  font-size: clamp(1.625rem, 1.4rem + 0.8vw, 2.125rem);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.05;
 }
 
 .analysis-banner span {
   color: var(--ink-2);
-  font-size: var(--t-md);
+  font-size: var(--t-lg);
   line-height: 1.55;
 }
 
+/* Tabela nutricional: fios, numeros tabulares, sem zebra. */
 .nutrition-block table {
   width: 100%;
   border-collapse: collapse;
@@ -1348,24 +1533,29 @@ p {
 }
 
 .nutrition-block th {
-  padding: 8px 0;
+  padding: 8px 0 10px;
   border-bottom: 1px solid var(--line);
   color: var(--ink-3);
-  font-size: var(--t-sm);
+  font-size: var(--t-xs);
   font-weight: 600;
   text-align: left;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.1em;
 }
 
 .nutrition-block td {
-  padding: 9px 0;
+  padding: 12px 0;
   border-bottom: 1px solid var(--line);
+  color: var(--ink-2);
 }
 
 .nutrition-block td:last-child,
 .nutrition-block th:last-child {
   text-align: right;
+}
+
+.nutrition-block td:last-child {
+  color: var(--ink);
   font-weight: 600;
 }
 
@@ -1376,9 +1566,10 @@ p {
 .ingredients-copy {
   margin: 0;
   color: var(--ink-2);
-  font-size: var(--t-md);
-  line-height: 1.6;
+  font-size: var(--t-lg);
+  line-height: 1.65;
   overflow-wrap: break-word;
+  text-wrap: pretty;
 }
 
 .empty-copy {
@@ -1388,25 +1579,28 @@ p {
 }
 
 .risk-block.danger {
-  border-color: var(--danger-line);
   background: var(--danger-soft);
 }
 
 .risk-block.warn {
-  border-color: var(--warn-line);
   background: var(--warn-soft);
 }
 
+/* Etiquetas: pilulas de 40px. A de risco e a unica com borda no app, porque
+   precisa se destacar tambem sobre o fundo rosado do bloco de risco. */
 .tag-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 
 .danger-tag,
 .soft-tag,
 .quiet-tag {
-  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 16px;
   border: 1px solid transparent;
   border-radius: var(--r-pill);
   font-size: var(--t-base);
@@ -1415,18 +1609,16 @@ p {
 
 .danger-tag {
   border-color: var(--danger-line);
-  background: #ffffff;
+  background: var(--surface);
   color: var(--danger);
 }
 
 .soft-tag {
-  border-color: var(--warn-line);
   background: var(--warn-soft);
   color: var(--warn);
 }
 
 .quiet-tag {
-  border-color: var(--line);
   background: var(--surface-2);
   color: var(--ink-2);
   font-weight: 500;
@@ -1436,25 +1628,178 @@ p {
    Alergias e guia
    ========================================================================= */
 
-.allergy-page-grid,
-.allergy-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+/* Seletor de alergias
+   -------------------
+   Chips com o que esta marcado, campo de busca e a lista completa abrindo
+   abaixo, no fluxo. A lista usa `.check-row` para cada item, o mesmo bloco de
+   antes; o que mudou e que ela so aparece quando pedida. */
+.allergy-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.allergy-page-picker {
+  max-width: 640px;
+}
+
+.allergy-picker-selected {
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  min-height: 40px;
+}
+
+.allergy-picker-empty {
+  align-self: center;
+  color: var(--ink-3);
+  font-size: var(--t-base);
+}
+
+/* Chip de alergia marcada: salvia, com o botao de remover dentro. O botao tem
+   40px de alvo mesmo com o icone pequeno. */
+.allergy-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 40px;
+  padding: 0 4px 0 14px;
+  border-radius: var(--r-pill);
+  background: var(--brand-soft);
+  color: var(--brand-ink);
+  font-size: var(--t-base);
+  font-weight: 600;
+}
+
+.allergy-chip-remove {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: inherit;
+}
+
+.allergy-chip-remove:hover {
+  background: rgba(70, 82, 47, 0.12);
+}
+
+.allergy-picker-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 0 6px 0 18px;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--ink-3);
+}
+
+.allergy-picker-field:focus-within {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(90, 105, 66, 0.18);
+}
+
+.allergy-picker-field input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 48px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--t-lg);
+  outline: none;
+}
+
+.allergy-picker-field input::placeholder {
+  color: var(--ink-3);
+}
+
+/* Botao nativo de limpar do `type="search"` some: o campo ja tem o chevron e
+   o "x" do navegador destoa do resto. */
+.allergy-picker-field input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.allergy-picker-toggle {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--brand-ink);
+}
+
+.allergy-picker-toggle:hover {
+  background: var(--brand-soft);
+}
+
+/* A lista rola dentro de um painel de altura fixa. Com ~170 itens em 14
+   grupos, o cabecalho de cada grupo fica preso no topo enquanto o grupo passa,
+   para a pessoa saber em que categoria esta. */
+.allergy-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 420px;
+  padding: 6px;
+  overflow-y: auto;
+  border-radius: var(--r-card);
+  background: var(--surface-2);
+}
+
+.allergy-picker-group-title {
+  position: sticky;
+  top: -6px;
+  z-index: 1;
+  margin: 0;
+  padding: 12px 10px 8px;
+  background: var(--surface-2);
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.allergy-picker-group-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 6px;
+}
+
+.allergy-picker-list .check-row {
+  min-height: 48px;
+}
+
+.allergy-picker-list .empty-copy {
+  padding: 12px 10px;
+}
+
+.allergy-picker-count {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--t-sm);
 }
 
 .guide-band {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
 .guide-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 13px 15px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-card);
+  gap: 12px;
+  padding: 16px 20px;
+  border-radius: var(--r-block);
   background: var(--surface);
   color: var(--ink-2);
   font-size: var(--t-md);
@@ -1473,18 +1818,16 @@ p {
 .assistant-card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 18px;
-  border: 1px solid var(--line);
+  gap: 14px;
+  padding: 24px;
   border-radius: var(--r-card);
   background: var(--surface);
-  box-shadow: var(--shadow);
 }
 
 .assistant-disclaimer {
   margin: 0;
-  padding: 11px 13px;
-  border-radius: var(--r-control);
+  padding: 14px 18px;
+  border-radius: var(--r-block);
   background: var(--surface-2);
   color: var(--ink-2);
   font-size: var(--t-base);
@@ -1499,16 +1842,15 @@ p {
 
 .prompt-suggestions button {
   min-height: var(--touch);
-  padding: 0 14px;
-  border: 1px solid var(--line);
+  padding: 0 18px;
+  border: 0;
   border-radius: var(--r-pill);
-  background: var(--surface);
+  background: var(--surface-2);
   color: var(--ink-2);
   font-size: var(--t-md);
 }
 
 .prompt-suggestions button:hover:not(:disabled) {
-  border-color: var(--brand-line);
   background: var(--brand-soft);
   color: var(--brand-ink);
 }
@@ -1516,7 +1858,7 @@ p {
 .chat-log {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   max-height: 460px;
   padding: 4px;
   overflow-y: auto;
@@ -1531,8 +1873,8 @@ p {
 .chat-message {
   max-width: 88%;
   margin: 0;
-  padding: 11px 14px;
-  border-radius: 14px;
+  padding: 14px 18px;
+  border-radius: 20px;
   font-size: var(--t-lg);
   line-height: 1.6;
   overflow-wrap: break-word;
@@ -1542,14 +1884,13 @@ p {
   align-self: flex-end;
   background: var(--brand);
   color: #ffffff;
-  border-bottom-right-radius: 4px;
+  border-bottom-right-radius: 6px;
 }
 
 .chat-message.assistant {
   align-self: flex-start;
-  border: 1px solid var(--line);
   background: var(--surface-2);
-  border-bottom-left-radius: 4px;
+  border-bottom-left-radius: 6px;
 }
 
 .chat-message.pending {
@@ -1561,44 +1902,45 @@ p {
 
 .chat-source {
   display: block;
-  margin-bottom: 3px;
+  margin-bottom: 4px;
   color: var(--ink-3);
   font-size: var(--t-xs);
-  font-weight: 700;
-  letter-spacing: 0.03em;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
 .assistant-form {
   display: flex;
-  gap: 8px;
+  gap: 10px;
 }
 
 .assistant-form input {
   flex: 1 1 auto;
   min-width: 0;
-  min-height: var(--touch);
-  padding: 0 14px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-control);
-  background: var(--surface);
+  min-height: 56px;
+  padding: 0 22px;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--ink);
   font-size: var(--t-lg);
 }
 
 .assistant-form input:focus-visible {
   border-color: var(--brand);
   outline: none;
-  box-shadow: 0 0 0 3px var(--brand-soft);
+  box-shadow: 0 0 0 3px rgba(90, 105, 66, 0.18);
 }
 
 .assistant-form button {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: var(--touch);
-  padding: 0 18px;
+  gap: 10px;
+  min-height: 56px;
+  padding: 0 24px;
   border: 0;
-  border-radius: var(--r-control);
+  border-radius: var(--r-pill);
   background: var(--brand);
   color: #ffffff;
   font-weight: 600;
@@ -1611,17 +1953,18 @@ p {
 .retry-button {
   align-self: flex-start;
   min-height: var(--touch);
-  padding: 0 14px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-control);
-  background: var(--surface);
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
   color: var(--ink-2);
   font-size: var(--t-md);
   font-weight: 600;
 }
 
 .retry-button:hover {
-  background: var(--surface-2);
+  background: var(--brand-soft);
+  color: var(--brand-ink);
 }
 
 /* Veredito deterministico: o bloco mais importante da tela do assistente.
@@ -1629,28 +1972,24 @@ p {
 .allergy-verdict {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 13px 15px;
-  border: 1px solid transparent;
-  border-radius: var(--r-card);
+  gap: 8px;
+  padding: 16px 18px;
+  border-radius: var(--r-block);
 }
 
 .allergy-verdict.danger {
-  border-color: var(--danger-line);
   background: var(--danger-soft);
   color: var(--danger);
 }
 
 .allergy-verdict.warning {
-  border-color: var(--warn-line);
   background: var(--warn-soft);
   color: var(--warn);
 }
 
 .allergy-verdict.safe {
-  border-color: var(--ok-line);
   background: var(--ok-soft);
-  color: var(--brand-ink);
+  color: var(--ok);
 }
 
 .allergy-verdict-title {
@@ -1658,8 +1997,10 @@ p {
   align-items: center;
   gap: 8px;
   margin: 0;
-  font-size: var(--t-lg);
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: var(--t-2xl);
+  font-weight: 600;
+  line-height: 1.1;
 }
 
 .allergy-verdict-tags {
@@ -1678,7 +2019,7 @@ p {
 .allergy-verdict-origin {
   margin: 0;
   font-size: var(--t-sm);
-  opacity: 0.8;
+  opacity: 0.85;
 }
 
 /* =========================================================================
@@ -1688,13 +2029,13 @@ p {
 .auth-layout,
 .account-grid {
   display: grid;
-  gap: 16px;
+  gap: 20px;
 }
 
 @media (min-width: 900px) {
   .auth-layout,
   .account-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(280px, 0.8fr);
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 0.8fr);
     align-items: start;
   }
 }
@@ -1703,27 +2044,44 @@ p {
 .account-card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 18px;
-  border: 1px solid var(--line);
+  gap: 14px;
+  padding: 24px;
   border-radius: var(--r-card);
   background: var(--surface);
-  box-shadow: var(--shadow);
 }
 
+.account-card h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--t-3xl);
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.account-card p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--t-base);
+}
+
+/* Segmentado: pilula tonal com a aba ativa em papel. */
 .auth-tabs {
   display: flex;
   gap: 4px;
   padding: 4px;
-  border-radius: var(--r-control);
+  border-radius: var(--r-pill);
   background: var(--surface-2);
 }
 
 .auth-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   flex: 1 1 0;
   min-height: var(--touch);
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--r-pill);
   background: transparent;
   color: var(--ink-2);
   font-size: var(--t-md);
@@ -1734,16 +2092,18 @@ p {
 .auth-tabs button[aria-pressed="true"] {
   background: var(--surface);
   color: var(--brand-ink);
-  box-shadow: var(--shadow);
 }
 
 .auth-form {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .auth-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   color: var(--ink-2);
   font-size: var(--t-md);
   font-weight: 600;
@@ -1752,15 +2112,16 @@ p {
 .account-avatar {
   display: grid;
   place-items: center;
-  width: 46px;
-  height: 46px;
+  width: 56px;
+  height: 56px;
   border-radius: var(--r-pill);
   background: var(--brand-soft);
   color: var(--brand-ink);
 }
 
-.profile-card strong {
-  font-size: var(--t-xl);
+.profile-card > span {
+  color: var(--ink-3);
+  font-size: var(--t-base);
 }
 
 .saved-allergies {
@@ -1771,7 +2132,10 @@ p {
 
 .account-benefits {
   background: var(--surface-2);
-  box-shadow: none;
+}
+
+.account-benefits .guide-item {
+  background: var(--surface);
 }
 
 /* =========================================================================
@@ -1786,34 +2150,114 @@ p {
     display: none !important;
   }
 
+  .app {
+    display: block;
+  }
+
   .content {
     padding: 0;
   }
 }
 
 /* =========================================================================
-   Assinatura da DG Nutricao
+   Assinatura de quem fez
    =========================================================================
-   O NutriScan e o produto; a DG Nutricao assina. A logo completa aparece aqui,
-   discreta, uma vez por tela.
-
-   O recorte vem da caixa de tinta medida no arquivo original: conteudo em
-   x 366, y 305, com 536x606 de uma imagem de 1254x1254. As contas abaixo
-   derivam tudo da altura desejada, entao mudar `--logo-h` reescala sem
-   quebrar o enquadramento. */
+   "Desenvolvido por" e os nomes, em serifa. Uma vez por tela: no pe do menu
+   lateral no computador (sobre o chrome escuro), no rodape do conteudo no
+   celular (sobre o creme). */
 .brand-signature {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
+  gap: 6px;
   margin-top: 8px;
   padding: 20px 0 4px;
   border-top: 1px solid var(--line);
+  text-align: center;
 }
 
 .brand-signature-label {
-  font-size: var(--t-sm);
   color: var(--ink-3);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.brand-signature-authors {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-display);
+  font-size: var(--t-md);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.rail .brand-signature {
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 24px;
+  padding: 20px 0 0 8px;
+  border-top-color: var(--chrome-line);
+  text-align: left;
+}
+
+.rail .brand-signature-label {
+  color: var(--chrome-ink-2);
+}
+
+.rail .brand-signature-authors {
+  flex-direction: column;
+  gap: 2px;
+  color: var(--chrome-ink);
+}
+
+/* =========================================================================
+   Regras preservadas da v0.7.0
+   =========================================================================
+   O restante deste arquivo veio do pacote de design. Ele partiu do mesmo
+   commit (168ae69), entao a maior parte e evolucao do mesmo texto - mas foi
+   escrito antes da v0.7.0 e nao conhece as telas criadas depois.
+
+   Os blocos abaixo sao exatamente os que o JSX atual ainda usa e que sumiriam
+   numa substituicao direta. Eles usam os mesmos tokens do design novo, entao
+   herdam a paleta e a escala dele. */
+
+/* Simbolo da marca sobre o chrome escuro.
+   -----------------------------------------------------------------------
+   O design novo usa `public/nutriscan-logo.png`, um PNG transparente que vira
+   creme por `filter: brightness(0) invert(1)`. A logo da DG e um JPEG verde
+   com FUNDO BRANCO: o mesmo filtro deixaria o fundo preto, e sem filtro ela
+   desaparece no oliva escuro - foi o que aconteceu na primeira aplicacao.
+
+   A saida e dar a ela a superficie para a qual foi desenhada: uma pastilha
+   creme. O monograma recupera o contraste e a barra continua escura. */
+.brand-mark {
+  display: block;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--chrome-ink);
+  object-fit: contain;
+}
+
+.brand-name {
+  /* Creme, nao `--brand-ink`: sobre o chrome escuro o oliva ficava ilegivel.
+     A serifa do design novo entra aqui tambem, para a barra falar a mesma
+     lingua do resto da tela. */
+  color: var(--chrome-ink);
+  font-family: var(--font-display);
+  font-size: var(--t-2xl);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .brand-signature-frame {
@@ -1826,10 +2270,6 @@ p {
   overflow: hidden;
 }
 
-/* O arquivo e JPEG, entao nao tem transparencia: sobre o off-white da pagina
-   ele desenhava um retangulo branco em volta da marca. `multiply` faz o branco
-   do arquivo desaparecer no fundo e preserva os verdes - resolve sem exigir um
-   PNG novo. Como o fundo aqui e quase branco, os tons ficam fieis ao original. */
 .brand-signature-frame img {
   position: absolute;
   top: calc(var(--logo-h) * -305 / 606);
@@ -1840,12 +2280,18 @@ p {
   mix-blend-mode: multiply;
 }
 
-/* =========================================================================
-   Historico e favoritos
-   =========================================================================
-   Tudo aqui usa os tokens da escala e o alvo de toque de 48px. O publico do
-   app tem idade avancada: lista de produto com linha apertada e alvo pequeno e
-   exatamente o que ele nao consegue usar. */
+.allergy-page-grid,
+.allergy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px;
+}
+
+.allergy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px;
+}
 
 .collection-block {
   margin-bottom: 24px;
@@ -1885,7 +2331,7 @@ p {
   min-height: var(--touch);
   padding: 0 14px;
   border: 1px solid var(--line-strong);
-  border-radius: var(--r-control);
+  border-radius: var(--r-block);
   background: var(--surface);
   color: var(--ink-2);
   font-size: var(--t-md);
@@ -1929,7 +2375,7 @@ p {
   flex: 0 0 auto;
   width: 56px;
   height: 56px;
-  border-radius: var(--r-control);
+  border-radius: var(--r-block);
   object-fit: cover;
   background: var(--surface-2);
 }
@@ -1972,7 +2418,7 @@ p {
   width: var(--touch);
   height: var(--touch);
   border: 1px solid var(--line);
-  border-radius: var(--r-control);
+  border-radius: var(--r-block);
   background: var(--surface);
   color: var(--ink-3);
 }
@@ -2011,4 +2457,41 @@ p {
 
 .favorite-button.on svg {
   fill: currentColor;
+}
+
+/* A faixa de alergia da tela inicial.
+   -----------------------------------------------------------------------
+   O design novo trata `strong` e `small` como filhos diretos de
+   `.profile-strip`, separados pelo `gap` da coluna. O JSX desta versao agrupa
+   os dois dentro de um `<span>`, entao esse span vira UM item do flex e os
+   textos colam um no outro - foi o que apareceu na primeira aplicacao.
+
+   Aqui o span tambem vira coluna, com o mesmo respiro. A faixa fica igual ao
+   design sem exigir mudanca no componente. */
+.profile-strip > span:not(.profile-strip-action) {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Barra de abas no aparelho mais estreito que o app declara suportar.
+   -----------------------------------------------------------------------
+   Em 320px os 16px de recuo lateral deixam 304px para cinco colunas de ~61px,
+   e "Assistente" mede 64px na fonte do design - a barra estoura em 5px e o
+   ultimo rotulo corta.
+
+   O que encolhe aqui e o espaco, nunca a fonte: o rotulo e justamente o que
+   esse publico precisa conseguir ler. Sem o recuo, cada coluna fica com 64px e
+   o texto cabe inteiro. */
+@media (max-width: 360px) {
+  .tabbar {
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .tab-label {
+    letter-spacing: -0.01em;
+  }
 }
