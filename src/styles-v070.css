@@ -206,3 +206,31 @@
     padding-left: 0;
   }
 }
+
+/* -------------------------------------------------------------------------
+   AJUSTE PEDIDO PELO DONO - logo centralizada na barra do celular
+   -------------------------------------------------------------------------
+   Pedido em 19/09/2026. Fica aqui, e nao em `styles.css`, para o arquivo da
+   equipe de design continuar identico ao que ela entregou.
+
+   No celular a barra e um grid `"brand account"` com colunas de 268px e 48px.
+   A logo tem 90px e nascia encostada na esquerda da coluna larga, com um vazio
+   escuro a direita - foi o que o print mostrou.
+
+   `justify-content: center` centraliza dentro da COLUNA, o que ainda deixaria a
+   logo 30px a esquerda do centro da barra. Os 30px sao exatamente metade do que
+   a coluna da conta ocupa (48px + 12px de intervalo), e e isso que o
+   deslocamento compensa, para o centro optico da logo cair no centro da barra.
+
+   So no celular: no desktop a barra esconde a marca, que la vive no topo do
+   menu lateral. */
+@media (max-width: 899px) {
+  .topbar .brand {
+    justify-content: center;
+    /* O recuo negativo do design existia para encostar a logo na margem
+       esquerda. Com ela centralizada ele so desloca o centro em 4px, entao
+       sai. */
+    margin-left: 0;
+    transform: translateX(calc((48px + 12px) / 2));
+  }
+}
