@@ -1,6 +1,6 @@
 import { CircleGauge, ClipboardList, ShieldAlert } from "lucide-react";
 
-import { ALLERGY_OPTIONS } from "../../data/allergens";
+import { PRIORITY_ALLERGY_OPTIONS } from "../../data/allergens";
 import { PageHeader } from "../../components/common/PageHeader";
 
 export function GuidePage() {
@@ -21,8 +21,11 @@ export function GuidePage() {
           <span>Sem informação aqui? Confira a embalagem.</span>
         </div>
       </section>
+      {/* So os alergenicos que a lei obriga a destacar: o catalogo completo
+          tem ~170 itens e viraria uma parede de cartoes. O resto esta no
+          seletor de alergias, atras da busca. */}
       <section className="page-grid">
-        {ALLERGY_OPTIONS.map((option) => (
+        {PRIORITY_ALLERGY_OPTIONS.map((option) => (
           <article className="page-card" key={option.id}>
             <ShieldAlert size={22} aria-hidden="true" />
             <h3>{option.label}</h3>

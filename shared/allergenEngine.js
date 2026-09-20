@@ -46,6 +46,9 @@ export const ALLERGEN_EXCLUSIONS = {
     /manteiga\s+de\s+(cacau|amendoim|castanha)/g,
     /(leite|bebida)\s+vegetal/g,
   ],
+  // O casamento de termo aceita plural em "-es", e "milhoes" (texto ja sem
+  // acento) e "milho" + "es". "Milhao" e "milhoes" sao numero, nao cereal.
+  corn: [/milh(ao|oes)(?=$|[^a-z0-9])/g],
 };
 
 function escapeRegex(value) {

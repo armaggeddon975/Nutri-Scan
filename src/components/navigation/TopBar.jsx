@@ -2,6 +2,10 @@ import { Search, User } from "lucide-react";
 
 // Barra superior fixa. Ela carrega a busca global, que antes so existia dentro
 // da pagina Consulta: agora da para procurar um alimento de qualquer tela.
+//
+// No computador a marca desta barra fica escondida por CSS: la ela vive no
+// topo do menu lateral, como numa revista. No celular a barra mostra marca e
+// conta numa linha e a busca na linha de baixo.
 export function TopBar({ query, currentUser, onQueryChange, onSubmitSearch, onNavigate }) {
   return (
     <header className="topbar">
@@ -12,10 +16,11 @@ export function TopBar({ query, currentUser, onQueryChange, onSubmitSearch, onNa
           onClick={() => onNavigate("home")}
           aria-label="NutriScan, ir para a tela principal"
         >
-          {/* O simbolo e a logo da DG, nao um icone de biblioteca. Fica
-              decorativo porque o botao ja se anuncia pelo aria-label acima. */}
-          <img className="brand-mark" src="/dg-simbolo.png" alt="" aria-hidden="true" />
-          <span className="brand-name">NutriScan</span>
+          {/* Logo do NutriScan (`public/nutriscan-logo.png`, fundo transparente).
+              Sobre o chrome escuro ela entra monocromatica em creme, via filtro
+              no CSS; o botao ja se anuncia pelo aria-label, entao a imagem e
+              decorativa. */}
+          <img className="brand-logo" src="/nutriscan-logo.png" alt="" aria-hidden="true" />
         </button>
 
         <form className="topbar-search" onSubmit={onSubmitSearch} role="search">

@@ -1,6 +1,7 @@
 import { Bot, Lock, LogIn, LogOut, Mail, ShieldAlert, User, UserPlus } from "lucide-react";
 
 import { ALLERGY_OPTIONS } from "../../data/allergens";
+import { AllergyPicker } from "../../components/allergies/AllergyPicker";
 import { PageHeader } from "../../components/common/PageHeader";
 import { StatusLine } from "../../components/common/StatusLine";
 
@@ -58,18 +59,7 @@ export function AccountPage({
               <ShieldAlert size={18} aria-hidden="true" />
               <h4>Alergias desse perfil</h4>
             </div>
-            <div className="allergy-grid">
-              {ALLERGY_OPTIONS.map((option) => (
-                <label key={option.id} className="check-row">
-                  <input
-                    type="checkbox"
-                    checked={selectedAllergies.includes(option.id)}
-                    onChange={() => onToggleAllergy(option.id)}
-                  />
-                  <span>{option.label}</span>
-                </label>
-              ))}
-            </div>
+            <AllergyPicker selectedAllergies={selectedAllergies} onToggleAllergy={onToggleAllergy} />
           </article>
         </section>
       ) : (

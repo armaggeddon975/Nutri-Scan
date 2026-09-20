@@ -1,4 +1,4 @@
-import { ALLERGY_OPTIONS } from "../../data/allergens";
+import { AllergyPicker } from "../../components/allergies/AllergyPicker";
 import { PageHeader } from "../../components/common/PageHeader";
 
 export function AllergiesPage({ currentUser, selectedAllergies, productAnalysis, onToggleAllergy }) {
@@ -13,17 +13,8 @@ export function AllergiesPage({ currentUser, selectedAllergies, productAnalysis,
             : "Depois disso, o app avisa em cada produto."
         }
       />
-      <section className="allergy-page-grid">
-        {ALLERGY_OPTIONS.map((option) => (
-          <label key={option.id} className="check-row">
-            <input
-              type="checkbox"
-              checked={selectedAllergies.includes(option.id)}
-              onChange={() => onToggleAllergy(option.id)}
-            />
-            <span>{option.label}</span>
-          </label>
-        ))}
+      <section className="allergy-page-picker" aria-label="Suas alergias">
+        <AllergyPicker selectedAllergies={selectedAllergies} onToggleAllergy={onToggleAllergy} />
       </section>
       {productAnalysis}
     </>

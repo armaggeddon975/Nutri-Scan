@@ -269,7 +269,9 @@ test("validacao rejeita payload abusivo e alergia invalida", () => {
     validateAssistantChat({
       message: "Oi",
       conversation: [],
-      guestAllergies: ["banana"],
+      // "banana" entrou no catalogo em 11/09/2026; o id aqui precisa ser um
+      // que nunca vai existir.
+      guestAllergies: ["alergia-inexistente"],
     }),
   );
 });

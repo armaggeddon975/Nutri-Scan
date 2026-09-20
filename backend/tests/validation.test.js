@@ -11,11 +11,17 @@ test("normaliza e-mail e nome de usuário", () => {
 });
 
 test("valida alergias conhecidas e remove duplicadas", () => {
+  // "banana" entrou no catalogo em 11/09/2026 e virou id valido; o exemplo de
+  // id invalido precisa ser um que nunca vai existir.
   assert.equal(isValidAllergyId("milk"), true);
-  assert.equal(isValidAllergyId("banana"), false);
-  assert.deepEqual(filterValidAllergies(["milk", "milk", "gluten", "banana"]), ["milk", "gluten"]);
+  assert.equal(isValidAllergyId("banana"), true);
+  assert.equal(isValidAllergyId("alergia-inexistente"), false);
+  assert.deepEqual(filterValidAllergies(["milk", "milk", "gluten", "alergia-inexistente"]), [
+    "milk",
+    "gluten",
+  ]);
   assert.deepEqual(validateAllergiesUpdate({ allergies: ["milk", "milk"] }).allergies, ["milk"]);
-  assert.throws(() => validateAllergiesUpdate({ allergies: ["banana"] }));
+  assert.throws(() => validateAllergiesUpdate({ allergies: ["alergia-inexistente"] }));
 });
 
 test("valida register e login", () => {

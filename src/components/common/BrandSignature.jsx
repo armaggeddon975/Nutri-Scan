@@ -1,20 +1,20 @@
-import logoDG from "../../assets/dg-nutricao.jpg";
-
-// Assinatura de quem esta por tras do produto. O NutriScan e o aplicativo; a DG
-// Nutricao e quem assina. Por isso a logo completa vive aqui, no rodape, e nao
-// na barra de cima: la em cima o app precisa dizer o proprio nome.
+// Assinatura de quem fez o app. Aparece uma vez por tela: no pe do menu
+// lateral no computador, no rodape do conteudo no celular (o CSS esconde a
+// copia que sobra em cada caso).
 //
-// A moldura existe porque o arquivo original e um quadrado com muita margem
-// branca em volta. Recortar por CSS (e nao gerar um segundo arquivo cortado)
-// mantem um unico asset no repositorio e preserva o <img alt>, que uma imagem
-// de fundo nao teria - "DG Nutricao" e a informacao util para leitor de tela.
+// Ate 11/09/2026 este bloco trazia a logo da DG Nutricao ("Um aplicativo de");
+// a equipe pediu para trocar pelo credito de quem desenvolveu.
+const AUTHORS = ["Dhara Fernandes", "Diego Alvite Moreira", "Giulia Ferreira"];
+
 export function BrandSignature() {
   return (
     <footer className="brand-signature">
-      <span className="brand-signature-label">Um aplicativo de</span>
-      <span className="brand-signature-frame">
-        <img src={logoDG} alt="DG Nutrição" />
-      </span>
+      <span className="brand-signature-label">Desenvolvido por</span>
+      <ul className="brand-signature-authors">
+        {AUTHORS.map((name) => (
+          <li key={name}>{name}</li>
+        ))}
+      </ul>
     </footer>
   );
 }
