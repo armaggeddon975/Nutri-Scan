@@ -1,6 +1,368 @@
-# Relatorio de Auditoria - NutriScan v0.7.0
+# Relatorio de Auditoria - NutriScan v0.7.1
 
-Data: 2026-09-18
+Data: 2026-09-20
+
+## Escopo
+
+Correcao do defeito D1 da auditoria externa da v0.7.0 e verificacao do defeito
+D2 da mesma auditoria.
+
+Preservado sem alteracao: `shared/allergenEngine.js`,
+`shared/productAllergenAdapter.js`, `shared/allergyVerdict.js`, todo o
+`backend/src/ai/`, autenticacao, scrypt, sessoes e o schema do banco. Nenhuma
+migration nova.
+
+## Abordagem escolhida para D1
+
+O prompt de versao oferecia duas saidas. Foi escolhida a **(a): contagem por
+usuario da sessao, com reserva por IP**. A opcao (b), um bypass so de teste,
+foi recusada.
+
+O motivo e direto: um bypass e uma porta. Mesmo escrito para ser impossivel de
+abrir em producao, ele existe no binario que roda em producao, e a garantia de
+que nao pode ser aberto passa a depender de uma condicao que alguem precisa
+manter correta para sempre. A alternativa nao tem porta nenhuma para guardar.
+
+A escolha tambem resolve um problema real de producao, independente do teste:
+atras de NAT corporativo ou CGNAT de operadora - situacao comum no celular, que
+e onde este app vive - varios usuarios compartilham um IP, e antes um deles
+sozinho podia consumir a cota de todos.
+
+**Consequencia formal: Q3 e Q4 do prompt, que so valem "se escolher a abordagem
+de bypass", nao se aplicam.** Nao ha mecanismo de bypass para testar. No lugar
+deles foi provada uma propriedade mais forte - que a porta nao existe - e os
+testes correspondentes estao registrados abaixo com os nomes Q3 e Q4 para
+manter a rastreabilidade com o prompt.
+
+## A correcao
+
+`backend/src/middleware/rateLimit.js`:
+
+```js
+export function collectionsRateLimitKey(req) {
+  const userId = req?.user?.id;
+  if (userId) return `user:${userId}`;
+  return `ip:${req?.ip ?? "desconhecido"}`;
+}
+
+export const collectionsRateLimit = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: collectionsRateLimitKey,
+});
+```
+
+O diff util tem nove linhas. `requireAuth` ja rodava antes deste middleware nas
+duas rotas - essa ordem e anterior a esta versao e nao foi alterada -, entao
+`req.user` esta disponivel quando a chave e calculada.
+
+A reserva por IP quase nao e usada aqui, porque `requireAuth` devolve 401 sem
+sessao valida. Ela existe para que o limitador continue seguro se alguem o
+montar numa rota publica no futuro, e para que uma requisicao sem IP conhecido
+nao vire chave vazia, que juntaria todos os anonimos num balde so.
+
+## Q1 - a suite de integracao contra PostgreSQL real
+
+PostgreSQL 17.10 real, porta 5433, binarios em
+`C:\Users\diego\AppData\Local\nutriscan-pg`.
+
+ANTES da correcao:
+
+```text
+ℹ tests 18
+ℹ pass 9
+ℹ fail 9
+```
+
+A primeira falha era F4, e a mensagem era sempre a mesma:
+
+```text
+SyntaxError: Unexpected token 'T', "Too many r"... is not valid JSON
+```
+
+DEPOIS da correcao:
+
+```text
+✔ H1  ✔ F1  ✔ H2  ✔ H3  ✔ H4  ✔ F2  ✔ F3
+✔ F4 o limite de favoritos e aplicado e devolve erro, sem podar (3464.6631ms)
+✔ S1  ✔ S2  ✔ S3  ✔ I1  ✔ I2  ✔ I3
+✔ I4 e V1  ✔ A1  ✔ D1  ✔ a migration aplica e reaplica sem quebrar
+ℹ tests 18
+ℹ pass 18
+ℹ fail 0
+ℹ skipped 0
+```
+
+**Zero SKIP.** Nenhum teste foi removido, comentado, marcado como `todo` ou
+transformado em SKIP permanente. Nenhuma assercao foi enfraquecida.
+
+## Q2 - o limitador recusa em limite+1, em producao, sem bypass
+
+`backend/tests/rateLimit.test.js`. O teste sobe um servidor real com
+`NODE_ENV=production`, faz 301 requisicoes autenticadas e conta:
+
+```text
+✔ Q2 em producao o limitador recusa na requisicao seguinte ao teto (3388.2326ms)
+```
+
+Assercoes: exatamente 300 respostas 200, e a requisicao 301 devolve 429.
+
+## Q3 e Q4 - NAO APLICAVEL como escritos; a porta nao existe
+
+Nao ha mecanismo de bypass, entao nao ha o que ligar ou desligar. O que foi
+provado no lugar:
+
+```text
+✔ Q4 nenhum dado vindo do request consegue um balde novo (3445.1711ms)
+✔ Q4 o limitador nao tem opcao de pular requisicao (3.7896ms)
+✔ Q3 nenhuma variavel de ambiente desliga o limitador (1.199ms)
+✔ Q3 o limitador esta montado em todas as rotas de colecoes (2.6188ms)
+```
+
+O primeiro e prova de comportamento, nao de texto-fonte: a sessao e sempre a
+mesma pessoa, a cota e esgotada, e nove tentativas de conseguir um balde novo
+continuam recebendo 429 - cabecalho de usuario, cabecalho de id, cabecalho de
+autor, `X-Forwarded-For`, `X-Real-IP`, cookie, cabecalho de desligamento, query
+de usuario e query de desligamento.
+
+## Q5 - os tres limites de producao seguem nos valores declarados
+
+```text
+auth          windowMs: 15 * 60 * 1000    limit: 40
+assistente    windowMs: 10 * 60 * 1000    limit: 20
+colecoes      windowMs: 10 * 60 * 1000    limit: 300
+```
+
+```text
+✔ Q5 os tres limitadores mantem janela e teto declarados (6.5745ms)
+```
+
+Nenhum dos tres foi afrouxado. O que mudou em colecoes foi a quem o limite se
+aplica, nao o valor.
+
+## Q6 - orcamento de requisicoes da suite E2E, com margem
+
+Corrigir colecoes nao resolve auth nem assistente: os dois continuam contando
+por IP, e todos os clientes da suite saem do mesmo endereco. A suite passou a
+contar o proprio gasto e a reprovar se ultrapassar metade do teto. Medido na
+execucao desta versao:
+
+```json
+{
+  "margem": "no maximo 50% do teto",
+  "baldes": [
+    { "balde": "assistente", "usado": 2, "teto": 20,  "margemMaxima": 10,  "folga": 18,  "dentroDaMargem": true },
+    { "balde": "auth",       "usado": 3, "teto": 40,  "margemMaxima": 20,  "folga": 37,  "dentroDaMargem": true },
+    { "balde": "colecoes",   "usado": 9, "teto": 300, "margemMaxima": 150, "folga": 291, "dentroDaMargem": true }
+  ],
+  "estouraram": []
+}
+```
+
+As requisicoes de colecoes caem num balde so de proposito. Separar por cliente
+pareceria mais preciso e seria errado: `clientB` faz login com o e-mail de A,
+entao dois dos tres clientes da suite sao a mesma conta e dividem o balde. Um
+orcamento que se engana para menos nao serve para nada.
+
+O limite e fail-closed: estourar a margem lanca antes de `report.ok = true`.
+
+## Q7 - a regressao de isolamento esta verde e detecta quebra real
+
+```text
+✔ I1 usuario A nao le historico nem favorito de B
+✔ I2 usuario B nao remove item de A
+✔ I3 userId no corpo da requisicao e ignorado; vale a sessao
+```
+
+Verde nao basta - veja a validacao por mutacao adiante, que prova que estes
+testes ficam vermelhos quando o isolamento e quebrado de verdade.
+
+## Q8 - a regressao C1 continua bloqueada
+
+```text
+✔ T1 exploit C1: modelo negando conflito nao entrega falso seguro (319.2708ms)
+✔ T2 piso de risco: com conflito declarado o safety final nunca e normal
+✔ T3 barreira 1: schema rejeita allergyVerdict vindo do modelo
+✔ T3 barreira 2: veredito entregue vem do motor mesmo se o campo chegar montado
+ℹ tests 12
+ℹ pass 12
+ℹ fail 0
+```
+
+## Q9 - o limiar de auditoria continua moderate
+
+`scripts/verify-release.js:82-83`:
+
+```js
+["frontend audit", () => npmCommand(["audit", "--audit-level=moderate"], { inherit: true })],
+["backend audit",  () => npmCommand(["--prefix", "backend", "audit", "--audit-level=moderate"], { inherit: true })],
+```
+
+Travado por `backend/tests/auditThreshold.test.js`, que reprova se o limiar
+subir para `high` ou `critical` ou se qualquer uma das duas etapas sumir.
+
+## Validacao por mutacao
+
+`scripts/mutation-check.js` injeta defeitos reais, roda os testes que deveriam
+pega-los e exige que fiquem vermelhos. O codigo original e restaurado sempre,
+inclusive se o processo for interrompido.
+
+```text
+M1   Q5   MORTA   "Q5 os tres limitadores mantem janela e teto declarados" falhou, como deveria
+M2   Q2   MORTA   "Q2 em producao o limitador recusa na requisicao seguinte ao teto" falhou, como deveria
+M3   Q3   MORTA   "Q3 nenhuma variavel de ambiente desliga o limitador" falhou, como deveria
+M4   Q4   MORTA   "Q4 nenhum dado vindo do request consegue um balde novo" falhou, como deveria
+M4b  Q4   MORTA   "Q4 o limitador nao tem opcao de pular requisicao" falhou, como deveria
+M5   D1   MORTA   "D1 a cota de um usuario nao consome a cota de outro" falhou, como deveria
+M6   Q7   MORTA   "I1 usuario A nao le historico nem favorito de B" falhou, como deveria
+M7   Q7   MORTA   "I2 usuario B nao remove item de A" falhou, como deveria
+======
+mortas 8 | nao executadas 0 | problemas 0
+APROVADO: toda mutacao foi detectada pelo teste correspondente.
+```
+
+Os defeitos injetados: afrouxar o teto de auth para 100; elevar o teto de
+colecoes a um valor inalcancavel; criar um bypass por variavel de ambiente;
+fazer a chave depender de um cabecalho do cliente; adicionar um `skip` acionado
+por cabecalho; voltar a contar por IP; remover o filtro `user_id` da leitura de
+historico; remover o filtro `user_id` da remocao de favorito.
+
+### A mutacao encontrou um defeito real nesta versao
+
+Na primeira rodada, **M4 sobreviveu**. O teste Q4 original procurava `req.get`
+no codigo-fonte, e a mutacao escreveu `req?.get?.(`, com encadeamento opcional.
+A expressao nao casava, e o defeito passou despercebido.
+
+Isso nao foi corrigido alargando a expressao e seguindo em frente. Casar texto
+e fragil justamente onde a propriedade importa: a proxima forma de escrever a
+mesma leitura volta a escapar. O teste foi refeito como prova de comportamento,
+e a versao de texto-fonte ficou como reforco, agora cobrindo as duas formas de
+escrita. Com o teste novo, M4 morre.
+
+Este e o argumento a favor de exigir mutacao: sem ela, o relatorio teria
+declarado Q4 aprovado com um teste que nao protegia nada.
+
+## D2 - verificacao da correcao P2 da v0.6.9
+
+Saida literal das duas execucoes:
+
+```text
+$ npm audit --audit-level=moderate
+found 0 vulnerabilities
+[exit code: 0]
+
+$ npm --prefix backend audit --audit-level=moderate
+found 0 vulnerabilities
+[exit code: 0]
+```
+
+Os tres avisos moderate em `qs` (GHSA-x5fp-wj9c-mxmx e GHSA-4mjr-xmp4-gh2g) que
+motivaram P2 nao reaparecem. A correcao esta efetiva.
+
+## A12 - os 17 requisitos strict continuam exigidos
+
+`findMissingRequirements({})` com a flag da Anthropic ligada:
+
+```text
+ 1. backendProcess      7. isolation          13. historySync
+ 2. database            8. logout             14. favoritesSync
+ 3. migrations          9. assistantAuthority 15. verdictFreshness
+ 4. auth               10. deterministicEngine 16. anthropicReal
+ 5. sessionSchema      11. fallback           17. assistantAuthenticated
+ 6. multiDevice        12. privacy
+
+TOTAL: 17
+```
+
+Sem a flag, 15 - os dois ultimos sao condicionais a ela, por desenho. Nenhum
+requisito foi removido nesta versao.
+
+## A13 - residuo do nome antigo
+
+Varredura por `nutriva`, sem distincao de maiuscula, em todo o repositorio
+exceto `node_modules/`, `.git/`, `dist/` e `releases/`:
+
+```text
+codigo-fonte (src/, backend/src/, shared/)     0 ocorrencias
+interface e assets (public/, index.html)       0 ocorrencias
+manifestos e lockfiles                         0 ocorrencias
+```
+
+O que resta e registro historico e esta correto que permaneca: as secoes
+antigas do CHANGELOG, a secao historica do AUDIT_REPORT, e
+`backend/tests/productName.test.js`, que guarda o nome antigo como padrao
+justamente para detecta-lo se ele voltar.
+
+### A primeira varredura passou por cima de um residuo real
+
+A varredura acima excluiu `releases/` junto com `node_modules/` e `dist/`, por
+serem pastas que nao vao para o repositorio. Ao abrir a pasta para gerar o
+pacote desta versao, `releases/README.md` estava assim:
+
+```text
+# Pacotes de auditoria do NutriVa
+...
+$zip = [...]::OpenRead("releases\nutriva-vX.Y.Z-auditoria.zip")
+Get-FileHash releases\nutriva-vX.Y.Z-auditoria.zip -Algorithm SHA256
+```
+
+Titulo e exemplos com o nome antigo, e a tabela de pacotes parada na v0.6.9.
+Corrigido nesta versao.
+
+O nome do arquivo `nutriva-v0.6.9-auditoria.zip` **nao** foi alterado, de
+proposito: foi assim que o pacote saiu e foi assim que o auditor o recebeu.
+Renomea-lo agora quebraria a correspondencia com o `SHA256SUMS.txt` e com o
+registro da auditoria. A justificativa esta escrita no proprio README.
+
+`P1t` nao teria pego isso: ele verifica codigo, manifesto, lockfile e interface,
+e `releases/` nao e nenhum dos quatro. O aprendizado e sobre a varredura, nao
+sobre o teste - "nao vai para o repositorio" nao e o mesmo que "nao importa".
+
+## Resultado dos gates
+
+```text
+npm run build                          OK (built in 15.40s)
+npm --prefix backend test              179 testes, 178 pass, 0 fail, 1 SKIP
+npm audit --audit-level=moderate       0 vulnerabilidades (frontend e backend)
+node scripts/verify-release.js         OK (build, testes, audit, secret scan)
+npm run e2e:real                       ok: true (PostgreSQL 17.10 real)
+npm run verify:e2e                     FAIL BEFORE CALL (exit 1) - sem chave
+```
+
+### O unico SKIP, declarado
+
+```text
+﹣ Claude real responde pergunta curta quando explicitamente habilitado
+  # NAO EXECUTADO - defina RUN_ANTHROPIC_INTEGRATION_TESTS=true e ANTHROPIC_API_KEY
+```
+
+E a protecao contra chamada paga acidental, e se declara `NAO EXECUTADO`. **Nao
+conta como PASS.** Nenhuma chave foi usada e nenhuma chamada paga foi feita.
+
+## O que esta versao nao prova
+
+```text
+Claude real                    NAO EXECUTADO - sem ANTHROPIC_API_KEY no ambiente
+camera real em aparelho        NAO EXECUTADO - exige hardware
+comportamento sob Neon         NAO EXECUTADO - testado contra PostgreSQL 17.10 local
+```
+
+O limitador foi provado contra um servidor Express real, em processo, com
+`NODE_ENV=production`. Ele nao foi exercitado contra o Render com varios
+usuarios simultaneos.
+
+Uma observacao que nao e defeito desta versao mas vale registro: em producao
+`trust proxy` esta ligado (`backend/src/app.js:62`), o que faz `req.ip` vir do
+`X-Forwarded-For`. A reserva por IP deste limitador seria, portanto, influenciavel
+por cabecalho em producao - mas ela e inalcancavel nas rotas de colecoes, porque
+`requireAuth` roda antes e devolve 401 sem sessao. Se alguem montar este
+limitador numa rota publica no futuro, isso precisa ser reavaliado.
+
+## Historico de auditorias anteriores
+
+## Auditoria da v0.7.0 - 2026-09-18
 
 ## Escopo
 
@@ -310,7 +672,6 @@ O ponto que exige atencao do auditor e a ausencia de PostgreSQL neste ambiente:
 a cobertura das features e estrutural, nao comportamental, e a prova de
 isolamento entre dois usuarios reais depende de uma execucao com banco.
 
-## Historico de auditorias anteriores
 
 ## Auditoria da v0.6.9
 

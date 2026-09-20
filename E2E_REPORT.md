@@ -1,6 +1,226 @@
-# E2E Report - NutriScan v0.7.0
+# E2E Report - NutriScan v0.7.1
 
-Data: 2026-09-18
+Data: 2026-09-20
+
+## Resultado geral
+
+```text
+PostgreSQL real:      EXECUTADO  - PostgreSQL 17.10, porta 5433
+integracao (18):      EXECUTADO  - 18 pass, 0 fail, 0 skip
+e2e:real:             EXECUTADO  - ok: true
+verify-release:       EXECUTADO  - OK
+verify:e2e:           FAIL BEFORE CALL (exit 1) - sem ANTHROPIC_API_KEY
+Claude real:          NAO EXECUTADO - sem ANTHROPIC_API_KEY
+camera real:          NAO EXECUTADO - exige hardware
+```
+
+`verify:e2e` reprovou, e isso esta certo. Ele exige chamada real a Claude, e
+recusa ANTES de gastar dinheiro:
+
+```text
+[FAIL] verify:e2e - RUN_ANTHROPIC_INTEGRATION_TESTS=true e obrigatorio no gate
+E2E completo. FAIL BEFORE CALL: nenhuma chamada paga foi feita.
+[INFO] como habilitar - RUN_ANTHROPIC_INTEGRATION_TESTS=true npm run verify:e2e
+```
+
+Um gate bloqueado por ambiente para o trabalho e e reportado. **Ele nao vira
+aprovacao.** Esta versao nao afirma ter passado no gate E2E completo.
+
+Esta e a primeira versao em que a suite de integracao roda inteira contra um
+banco real. Na v0.7.0 ela nunca rodou: sem banco ficava em SKIP, e com banco
+falhava por quota do limitador. Era exatamente o defeito D1.
+
+Nenhum resultado foi herdado de versao anterior. Nenhuma credencial foi
+inventada e nenhuma chamada paga foi feita.
+
+## Ambiente
+
+O ambiente de trabalho nao tem Docker nem permissao de administrador, e o
+caminho do projeto tem acento - `Área de Trabalho` -, o que faz o `initdb`
+recusar com `invalid byte sequence for encoding "UTF8": 0xc1 0x72`. A saida foi
+instalar os binarios do PostgreSQL 17.10 fora do caminho acentuado:
+
+```text
+binarios   C:\Users\diego\AppData\Local\nutriscan-pg
+dados      C:\Users\diego\AppData\Local\nutriscan-pgdata
+porta      5433
+```
+
+```text
+DATABASE_URL=postgresql://nutriscan:nutriscan_dev@localhost:5433/nutriscan
+DATABASE_SSL=false
+RUN_DB_INTEGRATION_TESTS=true
+```
+
+`scripts/dev-db.js` sobe um cluster local para quem quiser reproduzir, e aceita
+`DEV_DB_DATA_DIR` para desviar do caminho acentuado.
+
+## Suite de integracao - antes e depois da correcao
+
+ANTES:
+
+```text
+ℹ tests 18
+ℹ pass 9
+ℹ fail 9
+```
+
+Primeira falha em F4, e dali em diante sempre a mesma causa:
+
+```text
+SyntaxError: Unexpected token 'T', "Too many r"... is not valid JSON
+```
+
+DEPOIS:
+
+```text
+✔ H1 o historico grava e devolve o item gravado
+✔ F1 favoritar e desfavoritar altera apenas a conta que pediu
+✔ H2 consultar o mesmo produto de novo atualiza a linha, sem duplicar
+✔ H3 o limite de historico e aplicado pela poda mais antiga
+✔ H4 limpar o historico nao toca nos favoritos
+✔ F2 favoritar o mesmo produto duas vezes nao cria duas linhas
+✔ F3 o toggle devolve o estado resultante
+✔ F4 o limite de favoritos e aplicado e devolve erro, sem podar (3464.6631ms)
+✔ S1 a leitura reflete escrita de outro dispositivo da mesma conta
+✔ S2 remocao em um dispositivo some no outro
+✔ S3 a ultima escrita vence pelo relogio do servidor
+✔ I1 usuario A nao le historico nem favorito de B
+✔ I2 usuario B nao remove item de A
+✔ I3 userId no corpo da requisicao e ignorado; vale a sessao
+✔ I4 e V1 sem sessao valida todas as rotas novas respondem 401
+✔ A1 o item salvo nao guarda veredito de alergia
+✔ D1 a cota de um usuario nao esgota a cota de outro
+✔ a migration aplica e reaplica sem quebrar
+ℹ tests 18
+ℹ pass 18
+ℹ fail 0
+ℹ skipped 0
+```
+
+**Zero SKIP.** I1, I2 e I3 rodaram e passaram pela primeira vez.
+
+## e2e:real contra PostgreSQL real
+
+```text
+[OK] privacy - payload sem segredos e com snapshot deterministico
+[OK] assistant guest - AI_NOT_CONFIGURED conforme esperado
+[OK] fallback - AI_NOT_CONFIGURED -> source local
+[OK] session schema - token_hash presente e sem coluna de token bruto
+[OK] assistant authority - PostgreSQL vence guestAllergies e snapshot marca conflito
+[OK] assistant authenticated - rota autenticada alcancada, AI_NOT_CONFIGURED
+[OK] multi-device - alergias sincronizadas entre dispositivos A e B
+[OK] isolation - contas permanecem isoladas
+[OK] history sync - A gravou, B leu, conta isolada nao viu
+[OK] favorites sync - A gravou, B leu, remocao cruzada recusada com 404
+[OK] verdict freshness - item salvo sem veredito; perfil muda sem alterar o registro
+[OK] auth - register, me, allergies, login, logout idempotente
+```
+
+```json
+{
+  "version": "0.7.1",
+  "mode": "normal",
+  "baseUrl": "http://127.0.0.1:3000/api",
+  "backendProcess": "STARTED_BY_RUNNER",
+  "database": "EXECUTED",
+  "migrations": "EXECUTED_IDEMPOTENT",
+  "auth": "PASSED",
+  "sessionSchema": "PASSED",
+  "multiDevice": "PASSED",
+  "isolation": "PASSED",
+  "historySync": "PASSED",
+  "favoritesSync": "PASSED",
+  "verdictFreshness": "PASSED",
+  "logout": "PASSED",
+  "deterministicEngine": "PASSED",
+  "assistantGuest": "AI_NOT_CONFIGURED",
+  "assistantAuthenticated": "AI_NOT_CONFIGURED",
+  "assistantAuthority": "PASSED",
+  "fallback": "PASSED",
+  "privacy": "PASSED",
+  "anthropic": "not_configured",
+  "anthropicReal": "NOT_EXECUTED",
+  "anthropicCalls": 0,
+  "ok": true
+}
+```
+
+`mode: normal`, e nao `strict`: o modo strict exige `anthropicReal` e
+`assistantAuthenticated`, que dependem de uma chave real e de uma chamada paga.
+Sem a chave, `npm run e2e:strict` reprova - e esse e o comportamento correto.
+**A execucao em modo normal nao substitui a strict e nao e apresentada como
+tal.**
+
+## Orcamento de limite medido na execucao
+
+```json
+{
+  "margem": "no maximo 50% do teto",
+  "baldes": [
+    { "balde": "assistente", "usado": 2, "teto": 20,  "margemMaxima": 10,  "folga": 18,  "dentroDaMargem": true },
+    { "balde": "auth",       "usado": 3, "teto": 40,  "margemMaxima": 20,  "folga": 37,  "dentroDaMargem": true },
+    { "balde": "colecoes",   "usado": 9, "teto": 300, "margemMaxima": 150, "folga": 291, "dentroDaMargem": true }
+  ],
+  "estouraram": []
+}
+```
+
+Nenhum limitador foi encostado. A margem de 50% existe para que um teste novo
+nao descubra o teto do jeito ruim, que foi como a v0.7.0 descobriu.
+
+## Suite completa do backend
+
+```text
+ℹ tests 179
+ℹ pass 178
+ℹ fail 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 56362.9663
+```
+
+O unico SKIP, com a propria declaracao:
+
+```text
+﹣ Claude real responde pergunta curta quando explicitamente habilitado
+  # NAO EXECUTADO - defina RUN_ANTHROPIC_INTEGRATION_TESTS=true e ANTHROPIC_API_KEY
+```
+
+E a protecao contra chamada paga acidental. **NAO EXECUTADO nao e PASS.**
+
+## Validacao por mutacao
+
+```text
+mortas 8 | nao executadas 0 | problemas 0
+APROVADO: toda mutacao foi detectada pelo teste correspondente.
+```
+
+Detalhe por mutacao no AUDIT_REPORT, incluindo a que sobreviveu na primeira
+rodada e obrigou a refazer um teste.
+
+## Build
+
+```text
+npm run build   ✓ built in 15.40s
+```
+
+## O que NAO foi executado
+
+```text
+Claude real (chamada paga)     NAO EXECUTADO - sem ANTHROPIC_API_KEY
+npm run verify:e2e             FAIL BEFORE CALL (exit 1) - depende da chave acima
+npm run e2e:strict             NAO EXECUTADO - depende da chave acima
+camera real em aparelho        NAO EXECUTADO - exige hardware
+Neon em producao               NAO EXECUTADO - testado contra PostgreSQL 17.10 local
+carga simultanea real          NAO EXECUTADO - o limitador foi provado em processo
+```
+
+Nenhum destes foi contornado, simulado ou declarado como aprovado.
+
+## Historico de auditorias anteriores
+
+## E2E da v0.7.0 - 2026-09-18
 
 ## Resultado geral
 
@@ -231,7 +451,6 @@ comportamento contra um banco de verdade. A bateria comportamental existe,
 esta escrita e SKIPa com motivo - ela roda inteira assim que houver
 `DATABASE_URL` e `RUN_DB_INTEGRATION_TESTS=true`.
 
-## Historico de auditorias anteriores
 
 ### Execucao da v0.6.9 - 2026-09-18
 

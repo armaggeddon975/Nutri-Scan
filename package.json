@@ -1,7 +1,7 @@
 {
   "name": "nutriscan",
   "private": true,
-  "version": "0.7.0",
+  "version": "0.7.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -17,6 +17,7 @@
     "verify:e2e": "node scripts/verify-e2e.js",
     "version:check": "node scripts/version-check.js",
     "db:migrate": "npm --prefix backend run db:migrate",
+    "dev:db": "node scripts/dev-db.js",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
     "build": "vite build",
@@ -34,6 +35,7 @@
   "devDependencies": {
     "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "embedded-postgres": "^17.10.0-beta.17",
     "vite": "^6.0.0"
   },
   "engines": {

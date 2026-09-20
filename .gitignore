@@ -10,6 +10,8 @@ logs/
 .env.*
 .env.local
 backend/.env
+# Dados do PostgreSQL embutido de desenvolvimento (`npm run dev:db`).
+.pgdata/
 !.env.example
 !backend/.env.example
 src.backup-antes-correcoes/

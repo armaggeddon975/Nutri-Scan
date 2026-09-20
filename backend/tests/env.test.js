@@ -11,6 +11,22 @@ const backendRoot = path.resolve(__dirname, "..");
 const envPath = path.join(backendRoot, ".env");
 const envModuleUrl = pathToFileURL(path.join(backendRoot, "src/config/env.js")).href;
 
+// A versao esperada vem do manifesto, e nao de um literal escrito aqui.
+//
+// Ate a v0.7.1 este teste e `http.test.js` traziam "0.7.0" escrito na mao.
+// Como o numero real mora em `src/config/env.js`, cada incremento de versao
+// quebrava dois testes que nao tem nada a ver com versao, em arquivos que
+// nenhuma documentacao listava entre os pontos a atualizar. Quem estivesse com
+// pressa consertaria trocando o literal, que e o mesmo gesto de mudar um teste
+// para ele passar - so que aqui parecia legitimo.
+//
+// `version.test.js` continua sendo quem prova que o manifesto, o env e a
+// documentacao concordam. Este teste so precisa da versao correta para
+// verificar o que ele de fato testa: que o `.env` e lido do caminho absoluto.
+const VERSAO_ESPERADA = JSON.parse(
+  await readFile(path.join(backendRoot, "package.json"), "utf8"),
+).version;
+
 function runEnvProbe(extraEnv = {}) {
   const script = `
     const { env } = await import(${JSON.stringify(`${envModuleUrl}?t=${Date.now()}-${Math.random()}`)});
@@ -76,7 +92,7 @@ test("carrega backend/.env por caminho absoluto e valida valores", async () => {
       assert.equal(env.databaseUrl, "postgresql://env-file.example/nutriscan");
       assert.equal(env.databaseSsl, true);
       assert.equal(env.sessionTtlDays, 12);
-      assert.equal(env.version, "0.7.0");
+      assert.equal(env.version, VERSAO_ESPERADA);
       assert.equal(env.anthropicModel, "claude-modelo-de-teste");
       assert.equal(env.anthropicTimeoutMs, 1234);
       assert.equal(env.anthropicMaxOutputTokens, 567);

@@ -63,6 +63,88 @@ function backendModuleUrl(...segments) {
   return pathToFileURL(path.join(backendDir, "src", ...segments)).href;
 }
 
+// ORCAMENTO DE REQUISICOES POR LIMITADOR (Q6 da auditoria da v0.7.1)
+//
+// A suite E2E fala com um servidor que tem tres limitadores ligados. Se ela
+// encostar em qualquer um deles, o teste comeca a receber "Too many requests"
+// em vez de JSON e quebra por um motivo que nao tem nada a ver com o que ele
+// deveria estar verificando. Foi exatamente isso que aconteceu com a suite de
+// integracao na v0.7.0, e o custo foi alto: os testes de isolamento entre
+// contas passaram uma versao inteira sem nunca rodar.
+//
+// A correcao de contagem por usuario tira a pressao do limitador de colecoes,
+// mas nao dos outros dois - auth e assistente continuam contando por IP, e
+// nessa suite todos os clientes saem do mesmo IP. Entao a suite conta o que
+// gasta e recusa passar se chegar perto do teto. Perto, e nao no teto: a
+// margem existe para que um teste novo nao descubra o limite do jeito ruim.
+const TETOS = { auth: 40, assistente: 20, colecoes: 300 };
+const MARGEM = 0.5; // nenhum balde pode passar de metade do seu teto
+
+const gastos = new Map();
+
+function baldeDa(pathname, method, cliente) {
+  const rota = pathname.split("?")[0];
+  const metodo = (method || "GET").toUpperCase();
+
+  // Auth conta por IP, e so em register e login - `me` e `logout` nao passam
+  // pelo limitador. Todos os clientes da suite dividem o mesmo balde.
+  if (metodo === "POST" && (rota === "/auth/register" || rota === "/auth/login")) return "auth";
+  if (metodo === "POST" && rota === "/assistant/chat") return "assistente";
+
+  // Colecoes conta por usuario. Separar por cliente pareceria mais preciso e
+  // seria errado: `clientB` faz login com o e-mail de A, entao dois clientes
+  // da suite sao a MESMA conta e dividem o mesmo balde. Um orcamento que se
+  // engana para menos nao serve para nada, entao tudo cai num balde so - o
+  // pior caso, em que todo cliente e a mesma pessoa.
+  if (rota.startsWith("/history") || rota.startsWith("/favorites")) {
+    return "colecoes";
+  }
+  return null;
+}
+
+function contar(pathname, method, cliente) {
+  const balde = baldeDa(pathname, method, cliente);
+  if (!balde) return;
+  gastos.set(balde, (gastos.get(balde) ?? 0) + 1);
+}
+
+function orcamentoDeLimite() {
+  const linhas = [];
+  for (const [balde, usado] of [...gastos.entries()].sort()) {
+    const teto = TETOS[balde];
+    const permitido = Math.floor(teto * MARGEM);
+    linhas.push({
+      balde,
+      usado,
+      teto,
+      margemMaxima: permitido,
+      folga: teto - usado,
+      dentroDaMargem: usado <= permitido,
+    });
+  }
+
+  // Um balde com zero requisicao nao aparece no mapa, mas precisa aparecer no
+  // relatorio: silencio nao e prova de que o limitador foi exercitado.
+  for (const [familia, teto] of Object.entries(TETOS)) {
+    if (!linhas.some((linha) => linha.balde === familia)) {
+      linhas.push({
+        balde: familia,
+        usado: 0,
+        teto,
+        margemMaxima: Math.floor(teto * MARGEM),
+        folga: teto,
+        dentroDaMargem: true,
+      });
+    }
+  }
+
+  return {
+    margem: `no maximo ${MARGEM * 100}% do teto`,
+    baldes: linhas,
+    estouraram: linhas.filter((linha) => !linha.dentroDaMargem).map((linha) => linha.balde),
+  };
+}
+
 class CookieClient {
   constructor(name, baseUrl) {
     this.name = name;
@@ -95,6 +177,8 @@ class CookieClient {
       ...(this.cookies.size ? { Cookie: this.cookieHeader() } : {}),
       ...(options.headers || {}),
     };
+
+    contar(pathname, options.method, this.name);
 
     const response = await fetch(`${this.baseUrl}${pathname}`, {
       method: options.method || "GET",
@@ -387,6 +471,11 @@ async function main() {
     } else {
       const guestMessage = runAnthropic ? "Em uma frase, explique o que e proteina." : "Explique proteina";
       if (runAnthropic) guardAnthropicCall();
+
+      // Esta chamada nao passa pelo CookieClient - e crua, de proposito, para
+      // testar o visitante sem cookie. Mas ela gasta do balde do assistente
+      // como qualquer outra, entao precisa ser contada na mao.
+      contar("/assistant/chat", "POST", "visitante");
 
       const guestResponse = await fetch(`${baseUrl}/assistant/chat`, {
         method: "POST",
@@ -732,11 +821,24 @@ async function main() {
       }
     }
 
+    // Fail-closed: encostar na margem de um limitador reprova a execucao. Uma
+    // suite que so quebra quando ja passou do teto descobre o problema tarde
+    // demais, com a saida ilegivel.
+    const orcamento = orcamentoDeLimite();
+    if (orcamento.estouraram.length) {
+      const detalhe = orcamento.baldes
+        .filter((linha) => !linha.dentroDaMargem)
+        .map((linha) => `${linha.balde} usou ${linha.usado} de ${linha.teto} (margem ${linha.margemMaxima})`)
+        .join(" | ");
+      throw new Error(`orcamento de limite estourado: ${detalhe}`);
+    }
+
     report.anthropicCalls = anthropicCalls;
     report.ok = true;
   } finally {
     report.finishedAt = new Date().toISOString();
     report.anthropicCalls = anthropicCalls;
+    report.rateLimitBudget = orcamentoDeLimite();
 
     await closePool().catch(() => {});
     await stopBackend();

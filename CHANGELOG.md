@@ -1,5 +1,131 @@
 # Changelog
 
+## NutriScan v0.7.1 - 2026-09-20
+
+Correcao do defeito D1 da auditoria externa da v0.7.0, mais a verificacao do
+defeito D2 da mesma auditoria.
+
+### D1 - o limitador de requisicoes contava por IP e impedia a prova de isolamento
+
+O limitador de `/api/history` e `/api/favorites` permite 300 requisicoes por
+janela de 10 minutos. Ate esta versao ele contava por endereco IP.
+
+A suite de integracao roda todos os testes contra o mesmo servidor, a partir do
+mesmo IP, dentro da mesma janela. F4 sozinho faz 201 requisicoes e H3 faz mais
+de 100; somados aos anteriores, o teto de 300 estourava no oitavo teste. Dali em
+diante o servidor respondia o texto `Too many requests` e o harness quebrava ao
+tentar interpretar aquilo como JSON:
+
+```text
+SyntaxError: Unexpected token 'T', "Too many r"... is not valid JSON
+```
+
+Nove dos dezoito testes falhavam. Entre eles estavam **I1, I2 e I3 - os testes
+de isolamento entre contas**. Sem banco eles ficavam em SKIP; com banco,
+falhavam por quota. Nunca tinham rodado com sucesso. A propriedade mais
+importante do recurso - que um usuario nao le nem apaga dado de outro - passou
+uma versao inteira sem prova.
+
+A chave do limitador passou a ser o id do usuario da sessao, com reserva por IP
+para requisicao sem sessao:
+
+```js
+export function collectionsRateLimitKey(req) {
+  const userId = req?.user?.id;
+  if (userId) return `user:${userId}`;
+  return `ip:${req?.ip ?? "desconhecido"}`;
+}
+```
+
+**Nao foi criado nenhum mecanismo de bypass.** Nenhuma variavel de ambiente,
+cabecalho, query string ou cookie desliga o limitador. Um interruptor desses e
+uma porta, e uma porta que possa ser aberta em producao troca um defeito de
+teste por uma vulnerabilidade. Os tres limites de producao seguem identicos:
+
+```text
+auth          40 requisicoes / 15 minutos
+assistente    20 requisicoes / 10 minutos
+colecoes     300 requisicoes / 10 minutos
+```
+
+A correcao tambem melhora a producao por um motivo independente do teste: atras
+de NAT corporativo ou CGNAT de operadora - situacao comum no celular, que e onde
+este app vive - varios usuarios dividem um IP, e antes um deles sozinho podia
+consumir a cota de todos.
+
+Com a correcao, a suite de integracao contra PostgreSQL 17.10 real passou de
+`18 testes, 9 falhando` para `18 testes, 18 passando, 0 pulados`.
+
+### O orcamento de requisicoes da suite E2E agora e medido
+
+Corrigir a contagem de colecoes nao resolve auth nem assistente, que continuam
+contando por IP e, nessa suite, saem todos do mesmo endereco. A suite E2E passou
+a contar o que gasta em cada limitador e a reprovar se ultrapassar metade do
+teto - margem, e nao o teto, para que um teste novo nao descubra o limite do
+jeito ruim. A execucao desta versao gastou:
+
+```text
+auth          3 de 40    (margem 20)
+assistente    2 de 20    (margem 10)
+colecoes      9 de 300   (margem 150)
+```
+
+As requisicoes de colecoes caem todas num balde so de proposito. Separar por
+cliente pareceria mais preciso e seria errado: `clientB` faz login com o e-mail
+de A, entao dois clientes da suite sao a mesma conta.
+
+### Validacao por mutacao
+
+Um teste que passa nao prova nada sozinho. `scripts/mutation-check.js` injeta
+oito defeitos reais no codigo, roda os testes que deveriam pega-los e exige que
+fiquem vermelhos. As oito mutacoes foram detectadas.
+
+O script encontrou um problema real durante esta versao: a primeira versao do
+teste que proibia o limitador de ler dados do request procurava `req.get` no
+codigo-fonte, e a mutacao escreveu `req?.get?.(` com encadeamento opcional. O
+defeito passou despercebido. O teste foi refeito como prova de comportamento -
+a sessao e sempre a mesma pessoa, e nove tentativas de forjar um balde novo por
+cabecalho, cookie e query string continuam recebendo 429.
+
+### Dois testes traziam o numero da versao escrito na mao
+
+`backend/tests/env.test.js` e `backend/tests/http.test.js` afirmavam
+`assert.equal(env.version, "0.7.0")`. Como o numero real mora em
+`backend/src/config/env.js`, o incremento desta versao quebrou dois testes que
+nao tem nada a ver com versao, em arquivos que nenhuma documentacao listava
+entre os pontos a atualizar.
+
+O reparo obvio seria trocar o literal, que e o mesmo gesto de mudar um teste
+para ele passar - so que aqui parecia legitimo. Os dois passaram a derivar a
+versao da fonte unica. `version.test.js` continua sendo quem prova que
+manifesto, env e documentacao concordam.
+
+### Empacotamento de auditoria virou script
+
+Ate a v0.7.0 o ZIP era montado colando comandos no terminal. `scripts/pack-release.ps1`
+monta, valida o artefato gravado - nenhuma pasta proibida, nenhum `.env`,
+nenhum ZIP aninhado, nenhuma barra invertida, arquivos obrigatorios presentes -
+e so entao grava o SHA-256. Se a validacao falhar, o ZIP e apagado, porque um
+pacote invalido no disco acaba sendo entregue por engano.
+
+A primeira execucao produziu 3586 entradas em vez de 152: a exclusao olhava
+apenas o primeiro segmento do caminho, e `backend/node_modules/` comeca com
+`backend`. Corrigido para olhar todos os segmentos.
+
+### D2 - verificacao da correcao P2 da v0.6.9
+
+O gate de release executa `npm audit --audit-level=moderate` no frontend e no
+backend, confirmado em `scripts/verify-release.js:82-83` e travado por
+`backend/tests/auditThreshold.test.js`. As duas execucoes desta versao:
+
+```text
+frontend  npm audit --audit-level=moderate  ->  found 0 vulnerabilities  (exit 0)
+backend   npm audit --audit-level=moderate  ->  found 0 vulnerabilities  (exit 0)
+```
+
+Os tres avisos moderate em `qs` que motivaram P2 nao reaparecem.
+
+
 ## NutriScan v0.7.0 - 2026-09-18
 
 Historico de consultas, favoritos e sincronizacao entre dispositivos, mais
