@@ -262,3 +262,49 @@
     margin-right: 8px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   v0.7.3 - dica e erro do campo de codigo manual
+
+   O campo de digitacao ganhou tres textos auxiliares: a dica permanente, o
+   aviso de normalizacao (quando espaco ou traco sao removidos) e a mensagem de
+   recusa. Os tres sao ligados ao input por `aria-describedby`, e a recusa tem
+   `role="alert"` para ser anunciada por leitor de tela.
+
+   Tamanho: `--t-sm` e 15px, que e o piso da escala do projeto. Texto auxiliar
+   nao pode descer abaixo disso - o publico do app tem mais idade e foi por isso
+   que a escala subiu na v0.6.9.
+
+   Cor: `--ink-3` e o piso de contraste (5.4:1 sobre o creme). A mensagem de
+   recusa usa `--danger`, que passa AA e ja e a cor de alerta do pacote de
+   design; ela nao depende SO da cor para se distinguir, porque vem acompanhada
+   de `aria-invalid` no campo e de texto proprio.
+   --------------------------------------------------------------------------- */
+
+.field-hint {
+  margin: 8px 0 0;
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+  line-height: 1.45;
+}
+
+.field-hint strong {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.field-error {
+  margin: 8px 0 0;
+  color: var(--danger);
+  font-size: var(--t-sm);
+  line-height: 1.45;
+  font-weight: 600;
+}
+
+/* O botao de busca fica desabilitado enquanto a consulta acontece. Sem sinal
+   visual, ele parece quebrado; com opacidade e cursor, parece ocupado. */
+.search-card button[type="submit"]:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}

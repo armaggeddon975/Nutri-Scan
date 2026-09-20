@@ -1,6 +1,387 @@
-# Relatorio de Auditoria - NutriScan v0.7.2
+# Relatorio de Auditoria - NutriScan v0.7.3
 
 Data: 2026-09-20
+
+## Escopo
+
+Entrada manual de codigo de barras, com conferencia de digito verificador.
+
+Preservado sem alteracao: `shared/allergenEngine.js`,
+`shared/productAllergenAdapter.js`, todo o `backend/src/ai/`, autenticacao,
+scrypt, sessoes, schema do banco e `backend/src/middleware/rateLimit.js`.
+Nenhuma migration nova. Nenhum teto de limitador alterado. Nenhum bypass.
+
+`shared/allergyVerdict.js` nao foi alterado; ele aparece na validacao por
+mutacao apenas como ALVO de mutante, e e restaurado depois.
+
+## A camera continua NAO ATESTADA
+
+Esta versao **nao fecha** a lacuna de atestacao da camera em hardware real, e
+nao afirma ter fechado. Nenhum aparelho com camera participou de nenhuma
+execucao. A logica do scanner entregue na v0.6.9 continua DECLARADA e NAO
+PROVADA.
+
+O que esta versao fez a respeito foi indireto: ao tornar o caminho de consulta
+executavel fora do navegador, ela permitiu que o fluxo produto -> motor ->
+veredito fosse exercitado pela primeira vez. A decodificacao optica, nao.
+
+## Decisao sobre UPC-A
+
+**UPC-A de 12 digitos e normalizado para EAN-13 com zero a esquerda.**
+
+O digito verificador nao muda: o zero a esquerda nao altera a soma ponderada, e
+o teste M7 confere isso em vez de assumir.
+
+A justificativa NAO e a Open Food Facts - e a deduplicacao do nosso proprio
+banco. Historico e favoritos usam a restricao de unicidade
+`(user_id, product_code)`. Sem normalizar:
+
+```text
+produto escaneado como EAN-13   0036000291452  -> linha 1
+o mesmo produto digitado UPC-A    036000291452  -> linha 2
+```
+
+Duas linhas de historico para o mesmo produto, e favoritar por um caminho nao
+apareceria como favoritado pelo outro. M10 prova que hoje viram uma linha so.
+
+A forma digitada e preservada no resultado (`codigoDigitado`), para a interface
+poder mostrar o que a pessoa escreveu.
+
+## Onde a funcao de validacao ficou
+
+`shared/barcode.js`, junto do motor deterministico.
+
+```text
+frontend   src/App.jsx                    import "../shared/barcode.js"
+           src/services/productLookup.js  import "../../shared/barcode.js"
+           src/pages/Scanner/ScannerPage.jsx
+backend    backend/src/utils/validation.js  import "../../../shared/barcode.js"
+```
+
+Os dois lados importam por caminho relativo, do mesmo jeito que
+`allergenEngine.js` ja era compartilhado. Nao ha build step nem copia.
+
+M9 prova que a implementacao e unica de duas formas: os imports existem, e
+nenhum outro arquivo reimplementa o calculo. A segunda parte procura tanto o
+nome da funcao quanto a assinatura do algoritmo (`% 10) % 10`), porque copiar
+com outro nome seria a forma mais provavel de a divergencia entrar.
+
+Dois mutantes atacam exatamente isso: `P5` da ao frontend uma copia propria, e
+`P5b` faz o backend parar de importar a compartilhada. Os dois morrem.
+
+## 6.5 - cobertura de rate limit da rota de produto
+
+**NAO EXISTE rota de consulta de produto no backend.**
+
+Isto nao e uma lacuna de configuracao: e a arquitetura atual. A consulta sai do
+navegador direto para a Open Food Facts, em
+`src/services/openFoodFactsService.js`. O backend expoe seis grupos de rotas, e
+nenhum deles e de produto:
+
+```text
+/api/health          sem limitador
+/api/assistant/chat  assistantRateLimit   20 / 10 min por IP
+/api/auth/register   authRateLimit        40 / 15 min por IP
+/api/auth/login      authRateLimit        40 / 15 min por IP
+/api/profile         sem limitador proprio, exige sessao
+/api/history         collectionsRateLimit 300 por usuario + 3000 por IP
+/api/favorites       collectionsRateLimit 300 por usuario + 3000 por IP
+```
+
+Portanto: **nenhum limitador cobre a consulta de produto, porque ela nao passa
+por nos.** Quem sofre a repeticao e a Open Food Facts, nao o NutriScan.
+
+O que ESTA coberto e o efeito persistente da consulta. Toda consulta que vira
+registro passa por `/api/history`, e ali valem os dois tetos da v0.7.2, agora
+tambem com a conferencia de digito verificador antes da gravacao.
+
+### Proposta, NAO implementada
+
+Se o projeto quiser cobrir a consulta, o caminho seria um proxy no backend:
+
+```text
+GET /api/products/:codigo
+  -> valida com shared/barcode.js (fail-closed)
+  -> consulta a Open Food Facts do servidor
+  -> devolve o produto
+
+limitador composto, no padrao da v0.7.2:
+  por usuario   teto a medir
+  por IP        teto a medir, obrigatoriamente maior - a rota seria acessivel
+                a visitante, e nesse caso o teto por IP e o unico que protege
+```
+
+Isso **nao foi implementado**, por tres motivos que valem registro:
+
+```text
+escopo      a secao 5 fecha o escopo em "digitar o codigo"; mover a consulta
+            para o servidor e outra mudanca, maior que esta versao inteira
+efeito      muda CSP, cache, comportamento offline e custo de banda do Render
+medicao     o teto teria de vir de medicao, e nao ha trafego real para medir
+```
+
+A secao 15 manda descrever em vez de implementar o que estiver fora do escopo.
+Fica para decisao do auditor.
+
+## 6.1 - um caminho de consulta so, e onde ele diverge
+
+```text
+codigo -> consultarProdutoPorCodigo -> motor deterministico -> allergyVerdict -> UI
+```
+
+`src/services/productLookup.js` e esse caminho. `App.jsx`, o gate E2E e os
+testes chamam a MESMA funcao.
+
+### A extracao, declarada
+
+Ate a v0.7.2 este passo vivia dentro de um `useCallback` em `App.jsx`. Extrair
+para um modulo **nao criou um caminho paralelo**: nomeou o unico caminho, que
+antes estava inacessivel a teste porque o projeto nao tem renderizador de React.
+
+Era essa a causa de o caminho principal do produto nunca ter sido exercitado. A
+secao 4(b) do prompt aponta exatamente isso como motivo desta versao, entao a
+extracao esta dentro do escopo - mas fica declarada aqui, porque e uma mudanca
+estrutural em codigo que ja funcionava.
+
+O mutante `P3` ataca isso: faz `App.jsx` montar o resultado por conta propria,
+chamando a busca direto. Morre.
+
+### Onde os dois caminhos DIVERGEM, e por que
+
+A conferencia de ENTRADA depende da origem. Isto contraria a leitura literal de
+6.1, entao precisa de justificativa explicita.
+
+O scanner aceita seis simbologias:
+
+```text
+EAN_13  EAN_8  UPC_A   tem digito verificador de EAN
+UPC_E                  tem digito verificador proprio, calculado sobre a forma expandida
+ITF                    ITF-14 tem 14 digitos; fora dos tamanhos de EAN
+CODE_128               aceita letra
+```
+
+Aplicar a conferencia de digitacao a saida da camera recusaria ITF e CODE_128 -
+caixa de papelao e etiqueta de balanca, que sao leituras legitimas e ja
+funcionavam antes desta versao. Seria uma regressao de funcionalidade vendida
+como controle de seguranca.
+
+E nao faria falta: a `@zxing` confere o checksum da simbologia ao decodificar e
+lanca `ChecksumException` quando ele nao bate. Esse erro ja estava na lista de
+transitorios do `scannerService` desde a v0.6.9. **Uma leitura de EAN que chega
+ao nosso codigo ja passou pelo digito verificador.**
+
+Digitar nao tem essa protecao, e e exatamente ali que a conferencia entra.
+
+Depois desse passo, os dois caminhos sao identicos. M4 prova por igualdade
+profunda do resultado E do veredito, e um dos casos de M4 prova o contrario
+tambem: que a camera continua lendo ITF-14 enquanto o mesmo codigo digitado e
+recusado.
+
+## 6.2 - o que a conferencia pega, e o que ela NAO pega
+
+### Pega
+
+Para cada um dos cinco codigos de referencia, M1 percorre **todas** as trocas de
+um unico digito - cada posicao, cada valor diferente - e exige que todas sejam
+detectadas. Sao 117 mutacoes por EAN-13, e nenhuma passa.
+
+### Nao pega, e isso esta no teste
+
+Trocar o ultimo digito e recalcular produz outro codigo VALIDO:
+
+```text
+7891000100103   valido
+7891000100111   valido tambem, e e outro produto
+```
+
+Dois produtos podem estar a uma tecla de distancia. A validacao reduz a classe
+de erro, nao a elimina.
+
+A consequencia de projeto, tambem no teste: **o codigo entregue a busca e
+exatamente o que a pessoa digitou**, nunca um corrigido ou aproximado, e a
+interface continua mostrando nome e marca para ela conferir. Nao existe "voce
+quis dizer" num app de alergia.
+
+### Mensagens distintas
+
+```text
+vazio              "Digite o código de barras do produto."
+caractere invalido "O código de barras tem só números. Confira o que você digitou."
+tamanho errado     "Esse código tem N números. Um código de barras tem 8, 12 ou 13."
+digito errado      "Esse código não existe. Confira número por número na embalagem."
+fora da base       "Produto <codigo> não está cadastrado na Open Food Facts."
+```
+
+M6 exige que os quatro primeiros sejam textos diferentes entre si, e que o de
+digito errado NAO contenha "nao encontrado" nem "nao esta cadastrado". O
+mutante `P7` colapsa dois deles e morre.
+
+### A limpeza e visivel, e limitada
+
+So espaco e hifen saem, e a quantidade removida volta para quem chamou. A tela
+mostra "Vou buscar 7891000100103" antes do envio.
+
+Qualquer outro caractere e RECUSADO, nao removido. O mutante `P8` troca a
+expressao de separadores por "tudo que nao e digito" - ou seja, limpeza
+silenciosa - e morre em M8.
+## A1 - M1 a M14
+
+```text
+M1   digito verificador, bateria completa       5 testes, verdes
+M2   codigo invalido nao gera requisicao        3 testes, verdes
+M3   backend recusa codigo invalido             3 testes, verdes
+M4   paridade entre os dois caminhos            4 testes, verdes
+M5   conflito com piso de risco, via digitacao  3 testes, verdes
+M6   mensagens distintas                        3 testes, verdes
+M7   UPC-A normalizado preserva identidade      1 teste, verde
+M8   normalizacao visivel e limitada            2 testes, verdes
+M9   uma implementacao so, em shared/           2 testes, verdes
+M10  historico com deduplicacao e limite        3 testes, verdes (PostgreSQL real)
+M11  visitante nao grava no PostgreSQL          1 teste, verde (PostgreSQL real)
+M12  acessibilidade do campo                    2 testes, verdes
+M13  regressao C1                               12 testes, verdes
+M14  regressao de limitadores                   17 testes, verdes
+```
+
+Arquivos: `backend/tests/barcode.test.js` (16), `backend/tests/productLookup.test.js`
+(13), `backend/tests/collectionsIntegration.test.js` (M10, M11, R11),
+`backend/tests/allergyVerdict.test.js` (M13), `backend/tests/rateLimit.test.js`
+(M14), `backend/tests/e2eGate.test.js` (A10).
+
+## A2 - validacao por mutacao
+
+```text
+mortas 27 | nao executadas 0 | problemas 0
+APROVADO: toda mutacao foi detectada pelo teste correspondente.
+```
+
+Os cinco mutantes sugeridos pelo prompt estao entre os treze novos:
+
+```text
+P1   M1  o digito verificador aceita qualquer codigo                    MORTA
+P1b  M1  o calculo usa peso fixo pela esquerda (erra EAN-8 ou EAN-13)   MORTA
+P2   M3  tira a validacao do backend e deixa so no frontend             MORTA
+P2b  M3  a regra do backend passa a exigir digito de TODO codigo        MORTA
+P3   M4  o caminho manual monta o resultado por conta propria           MORTA
+P3b  M4  o caminho manual deixa de conferir e vira o da camera          MORTA
+P4   M5  remove o piso de risco do veredito                             MORTA
+P5   M9  o frontend ganha copia propria da funcao                       MORTA
+P5b  M9  o backend para de importar a compartilhada                     MORTA
+P6   M7  UPC-A deixa de normalizar para EAN-13                          MORTA
+P7   M6  colapsa digito invalido e nao encontrado na mesma mensagem     MORTA
+P8   M8  passa a limpar qualquer caractere em silencio                  MORTA
+P9  M10  remove a validacao do backend: codigo invalido chega ao banco  MORTA
+```
+
+Mais os catorze herdados da v0.7.2 (N1 a N5, M1 a M7), todos MORTOS. Nenhum
+sobrevivente.
+
+`P1b` merece nota: ele nao desliga a conferencia, apenas calcula o peso a partir
+da esquerda com peso inicial fixo. Isso acerta um dos formatos e erra o outro -
+EAN-13 e EAN-8 tem paridade invertida quando contados da esquerda. E o tipo de
+defeito que passa se a bateria so testar um formato. A bateria testa os tres.
+
+### O script de mutacao nao conseguia testar tres alvos
+
+Na primeira rodada, `P2`, `P5b` e `P9` sairam como **INAPLICAVEL**: a ancora de
+varias linhas nao casava.
+
+A causa era fim de linha. `backend/src/utils/validation.js` esta com CRLF no
+disco - o Git converte no checkout do Windows - e as ancoras eram escritas com
+`\n`. O script anunciava que nao conseguiu testar, em vez de testar errado, que
+e o comportamento menos ruim dos dois; mas o efeito pratico era o mesmo de nao
+ter o teste.
+
+A comparacao passou a normalizar o fim de linha. Os bytes originais continuam
+guardados para a restauracao, entao o arquivo volta ao disco exatamente como
+estava. Com isso os tres rodaram e morreram.
+
+## A9 - o gate E2E real
+
+**PASS, exit code 0, com `manualCodeLookup` em PASSED.**
+
+```text
+mode                    strict
+manualCodeLookup        PASSED
+anthropicReal           EXECUTED_GENERIC_AND_PRODUCT
+anthropicCalls          2
+ok                      true
+```
+
+Saida literal completa, tabela de subgates e `E2E_LAST_RUN.json` integral estao
+no E2E_REPORT desta versao.
+
+Residuo no banco apos a execucao: **0** em todos os seis padroes conferidos, e
+`product_history` de volta a zero - o subgate grava e a cascata apaga junto com
+a conta.
+
+## A10 - os 17 requisitos antigos continuam exigidos
+
+```text
+modo strict, com a flag da IA:  18 requisitos
+os 17 da v0.7.2:                todos presentes
+acrescentado:                   manualCodeLookup, e so ele
+```
+
+O teste nao se contenta com presenca na lista: para cada um dos 17, ele poe o
+requisito em `NOT_EXECUTED` e exige que `findMissingRequirements` devolva
+exatamente aquele. Um requisito que existe mas nunca reprova e decoracao.
+
+`manualCodeLookup` e requisito BASE, nao condicional a flag da Anthropic. Amarra-
+lo a IA deixaria o gate aprovar uma execucao sem chave que nunca exercitou a
+consulta por codigo - que e justamente o caminho que esta versao existe para
+tornar auditavel.
+
+O teste `A12` da v0.7.0 precisou ser ajustado: ele travava o total absoluto em
+17. Em vez de trocar o numero - que e o gesto errado, e ensina a "consertar"
+testes -, ele passou a afirmar o que de fato guarda: que nenhum dos 14
+requisitos anteriores a v0.7.0 sumiu, e que os acrescentados desde entao sao
+exatamente `historySync`, `favoritesSync`, `verdictFreshness` e
+`manualCodeLookup`. Quem trava o total exato e `A10`.
+
+## A4 a A8, A11, A12, A13
+
+```text
+A4   npm run build                    OK
+A5   npm --prefix backend test        224 testes, 223 pass, 0 fail, 1 SKIP
+A6   suite contra PostgreSQL real     23/23 na suite de colecoes, 0 fail
+A7   npm audit --audit-level=moderate 0 vulnerabilidades nos dois pacotes
+A8   node scripts/verify-release.js   exit code 0
+A11  gasto do gate por balde          colecoes 12, auth 3, assistente 2
+A12  residuo NutriVa                  0 em codigo, interface e manifestos
+A13  versao 0.7.3 nos 7 pontos        consistente
+```
+
+## O que esta versao NAO prova
+
+```text
+camera em hardware real        NAO EXECUTADO - exige aparelho com camera
+decodificacao optica           NAO EXECUTADO - nenhuma imagem foi decodificada
+Open Food Facts real           NAO EXECUTADO - a busca do gate e injetada
+suite de colecoes no Neon      NAO EXECUTADO - por decisao de risco
+carga simultanea real          NAO EXECUTADO
+```
+
+**A atestacao da camera em hardware continua ABERTA e esta versao nao a fecha.**
+
+O que ela fez foi tornar o caminho POSTERIOR a decodificacao executavel e
+auditavel. A parte optica - enquadramento, foco, leitura em embalagem amassada,
+lanterna, confirmacao por leitura dupla - continua declarada e nao provada,
+exatamente como estava na v0.6.9.
+
+A busca a Open Food Facts e injetada no subgate de proposito: o que se prova e o
+nosso caminho, nao a disponibilidade de terceiro. O efeito colateral honesto e
+que o contrato real da API da Open Food Facts - formato da resposta, campos, 404
+- nao e exercitado por nenhum gate.
+
+Uma observacao que nao e defeito desta versao: `cleanBarcode`, usado no caminho
+da camera, remove caracteres nao numericos. Um CODE_128 alfanumerico e portanto
+mutilado antes da busca. Isso e anterior a esta versao e fora do escopo dela;
+fica registrado para decisao.
+
+## Historico de auditorias anteriores
+
+## Auditoria da v0.7.2 - 2026-09-20
 
 ## Escopo
 
@@ -539,7 +920,6 @@ Um aviso de depreciacao do driver `pg` sobre `sslmode=require` aparece em toda
 conexao ao Neon. Nao e erro e nao afeta o resultado; ficou sem correcao de
 proposito, por estar fora do escopo desta versao.
 
-## Historico de auditorias anteriores
 
 ## Auditoria da v0.7.1 - 2026-09-20
 

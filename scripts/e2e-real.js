@@ -11,6 +11,14 @@ import { createModuleResolver, createRequireFrom } from "./lib/moduleProbe.js";
 import { inspectSessionSchema } from "./lib/sessionSchema.js";
 import { findMissingRequirements, validateAssistantAnswerShape } from "./lib/e2eGate.js";
 import { analyzeProductAllergens } from "../shared/allergenEngine.js";
+import { CONFLICT_MINIMUM_SAFETY, buildAllergyVerdict } from "../shared/allergyVerdict.js";
+import {
+  CODIGO_INVALIDO,
+  ENCONTRADO,
+  ORIGEM_CAMERA,
+  ORIGEM_MANUAL,
+  consultarProdutoPorCodigo,
+} from "../src/services/productLookup.js";
 import { decideAssistantFallback } from "../src/services/assistantFallback.js";
 
 const MAX_ANTHROPIC_CALLS = 2;
@@ -21,6 +29,16 @@ const E2E_PRODUCT = {
   name: "Chocolate E2E",
   ingredients_text: "leite integral, açúcar, cacau",
 };
+
+// Codigos do subgate de consulta manual.
+//
+// O UPC-A e o EAN-13 sao o MESMO produto: `0` + UPC-A e o EAN-13
+// correspondente, e o digito verificador nao muda. O invalido e o canonico com
+// o ultimo digito trocado - exatamente a classe de erro que o digito
+// verificador existe para pegar.
+const CODIGO_MANUAL_UPCA = "036000291452";
+const CODIGO_MANUAL_CANONICO = "0036000291452";
+const CODIGO_MANUAL_INVALIDO = "0036000291453";
 
 const backendPackageJson = path.join(backendDir, "package.json");
 
@@ -348,6 +366,7 @@ async function main() {
     historySync: "NOT_EXECUTED",
     favoritesSync: "NOT_EXECUTED",
     verdictFreshness: "NOT_EXECUTED",
+    manualCodeLookup: "NOT_EXECUTED",
     logout: "NOT_EXECUTED",
     deterministicEngine: "NOT_EXECUTED",
     assistantGuest: "NOT_EXECUTED",
@@ -787,6 +806,159 @@ async function main() {
         );
         report.verdictFreshness = "PASSED";
         log("OK", "verdict freshness", "item salvo sem veredito; perfil muda sem alterar o registro");
+
+        // -----------------------------------------------------------------
+        // manualCodeLookup (v0.7.3)
+        //
+        // Ate a v0.7.2, o caminho principal do produto - o que decide qual
+        // alimento a pessoa esta vendo - nunca tinha sido exercitado por gate
+        // nenhum. A camera nao existe no ambiente de execucao, e a consulta
+        // vivia dentro de um componente React. Esta etapa e a primeira vez que
+        // esse caminho roda de ponta a ponta.
+        //
+        // A consulta usa `consultarProdutoPorCodigo`, que e a MESMA funcao que
+        // `App.jsx` chama. A busca externa e injetada para que o gate nao
+        // dependa da Open Food Facts estar no ar - o que se prova aqui e o
+        // nosso caminho, nao a disponibilidade de terceiro.
+        {
+          const perfilManual = ["milk"];
+          await clientA.request("/profile/allergies", {
+            method: "PUT",
+            body: { allergies: perfilManual },
+          });
+
+          const produtoDaBase = {
+            code: CODIGO_MANUAL_CANONICO,
+            product_name: E2E_PRODUCT.name,
+            ingredients_text: E2E_PRODUCT.ingredients_text,
+          };
+          let buscasFeitas = 0;
+          const buscarFalso = async (codigo) => {
+            buscasFeitas += 1;
+            return codigo === CODIGO_MANUAL_CANONICO ? produtoDaBase : null;
+          };
+
+          // 1. Codigo com digito verificador errado nao chega a rede.
+          const recusado = await consultarProdutoPorCodigo(CODIGO_MANUAL_INVALIDO, {
+            origem: ORIGEM_MANUAL,
+            buscar: buscarFalso,
+          });
+          assert(
+            recusado.estado === CODIGO_INVALIDO,
+            `codigo invalido deveria ser recusado, veio ${recusado.estado}`,
+          );
+          assert(buscasFeitas === 0, "codigo invalido gerou requisicao de rede");
+
+          // 2. UPC-A digitado normaliza para EAN-13 e encontra o produto.
+          const manual = await consultarProdutoPorCodigo(CODIGO_MANUAL_UPCA, {
+            origem: ORIGEM_MANUAL,
+            buscar: buscarFalso,
+          });
+          assert(manual.estado === ENCONTRADO, `consulta manual falhou: ${manual.estado}`);
+          assert(
+            manual.codigo === CODIGO_MANUAL_CANONICO,
+            `UPC-A nao normalizou: ${manual.codigo}`,
+          );
+
+          // 3. Paridade: o mesmo produto pelo caminho da camera.
+          const camera = await consultarProdutoPorCodigo(CODIGO_MANUAL_CANONICO, {
+            origem: ORIGEM_CAMERA,
+            buscar: buscarFalso,
+          });
+          assert(
+            JSON.stringify(manual.produto) === JSON.stringify(camera.produto),
+            "o produto divergiu entre o caminho manual e o da camera",
+          );
+
+          // 4. O veredito vem do motor deterministico e marca o conflito, com
+          //    piso de risco. O perfil que manda e o do PostgreSQL.
+          const perfilNoBanco = await clientA.request("/profile");
+          const alergiasDoBanco = perfilNoBanco.data.user.allergies || [];
+          assert(
+            alergiasDoBanco.includes("milk"),
+            `o perfil do banco nao tem leite: ${JSON.stringify(alergiasDoBanco)}`,
+          );
+
+          const analiseManual = analyzeProductAllergens(manual.produto, alergiasDoBanco);
+          const vereditoManual = buildAllergyVerdict({
+            profileRisks: analiseManual.profileRisks,
+            profileAllergies: alergiasDoBanco,
+            hasProductContext: true,
+          });
+          assert(
+            vereditoManual.status === "conflict",
+            `veredito do caminho manual veio como ${vereditoManual.status}`,
+          );
+          assert(
+            vereditoManual.minimumSafety === CONFLICT_MINIMUM_SAFETY,
+            "o piso de risco nao foi aplicado no caminho manual",
+          );
+          assert(
+            vereditoManual.source === "deterministic_engine",
+            `o veredito nao veio do motor: ${vereditoManual.source}`,
+          );
+
+          const analiseCamera = analyzeProductAllergens(camera.produto, alergiasDoBanco);
+          const vereditoCamera = buildAllergyVerdict({
+            profileRisks: analiseCamera.profileRisks,
+            profileAllergies: alergiasDoBanco,
+            hasProductContext: true,
+          });
+          assert(
+            JSON.stringify(vereditoManual) === JSON.stringify(vereditoCamera),
+            "o veredito divergiu entre o caminho manual e o da camera",
+          );
+
+          // 5. O backend recusa o codigo invalido tambem por requisicao
+          //    direta, sem passar pelo frontend.
+          const gravacaoInvalida = await clientA.request("/history", {
+            method: "POST",
+            body: {
+              productCode: CODIGO_MANUAL_INVALIDO,
+              productName: E2E_PRODUCT.name,
+              productBrand: null,
+              imageUrl: null,
+            },
+          });
+          assert(
+            gravacaoInvalida.response.status === 400,
+            `o backend aceitou codigo invalido: HTTP ${gravacaoInvalida.response.status}`,
+          );
+
+          // 6. E grava o valido, sem congelar veredito.
+          const gravacaoValida = await clientA.request("/history", {
+            method: "POST",
+            body: {
+              productCode: manual.codigo,
+              productName: E2E_PRODUCT.name,
+              productBrand: null,
+              imageUrl: null,
+            },
+          });
+          assert(
+            gravacaoValida.response.status === 201,
+            `o backend recusou codigo valido: HTTP ${gravacaoValida.response.status}`,
+          );
+
+          const historicoManual = await clientA.request("/history");
+          const salvoManual = (historicoManual.data.items || []).find(
+            (item) => item.productCode === manual.codigo,
+          );
+          assert(salvoManual, "a consulta manual nao entrou no historico");
+          for (const campo of ["allergyVerdict", "safety", "conflicts", "verdict", "allergens"]) {
+            assert(
+              salvoManual[campo] === undefined,
+              `o item da consulta manual carrega veredito congelado: ${campo}`,
+            );
+          }
+
+          report.manualCodeLookup = "PASSED";
+          log(
+            "OK",
+            "manual code lookup",
+            "digito verificador barra antes da rede; manual e camera dao o mesmo veredito",
+          );
+        }
 
         const logout = await clientA.request("/auth/logout", { method: "POST" });
         assert(logout.response.status === 200, "logout deve retornar 200");

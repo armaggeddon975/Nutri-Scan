@@ -1,6 +1,324 @@
-# E2E Report - NutriScan v0.7.2
+# E2E Report - NutriScan v0.7.3
 
 Data: 2026-09-20
+
+## Resultado geral
+
+```text
+verify:e2e          PASS, exit code 0
+doctor:e2e          PASS
+e2e:strict          PASS, mode=strict, ok=true
+manualCodeLookup    PASSED  (subgate novo desta versao)
+PostgreSQL real     EXECUTADO - Neon de producao
+Claude real         EXECUTADO - 2 chamadas pagas
+residuo no banco    0
+camera em hardware  NAO EXECUTADO
+```
+
+Nenhum resultado foi herdado. O PASS da v0.7.2 e o da v0.6.8 continuam
+preservados na secao historica, ao fim deste documento, e nao valem para esta
+versao.
+
+## Saida literal do gate
+
+```text
+[OK] pre-requisito - Claude real exigido nesta execucao, contra o backend local
+[RUN] doctor:e2e
+[OK] Node.js - 24.19.0
+[OK] npm - 11.17.0
+[OK] Frontend dependencies - installed (3 modules resolved)
+[OK] Backend dependencies - installed (4 modules resolved)
+[OK] backend/.env - found
+[OK] Env loader - backend/src/config/env.js
+[OK] DATABASE_URL - configured
+[OK] PostgreSQL - accessible
+[OK] Migrations - 2/2 applied
+[OK] ANTHROPIC_API_KEY - configured
+[OK] ANTHROPIC_MODEL - claude-sonnet-5
+[OK] RUN_ANTHROPIC_INTEGRATION_TESTS - enabled
+[OK] Backend port - 3000
+[OK] Frontend origin - http://localhost:5173
+[WARN] Docker - unavailable (optional)
+[OK] Doctor strict-e2e - todos os requisitos obrigatorios atendidos
+[OK] doctor:e2e
+[RUN] e2e:strict
+[OK] migrations - aplicadas duas vezes (idempotente)
+[RUN] backend - iniciando API temporaria na porta 3000
+[OK] health - status=ok database=connected ai=configured
+[OK] deterministic engine - contains/traces conforme baseline
+[OK] privacy - payload sem segredos e com snapshot deterministico
+[OK] anthropic real #1 - pergunta generica validada
+[OK] fallback - AI_NOT_CONFIGURED -> source local
+[OK] session schema - token_hash presente e sem coluna de token bruto
+[OK] assistant authority - PostgreSQL vence guestAllergies e snapshot marca conflito
+[OK] anthropic real #2 - produto com conflito validado com sessao autenticada
+[OK] multi-device - alergias sincronizadas entre dispositivos A e B
+[OK] isolation - contas permanecem isoladas
+[OK] history sync - A gravou, B leu, conta isolada nao viu
+[OK] favorites sync - A gravou, B leu, remocao cruzada recusada com 404
+[OK] verdict freshness - item salvo sem veredito; perfil muda sem alterar o registro
+[OK] manual code lookup - digito verificador barra antes da rede; manual e camera dao o mesmo veredito
+[OK] auth - register, me, allergies, login, logout idempotente
+[OK] e2e:strict
+[PASS] verify:e2e - PostgreSQL real e Claude real comprovados
+
+=== EXIT CODE: 0 ===
+```
+
+## Tabela de subgates
+
+```text
+backendProcess          STARTED_BY_RUNNER
+database                EXECUTED
+migrations              EXECUTED_IDEMPOTENT
+auth                    PASSED
+sessionSchema           PASSED
+multiDevice             PASSED
+isolation               PASSED
+historySync             PASSED
+favoritesSync           PASSED
+verdictFreshness        PASSED
+manualCodeLookup        PASSED     <- novo nesta versao
+logout                  PASSED
+deterministicEngine     PASSED
+assistantGuest          PASSED
+assistantAuthenticated  PASSED
+assistantAuthority      PASSED
+fallback                PASSED
+privacy                 PASSED
+anthropic               configured
+anthropicReal           EXECUTED_GENERIC_AND_PRODUCT
+```
+
+**Nenhum subgate em SKIP ou NOT_EXECUTED.** O gate nao reportaria PASS se algum
+tivesse ficado: `decideGateOutcome` exige as duas etapas com exit 0, e
+`findMissingRequirements` exige os 18 requisitos do modo strict.
+
+### O que `manualCodeLookup` executou
+
+Seis conferencias, contra o backend real e o PostgreSQL real:
+
+```text
+1  codigo com digito verificador errado e recusado
+   e o contador de busca continua em ZERO - nao houve requisicao de rede
+
+2  UPC-A digitado (036000291452) normaliza para EAN-13 (0036000291452)
+   e encontra o produto
+
+3  o MESMO produto pelo caminho da camera devolve objeto identico
+
+4  o perfil vem do PostgreSQL (nao do cliente), o motor marca conflito de
+   leite, o piso de risco e "caution", e a origem do veredito e
+   "deterministic_engine"
+   o veredito do caminho manual e IGUAL ao do caminho da camera
+
+5  requisicao DIRETA ao backend com digito verificador invalido -> HTTP 400
+   (sem passar pelo frontend; e esta a barreira que vale)
+
+6  o codigo valido grava no historico, e o item salvo nao carrega
+   allergyVerdict, safety, conflicts, verdict nem allergens
+```
+
+## E2E_LAST_RUN.json - conteudo integral
+
+O arquivo esta no `.gitignore` e por isso NAO vai no ZIP, conforme a secao 13 do
+prompt. O conteudo integral fica transcrito aqui:
+
+```json
+{
+  "version": "0.7.3",
+  "mode": "strict",
+  "startedAt": "2026-09-20T23:03:04.089Z",
+  "finishedAt": "2026-09-20T23:03:19.391Z",
+  "baseUrl": "http://127.0.0.1:3000/api",
+  "backendProcess": "STARTED_BY_RUNNER",
+  "database": "EXECUTED",
+  "migrations": "EXECUTED_IDEMPOTENT",
+  "auth": "PASSED",
+  "sessionSchema": "PASSED",
+  "multiDevice": "PASSED",
+  "isolation": "PASSED",
+  "historySync": "PASSED",
+  "favoritesSync": "PASSED",
+  "verdictFreshness": "PASSED",
+  "manualCodeLookup": "PASSED",
+  "logout": "PASSED",
+  "deterministicEngine": "PASSED",
+  "assistantGuest": "PASSED",
+  "assistantAuthenticated": "PASSED",
+  "assistantAuthority": "PASSED",
+  "fallback": "PASSED",
+  "privacy": "PASSED",
+  "anthropic": "configured",
+  "anthropicReal": "EXECUTED_GENERIC_AND_PRODUCT",
+  "anthropicCalls": 2,
+  "ok": true,
+  "rateLimitBudget": {
+    "margem": "no maximo 50% do teto",
+    "baldes": [
+      {
+        "balde": "assistente",
+        "usado": 2,
+        "teto": 20,
+        "margemMaxima": 10,
+        "folga": 18,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "auth",
+        "usado": 3,
+        "teto": 40,
+        "margemMaxima": 20,
+        "folga": 37,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "colecoes",
+        "usado": 12,
+        "teto": 300,
+        "margemMaxima": 150,
+        "folga": 288,
+        "dentroDaMargem": true
+      }
+    ],
+    "estouraram": []
+  }
+}
+```
+
+`anthropicCalls: 2` bate com o teto de duas chamadas por execucao.
+
+## A11 - contagem de requisicoes do gate por balde
+
+```text
+colecoes      12 de 300 por usuario (margem 150)  e de 3000 por IP
+auth           3 de 40  (margem 20)
+assistente     2 de 20  (margem 10)
+```
+
+Colecoes subiu de 9 para 12: o subgate novo faz tres requisicoes - a gravacao
+recusada, a aceita e a leitura de conferencia. Continua dentro da margem, com
+folga de 288.
+
+Nenhum limitador foi encostado. O orcamento e fail-closed: passar de metade do
+teto lanca antes de `report.ok = true`.
+
+### A mesma imprecisao de relatorio da v0.7.2, ainda presente
+
+O balde `colecoes` mostra `"teto": 300`, que e o teto POR USUARIO. O orcamento
+foi escrito na v0.7.1, quando havia um teto so, e nao mostra o teto por IP de
+3000. Corrigir exigiria outra execucao do gate - mais duas chamadas pagas - e
+nao se justifica por um rotulo.
+
+A medicao esta correta e e o que importa: 12 requisicoes, muito abaixo dos dois
+tetos.
+
+## Residuo no banco apos a execucao
+
+Conferido com o proprio pool do backend, que carrega `backend/.env` sozinho: a
+string de conexao nao foi lida nem impressa.
+
+```text
+=== CONTAGEM TOTAL NO BANCO ===
+users              4
+sessions           5
+product_history    0
+product_favorites  0
+
+=== RESIDUO DE TESTE (deve ser 0 em todas as linhas) ===
+gate E2E (e2e-real.js)         nutriscan-e2e-%          0
+suite de colecoes              colecoes-test-%          0
+suite de integracao antiga     e2e-%@example.test       0
+reproducao do E1               repro-e1-%               0
+qualquer @example.test         %@example.test           0
+qualquer @example.com          %@example.com            0
+
+RESIDUO SOMADO: 0
+
+=== LINHAS ORFAS (cascata da migration) ===
+product_history sem dono    0
+product_favorites sem dono  0
+```
+
+**Residuo zero.** Os 4 usuarios sao contas reais, anteriores a execucao. O
+subgate novo grava no historico e o `cleanupUsers` do runner apaga a conta no
+`finally`, levando historico e favoritos junto pela cascata - `product_history`
+voltou a zero.
+
+## Suite completa do backend
+
+Com `RUN_DB_INTEGRATION_TESTS=true`, contra PostgreSQL 17.10 local:
+
+```text
+ℹ tests 224
+ℹ pass 223
+ℹ fail 0
+ℹ skipped 1
+[R11] gasto de colecoes desta suite: 382 de 3000 (folga 7.85x)
+```
+
+A suite cresceu de 188 para 224 testes: 16 de `barcode.test.js`, 13 de
+`productLookup.test.js`, 4 na suite de integracao (M10 e M11) e 3 no gate
+(A10).
+
+O unico SKIP:
+
+```text
+﹣ Claude real responde pergunta curta quando explicitamente habilitado
+  # NAO EXECUTADO - defina RUN_ANTHROPIC_INTEGRATION_TESTS=true e ANTHROPIC_API_KEY
+```
+
+E a protecao contra chamada paga acidental num `npm test` comum. **NAO
+EXECUTADO nao conta como PASS** - e a propriedade que ele cobriria foi provada
+no gate, com duas chamadas reais.
+
+## Suite de integracao de colecoes - PostgreSQL local
+
+Esta suite **nao** rodou contra o Neon de producao, pela mesma decisao da
+v0.7.2: ela grava muito, e a trava `RUN_DB_INTEGRATION_TESTS` existe desde o
+incidente da v0.6.6. A flag foi mantida desligada em toda execucao apontada
+para o Neon.
+
+```text
+✔ H1 ✔ F1 ✔ H2 ✔ H3 ✔ H4 ✔ F2 ✔ F3 ✔ F4  ✔ S1 ✔ S2 ✔ S3
+✔ I1 ✔ I2 ✔ I3 ✔ I4 e V1  ✔ A1 ✔ D1
+✔ a migration aplica e reaplica sem quebrar
+✔ M10 consulta manual grava no historico e deduplica pelo codigo canonico
+✔ M10 UPC-A digitado e EAN-13 escaneado viram UMA linha de historico
+✔ M10 o backend recusa gravar codigo com digito verificador invalido
+✔ M11 visitante nao grava no PostgreSQL pelo caminho manual
+✔ R11 o gasto de colecoes desta suite cabe no teto por IP
+ℹ tests 23, pass 23, fail 0, skipped 0
+```
+
+## Validacao por mutacao
+
+```text
+mortas 27 | nao executadas 0 | problemas 0
+APROVADO: toda mutacao foi detectada pelo teste correspondente.
+```
+
+Treze mutantes novos nesta versao, doze herdados. Detalhe no AUDIT_REPORT.
+
+## O que NAO foi executado
+
+```text
+camera em hardware real        NAO EXECUTADO - exige aparelho com camera
+decodificacao optica           NAO EXECUTADO - nenhuma imagem foi decodificada
+Open Food Facts real           NAO EXECUTADO - a busca do gate e injetada
+suite de colecoes no Neon      NAO EXECUTADO - por decisao, descrita acima
+carga simultanea real          NAO EXECUTADO
+```
+
+**A atestacao da camera em hardware continua ABERTA.** Esta versao nao a fecha.
+
+A busca a Open Food Facts e injetada no subgate de proposito: o que se prova ali
+e o NOSSO caminho - conferencia, normalizacao, motor, veredito, gravacao -, nao
+a disponibilidade de um terceiro. Um gate que depende da Open Food Facts estar
+no ar falharia por motivo alheio ao codigo.
+## Historico de auditorias anteriores
+
+## E2E da v0.7.2 - 2026-09-20
 
 ## Resultado geral
 
@@ -347,7 +665,6 @@ suite de colecoes no Neon      NAO EXECUTADO - por decisao, descrita acima
 
 Nenhum destes foi contornado, simulado ou declarado como aprovado.
 
-## Historico de auditorias anteriores
 
 ## E2E da v0.7.1 - 2026-09-20
 

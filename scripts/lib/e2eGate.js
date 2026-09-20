@@ -126,6 +126,21 @@ export function buildStrictRequirements(report, { anthropicFlagEnabled = false }
     ["historySync", report.historySync === "PASSED"],
     ["favoritesSync", report.favoritesSync === "PASSED"],
     ["verdictFreshness", report.verdictFreshness === "PASSED"],
+
+    // v0.7.3 - consulta por codigo digitado.
+    //
+    // Requisito BASE, como os tres acima: ele nao depende de IA, so do
+    // caminho de produto e do motor deterministico. Amarra-lo a flag da
+    // Anthropic deixaria o gate aprovar uma execucao que nunca exercitou a
+    // entrada manual.
+    //
+    // Ele existe por um motivo que vai alem da funcionalidade nova: ate a
+    // v0.7.2, o caminho principal do produto - o que decide qual alimento a
+    // pessoa esta vendo - nunca tinha sido executado por gate nenhum. A
+    // camera nao roda no ambiente de execucao, e a consulta vivia dentro de
+    // um componente React. Este subgate e a primeira vez que esse caminho e
+    // exercitado de ponta a ponta.
+    ["manualCodeLookup", report.manualCodeLookup === "PASSED"],
   ];
 
   if (anthropicFlagEnabled) {

@@ -1,5 +1,151 @@
 # Changelog
 
+## NutriScan v0.7.3 - 2026-09-20
+
+Entrada manual de codigo de barras, com conferencia de digito verificador.
+
+### O problema: a camera era o unico caminho
+
+Ate esta versao, consultar um produto exigia camera. Se a permissao fosse
+negada, o aparelho nao tivesse camera, o navegador nao suportasse, a luz fosse
+ruim ou a embalagem estivesse amassada, a pessoa travava. Nao havia plano B.
+
+O segundo motivo e menos visivel e mais grave: **o caminho principal do produto
+nunca tinha sido exercitado por teste.** A logica do scanner entregue na v0.6.9
+- erro transitorio que nao mata a camera, confirmacao por leitura dupla,
+resolucao, foco continuo, lanterna - continuava DECLARADA e NAO PROVADA, porque
+nao ha camera no ambiente de execucao nem aqui nem no do auditor. E a consulta
+em si vivia dentro de um `useCallback` de `App.jsx`, onde nenhum teste alcanca
+sem montar React.
+
+A entrada manual resolve as duas coisas: da um caminho alternativo a quem
+precisa, e torna o fluxo de consulta auditavel de ponta a ponta pela primeira
+vez.
+
+**A atestacao da camera em hardware real continua ABERTA.** Esta versao nao a
+fecha e nao afirma ter fechado.
+
+### A conferencia de digito verificador e controle de seguranca
+
+Num app de alergia, um digito digitado errado nao devolve "produto nao
+encontrado". Devolve OUTRO PRODUTO - que existe, tem foto, tem nome plausivel e
+tem outros alergenicos. A tela fica com cara de acerto e o conteudo errado.
+
+`shared/barcode.js` aceita EAN-13, EAN-8 e UPC-A, e confere o digito
+verificador **antes de qualquer requisicao de rede**. Consultar primeiro e
+decidir depois ja seria tarde.
+
+O que a conferencia pega, medido: para cada um dos cinco codigos de referencia,
+**todas** as trocas de um unico digito - 10 posicoes vezes 9 valores, em cada
+codigo - sao detectadas.
+
+O que ela NAO pega, e esta escrito no teste: trocar o ultimo digito e
+recalcular produz outro codigo VALIDO. Dois produtos diferentes podem estar a
+uma tecla de distancia. Por isso o codigo entregue a busca e exatamente o que a
+pessoa digitou, nunca um "corrigido", e a interface continua mostrando nome e
+marca para ela conferir. Nao existe "voce quis dizer".
+
+#### As mensagens nao podem ser a mesma
+
+```text
+digito verificador errado  ->  "Esse código não existe. Confira número por
+                               número na embalagem."
+produto ausente da base    ->  "Produto <codigo> não está cadastrado na Open
+                               Food Facts."
+```
+
+A primeira manda conferir o que foi digitado; a segunda diz que o codigo esta
+certo e o produto e que nao esta la. Colapsar as duas manda a pessoa procurar
+no lugar errado.
+
+#### UPC-A vira EAN-13, e o motivo e nosso
+
+Um UPC-A de 12 digitos e normalizado para EAN-13 com zero a esquerda. O digito
+verificador nao muda, porque o zero nao altera a soma ponderada.
+
+A razao nao e a Open Food Facts: e a deduplicacao. Historico e favoritos usam a
+restricao de unicidade `(user_id, product_code)`. Sem normalizar, o mesmo
+produto lido pela camera como EAN-13 e digitado como UPC-A viraria DUAS linhas
+de historico, e favoritar por um caminho nao apareceria como favoritado pelo
+outro.
+
+#### A limpeza e visivel
+
+Espaco e traco sao removidos, porque e assim que a pessoa copia um codigo de
+uma embalagem. **Nada alem disso.** A interface mostra "Vou buscar 7891000100103"
+antes do envio, e qualquer outro caractere e recusado em vez de apagado em
+silencio - apagar mudaria o codigo sem ela perceber, que e o defeito que a
+conferencia existe para evitar.
+
+### A validacao do backend tambem, e ela e que vale
+
+`productCodeSchema` passou a usar a MESMA funcao de `shared/barcode.js`. Um
+cliente que nao seja o nosso - ou o nosso com defeito - nao grava codigo
+numerico de 8, 12 ou 13 digitos com digito verificador errado.
+
+A regra e deliberadamente ESTREITA. A base da Open Food Facts tem codigos
+alfanumericos, e o scanner le ITF e CODE_128, que nao tem digito verificador de
+EAN. Exigir de todos transformaria um controle de seguranca em perda de
+funcionalidade. So se exige quando o codigo e todo numerico E tem um dos tres
+tamanhos de EAN/UPC - ali, digito errado nao tem explicacao inocente.
+
+### Um caminho de consulta so
+
+O codigo digitado entra no mesmo fluxo do escaneado:
+
+```text
+codigo -> consultarProdutoPorCodigo -> motor deterministico -> allergyVerdict -> UI
+```
+
+`services/productLookup.js` e esse caminho. `App.jsx`, o gate E2E e os testes
+chamam a MESMA funcao. Extrair nao criou um caminho paralelo: nomeou o unico
+caminho, que antes estava escondido dentro de um componente.
+
+**O que difere entre as origens e so a conferencia de ENTRADA, e por um motivo
+concreto.** O scanner le EAN-13, EAN-8, UPC-A, UPC-E, ITF e CODE_128. Desses,
+ITF e CODE_128 nao tem digito verificador de EAN - ITF-14 tem 14 digitos e
+CODE_128 aceita letra. Exigir digito verificador de EAN na saida da camera
+recusaria caixa de papelao e etiqueta de balanca, que sao leituras legitimas.
+
+E nao faria falta: a propria `@zxing` confere o checksum da simbologia ao
+decodificar e lanca `ChecksumException` quando ele nao bate - e por isso esse
+erro ja estava na lista de transitorios do `scannerService`. Uma leitura de EAN
+que chega ao nosso codigo JA passou pelo digito verificador.
+
+Digitar nao tem essa protecao. Dai a conferencia existir exatamente ali.
+
+### Interface
+
+O campo fica **sempre visivel** na tela da camera, e nao apenas quando ela
+falha: digitar costuma ser mais rapido que enquadrar uma embalagem amassada, e
+funciona sem permissao nenhuma.
+
+```text
+inputMode="numeric"   teclado numerico no celular
+pattern               so numero, espaco e traco
+<label> associado     leitor de tela anuncia o campo
+aria-describedby      dica, aviso de normalizacao e erro ligados ao campo
+role="alert"          a recusa e anunciada assim que aparece
+aria-invalid          o campo se declara invalido
+```
+
+### Rate limit da rota de produto: ela nao existe
+
+O prompt pedia para identificar qual limitador cobre a rota de consulta de
+produto. **Nenhum, porque a rota nao existe.**
+
+A consulta sai do navegador direto para a Open Food Facts
+(`src/services/openFoodFactsService.js`); ela nao passa pelo nosso backend. Os
+limitadores cobrem `/api/auth`, `/api/assistant` e as rotas de colecoes - e a
+gravacao de historico e favoritos, que e o efeito persistente de uma consulta,
+esta coberta pelos dois tetos da v0.7.2 (300 por usuario e 3000 por IP).
+
+Criar um proxy de produto no backend teria consequencias que vao muito alem
+desta versao - CSP, cache, comportamento offline, custo de banda - e por isso
+fica DESCRITO no AUDIT_REPORT, nao implementado.
+
+Nenhum teto existente foi afrouxado e nenhum bypass foi introduzido.
+
 ## NutriScan v0.7.2 - 2026-09-20
 
 Correcao do defeito E1 da auditoria externa da v0.7.1, mais a disciplina de

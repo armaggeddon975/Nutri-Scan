@@ -187,6 +187,7 @@ const reportCompleto = {
   historySync: "PASSED",
   favoritesSync: "PASSED",
   verdictFreshness: "PASSED",
+  manualCodeLookup: "PASSED",
   anthropicReal: "EXECUTED_GENERIC_AND_PRODUCT",
   assistantAuthenticated: "PASSED",
 };
@@ -232,7 +233,7 @@ test("E: strict exige que o backend tenha sido iniciado pelo proprio runner", ()
   );
 
   // A lista de requisitos nunca pode ficar vazia: isso seria strict sem prova.
-  assert.ok(buildStrictRequirements(reportCompleto, { anthropicFlagEnabled: true }).length >= 17);
+  assert.ok(buildStrictRequirements(reportCompleto, { anthropicFlagEnabled: true }).length >= 18);
 });
 
 // A14 da v0.6.8: o conserto de diagnostico do runner (B2) nao pode custar
@@ -258,6 +259,7 @@ test("D2: o conjunto de requisitos do modo strict e exatamente este", () => {
     "historySync",
     "favoritesSync",
     "verdictFreshness",
+    "manualCodeLookup",
   ]);
 
   const chavesComFlag = buildStrictRequirements(reportCompleto, { anthropicFlagEnabled: true }).map(
@@ -428,7 +430,21 @@ test("A12: os 14 requisitos anteriores a v0.7.0 continuam exigidos, um a um", ()
   }
 
   assert.equal(REQUISITOS_ANTES_DA_V070.length, 14);
-  assert.equal(atuais.length, 17, "a v0.7.0 acrescenta exatamente tres requisitos");
+
+  // A v0.7.0 acrescentou tres (historico, favoritos, frescor do veredito) e a
+  // v0.7.3 acrescentou um (`manualCodeLookup`).
+  //
+  // A assercao aqui e sobre o que este teste realmente guarda: que nenhum dos
+  // 14 antigos sumiu e que nada foi acrescentado sem ser nomeado. Travar um
+  // total absoluto faria este teste quebrar a cada requisito novo e ensinaria
+  // a "consertar" trocando o numero - que e o gesto errado. Quem trava o total
+  // exato e o teste A10, que lista os 18 por nome.
+  const acrescentados = atuais.filter((chave) => !REQUISITOS_ANTES_DA_V070.includes(chave));
+  assert.deepEqual(
+    acrescentados,
+    ["historySync", "favoritesSync", "verdictFreshness", "manualCodeLookup"],
+    `requisitos acrescentados desde a v0.6.9 fora do esperado: ${acrescentados.join(", ")}`,
+  );
 });
 
 test("A12: os tres requisitos novos tambem reprovam sozinhos", () => {
@@ -443,4 +459,85 @@ test("A12: os tres requisitos novos tambem reprovam sozinhos", () => {
       [chave],
     );
   }
+});
+
+// A10 da v0.7.3: o subgate novo nao pode custar nenhum requisito antigo.
+//
+// A v0.7.2 saiu com 17 requisitos em modo strict, aprovada por auditoria
+// externa. A v0.7.3 acrescenta `manualCodeLookup` e passa a 18. Somar um
+// requisito e barato; perder um passa despercebido - e o gate continuaria
+// dizendo PASS sobre uma propriedade que ninguem mais verifica.
+//
+// Este teste lista os 17 pelo nome e exige que cada um, sozinho, continue
+// capaz de reprovar a execucao.
+const REQUISITOS_DA_V072 = [
+  "backendProcess",
+  "database",
+  "migrations",
+  "auth",
+  "sessionSchema",
+  "multiDevice",
+  "isolation",
+  "logout",
+  "assistantAuthority",
+  "deterministicEngine",
+  "fallback",
+  "privacy",
+  "historySync",
+  "favoritesSync",
+  "verdictFreshness",
+  "anthropicReal",
+  "assistantAuthenticated",
+];
+
+test("A10: os 17 requisitos da v0.7.2 continuam exigidos, um a um", () => {
+  assert.equal(REQUISITOS_DA_V072.length, 17, "a lista de referencia mudou de tamanho");
+
+  const atuais = buildStrictRequirements(reportCompleto, { anthropicFlagEnabled: true }).map(
+    ([chave]) => chave,
+  );
+
+  for (const chave of REQUISITOS_DA_V072) {
+    assert.ok(atuais.includes(chave), `o requisito ${chave} da v0.7.2 sumiu do modo strict`);
+
+    // Presenca na lista nao basta: ele precisa continuar REPROVANDO sozinho.
+    // Um requisito que existe mas nunca falha e decoracao.
+    assert.deepEqual(
+      findMissingRequirements(
+        { ...reportCompleto, [chave]: "NOT_EXECUTED" },
+        { anthropicFlagEnabled: true },
+      ),
+      [chave],
+      `o requisito ${chave} deixou de reprovar quando nao executado`,
+    );
+  }
+});
+
+test("A10: o modo strict tem exatamente 18 requisitos, 17 antigos mais o novo", () => {
+  const atuais = buildStrictRequirements(reportCompleto, { anthropicFlagEnabled: true }).map(
+    ([chave]) => chave,
+  );
+
+  assert.equal(atuais.length, 18, `o modo strict tem ${atuais.length} requisitos`);
+
+  const novos = atuais.filter((chave) => !REQUISITOS_DA_V072.includes(chave));
+  assert.deepEqual(novos, ["manualCodeLookup"], `requisitos novos inesperados: ${novos.join(", ")}`);
+});
+
+test("A10: manualCodeLookup e requisito BASE, nao condicional a flag da IA", () => {
+  // Amarra-lo a flag da Anthropic deixaria o gate aprovar uma execucao sem IA
+  // que nunca exercitou a consulta por codigo digitado - que e justamente o
+  // caminho que esta versao existe para tornar auditavel.
+  const semFlag = buildStrictRequirements(reportCompleto, { anthropicFlagEnabled: false }).map(
+    ([chave]) => chave,
+  );
+
+  assert.ok(semFlag.includes("manualCodeLookup"), "manualCodeLookup virou condicional");
+  assert.deepEqual(
+    findMissingRequirements(
+      { ...reportCompleto, manualCodeLookup: "NOT_EXECUTED" },
+      { anthropicFlagEnabled: false },
+    ),
+    ["manualCodeLookup"],
+  );
 });

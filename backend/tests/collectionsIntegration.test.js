@@ -10,6 +10,7 @@ import { createApp } from "../src/app.js";
 import { env } from "../src/config/env.js";
 import { closePool, query } from "../src/database/pool.js";
 import { TETO_COLECOES_POR_IP } from "../src/middleware/rateLimit.js";
+import { validarCodigoDeBarras } from "../../shared/barcode.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const backendRoot = path.resolve(__dirname, "..");
@@ -621,6 +622,120 @@ test("a migration aplica e reaplica sem quebrar", { skip: pular }, async () => {
 });
 
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// M10 e M11 - o caminho manual e o historico (v0.7.3)
+// ---------------------------------------------------------------------------
+//
+// A consulta por codigo digitado grava no historico exatamente como a
+// escaneada. O que se prova aqui e que a deduplicacao e o limite continuam
+// valendo quando o codigo chega pela digitacao, e que o codigo gravado e a
+// forma CANONICA - senao o mesmo produto digitado como UPC-A e lido como
+// EAN-13 viraria duas linhas.
+
+test("M10 consulta manual grava no historico e deduplica pelo codigo canonico", { skip: pular }, async () => {
+  rodarMigrations();
+  await comServidor(async (baseUrl) => {
+    const agente = criarAgente(baseUrl);
+    await registrar(agente, novoEmail());
+
+    // O codigo passa pela MESMA validacao que o app usa antes de chegar aqui.
+    const validado = validarCodigoDeBarras("789 1000-100103");
+    assert.equal(validado.valido, true, "o codigo de teste deveria ser valido");
+
+    const produto = { ...PRODUTO, productCode: validado.codigo };
+
+    const primeira = await agente.request("/api/history", { method: "POST", body: produto });
+    assert.equal(primeira.status, 201);
+
+    // Mesma consulta de novo: atualiza, nao duplica.
+    const segunda = await agente.request("/api/history", { method: "POST", body: produto });
+    assert.equal(segunda.status, 201);
+
+    const lista = await agente.request("/api/history");
+    assert.equal(lista.body.items.length, 1, "a consulta repetida duplicou a linha");
+    assert.equal(lista.body.items[0].productCode, validado.codigo);
+  });
+});
+
+test("M10 UPC-A digitado e EAN-13 escaneado viram UMA linha de historico", { skip: pular }, async () => {
+  rodarMigrations();
+  await comServidor(async (baseUrl) => {
+    const agente = criarAgente(baseUrl);
+    await registrar(agente, novoEmail());
+
+    const digitado = validarCodigoDeBarras("036000291452");
+    assert.equal(digitado.valido, true);
+    assert.equal(digitado.codigo, "0036000291452", "UPC-A deveria normalizar para EAN-13");
+
+    // Pela digitacao (UPC-A normalizado).
+    await agente.request("/api/history", {
+      method: "POST",
+      body: { ...PRODUTO, productCode: digitado.codigo },
+    });
+
+    // Pela camera, que ja entrega o EAN-13 de 13 digitos.
+    await agente.request("/api/history", {
+      method: "POST",
+      body: { ...PRODUTO, productCode: "0036000291452" },
+    });
+
+    const lista = await agente.request("/api/history");
+    assert.equal(
+      lista.body.items.length,
+      1,
+      "o mesmo produto por dois caminhos virou duas linhas de historico",
+    );
+  });
+});
+
+test("M10 o backend recusa gravar codigo com digito verificador invalido", { skip: pular }, async () => {
+  rodarMigrations();
+  await comServidor(async (baseUrl) => {
+    const agente = criarAgente(baseUrl);
+    await registrar(agente, novoEmail());
+
+    // Requisicao direta, sem passar pelo frontend: e esta a barreira que vale.
+    const resposta = await agente.request("/api/history", {
+      method: "POST",
+      body: { ...PRODUTO, productCode: "7891000100104" },
+    });
+
+    assert.equal(resposta.status, 400, `esperado 400, veio ${resposta.status}`);
+
+    const lista = await agente.request("/api/history");
+    assert.equal(lista.body.items.length, 0, "um codigo invalido chegou ao banco");
+  });
+});
+
+test("M11 visitante nao grava no PostgreSQL pelo caminho manual", { skip: pular }, async () => {
+  rodarMigrations();
+  await comServidor(async (baseUrl) => {
+    const visitante = criarAgente(baseUrl);
+
+    const validado = validarCodigoDeBarras("3017624010701");
+    assert.equal(validado.valido, true);
+
+    // Sem sessao, a gravacao e recusada antes de qualquer consulta ao banco.
+    const gravar = await visitante.request("/api/history", {
+      method: "POST",
+      body: { ...PRODUTO, productCode: validado.codigo },
+    });
+    assert.equal(gravar.status, 401, `visitante recebeu ${gravar.status} ao gravar historico`);
+
+    const favoritar = await visitante.request("/api/favorites", {
+      method: "POST",
+      body: { ...PRODUTO, productCode: validado.codigo },
+    });
+    assert.equal(favoritar.status, 401, `visitante recebeu ${favoritar.status} ao favoritar`);
+
+    // E nada foi parar na tabela.
+    const linhas = await query("SELECT COUNT(*)::int AS total FROM product_history WHERE product_code = $1", [
+      validado.codigo,
+    ]);
+    assert.equal(linhas.rows[0].total, 0, "o visitante gravou no PostgreSQL");
+  });
+});
 // R11 - o gasto desta suite cabe no teto por IP, com folga
 // ---------------------------------------------------------------------------
 //

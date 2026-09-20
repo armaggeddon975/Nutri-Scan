@@ -1,4 +1,4 @@
-# NutriScan v0.7.2
+# NutriScan v0.7.3
 
 NutriScan e um app web para consultar alimentos por nome ou codigo de barras,
 ver tabela nutricional, identificar ingredientes sensiveis e conversar com um
@@ -213,6 +213,58 @@ E2E_WRITE_REPORT        grava E2E_LAST_RUN.json sanitizado
 
 Contas temporarias usam o dominio reservado `@example.test` e sao removidas ao
 final, inclusive quando algum passo falha.
+
+## Consulta de produto
+
+Dois caminhos, um resultado:
+
+```text
+camera   aponte para o codigo de barras
+digitado campo "Ou digite o codigo", sempre visivel na tela da camera
+```
+
+O campo de digitacao **nao aparece so quando a camera falha**. Ele fica sempre
+la: digitar costuma ser mais rapido que enquadrar uma embalagem amassada, e
+funciona sem permissao de camera, sem HTTPS e em aparelho sem camera nenhuma.
+
+Os dois caminhos entram no mesmo fluxo - mesma busca, mesmo motor
+deterministico, mesmo veredito de alergia. O mesmo codigo devolve o mesmo
+resultado venha de onde vier.
+
+### Conferencia do digito verificador
+
+O codigo digitado e conferido **antes de qualquer consulta a rede**:
+
+```text
+aceitos    EAN-13 (13 digitos), EAN-8 (8) e UPC-A (12)
+separador  espaco e hifen sao removidos, e a tela mostra o que sera buscado
+recusa     qualquer outro caractere, tamanho fora dos tres, ou digito errado
+```
+
+Isso nao e polimento de interface. Num app de alergia, um digito digitado
+errado nao devolve "produto nao encontrado": devolve OUTRO PRODUTO, que existe
+e tem outros alergenicos. O digito verificador pega todo erro de um unico
+digito, que e a classe mais comum ao digitar.
+
+As duas recusas sao mensagens diferentes de proposito:
+
+```text
+digito errado    "Esse codigo nao existe. Confira numero por numero."
+fora da base     "Produto <codigo> nao esta cadastrado na Open Food Facts."
+```
+
+A primeira manda conferir o que foi digitado; a segunda diz que o codigo esta
+certo e o produto e que nao esta la.
+
+Um UPC-A de 12 digitos e normalizado para EAN-13 com zero a esquerda, para que o
+mesmo produto escaneado e digitado nao vire duas linhas de historico.
+
+A conferencia vive em `shared/barcode.js` e e usada pelo frontend **e** pelo
+backend. A do frontend e conveniencia; a do backend e a que vale.
+
+O caminho da camera nao reconfere o digito de EAN, e isso e intencional: a
+`@zxing` ja confere o checksum da simbologia ao decodificar, e o scanner
+tambem le ITF e CODE_128, que nao tem digito verificador de EAN.
 
 ## Historico e favoritos
 

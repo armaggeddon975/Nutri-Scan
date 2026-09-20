@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+import {
+  digitoVerificadorConfere,
+  exigeDigitoVerificador,
+} from "../../../shared/barcode.js";
 import { isValidAllergyId } from "../config/allergies.js";
 import { normalizeEmail, normalizeNameKey } from "./normalize.js";
 
@@ -71,12 +75,37 @@ export function validateAllergiesUpdate(input) {
 //
 // O codigo do produto aceita letra alem de digito: a maior parte dos codigos e
 // EAN numerico, mas a base tem cadastros com sufixo alfanumerico.
+//
+// DIGITO VERIFICADOR NO SERVIDOR (v0.7.3)
+//
+// A validacao do frontend e conveniencia; esta e a que vale. Um cliente que
+// nao seja o nosso - ou o nosso com defeito - nao consegue gravar um codigo
+// numerico de 8, 12 ou 13 digitos com digito verificador errado.
+//
+// A regra e deliberadamente ESTREITA. Exigir digito verificador de todo codigo
+// quebraria cadastro legitimo: a base tem codigos alfanumericos, e a camera le
+// simbologias que nao sao EAN, como Code-128 e QR. Nenhum desses tem digito
+// verificador de EAN para conferir, e recusa-los seria transformar um controle
+// de seguranca em perda de funcionalidade.
+//
+// Quando o codigo E todo numerico e TEM um dos tres tamanhos de EAN/UPC, um
+// digito verificador errado nao tem explicacao inocente: ou e erro de
+// digitacao, ou e codigo inventado. Nos dois casos, guardar aquilo associa o
+// alergenico de um produto ao codigo de outro.
+//
+// `exigeDigitoVerificador` e `digitoVerificadorConfere` vem de
+// `shared/barcode.js` - a MESMA implementacao que o frontend usa. Duas copias
+// divergem, e a que sobrevive costuma ser a mais permissiva.
 const productCodeSchema = z
   .string()
   .trim()
   .min(1, "Código do produto é obrigatório.")
   .max(64, "Código do produto muito longo.")
-  .regex(/^[A-Za-z0-9._-]+$/, "Código do produto tem caractere inválido.");
+  .regex(/^[A-Za-z0-9._-]+$/, "Código do produto tem caractere inválido.")
+  .refine(
+    (valor) => !exigeDigitoVerificador(valor) || digitoVerificadorConfere(valor),
+    "Código do produto tem dígito verificador inválido.",
+  );
 
 const productNameSchema = z
   .string()

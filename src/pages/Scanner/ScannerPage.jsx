@@ -1,7 +1,13 @@
 import { Barcode, Camera, CameraOff, Flashlight, FlashlightOff, Search } from "lucide-react";
 
+import { normalizarEntrada } from "../../../shared/barcode.js";
 import { PageHeader } from "../../components/common/PageHeader";
 import { StatusLine } from "../../components/common/StatusLine";
+
+const ID_CAMPO = "barcode-page";
+const ID_DICA = "barcode-page-dica";
+const ID_ERRO = "barcode-page-erro";
+const ID_NORMALIZACAO = "barcode-page-normalizacao";
 
 export function ScannerPage({
   query,
@@ -16,6 +22,19 @@ export function ScannerPage({
   onStopScanner,
   onToggleTorch,
 }) {
+  const temErro = status?.type === "warning" || status?.type === "error";
+  const buscando = status?.type === "loading";
+
+  // A limpeza de espaco e traco precisa ser VISIVEL antes de a pessoa enviar.
+  // Remover caractere em silencio muda o codigo sem ela perceber, que e
+  // exatamente a classe de erro que a conferencia existe para evitar.
+  const { codigo: codigoLimpo, removidos } = normalizarEntrada(query);
+  const mostrarNormalizacao = removidos > 0 && codigoLimpo.length > 0;
+
+  const descritores = [ID_DICA];
+  if (mostrarNormalizacao) descritores.push(ID_NORMALIZACAO);
+  if (temErro) descritores.push(ID_ERRO);
+
   return (
     <>
       <PageHeader eyebrow="Câmera" title="Aponte a câmera para o código de barras." />
@@ -63,22 +82,52 @@ export function ScannerPage({
               )}
             </div>
           )}
+
+          {/* O campo fica SEMPRE visivel, e nao so quando a camera falha.
+              Muita gente prefere digitar: e mais rapido que enquadrar uma
+              embalagem amassada, e funciona sem permissao de camera. */}
           <form className="search-card" onSubmit={onSubmitSearch}>
-            <label htmlFor="barcode-page">Ou digite o código</label>
+            <label htmlFor={ID_CAMPO}>Ou digite o código</label>
             <div className="input-row">
               <input
-                id="barcode-page"
+                id={ID_CAMPO}
                 name="query"
+                type="text"
                 inputMode="numeric"
+                pattern="[0-9\s-]*"
+                autoComplete="off"
+                enterKeyHint="search"
                 placeholder="Ex: 3017624010701"
                 value={query}
+                aria-describedby={descritores.join(" ")}
+                aria-invalid={temErro || undefined}
                 onChange={(event) => onQueryChange(event.target.value)}
               />
-              <button type="submit" aria-label="Buscar código">
+              <button type="submit" aria-label="Buscar código" disabled={buscando}>
                 <Search size={20} aria-hidden="true" />
               </button>
             </div>
+
+            <p id={ID_DICA} className="field-hint">
+              O código tem 8, 12 ou 13 números. Pode digitar com espaço ou traço.
+            </p>
+
+            {mostrarNormalizacao && (
+              <p id={ID_NORMALIZACAO} className="field-hint">
+                Vou buscar <strong>{codigoLimpo}</strong>.
+              </p>
+            )}
+
+            {/* `role="alert"` faz o leitor de tela anunciar a recusa assim que
+                ela aparece. Sem isso, quem usa leitor envia o codigo e nao
+                recebe retorno nenhum. */}
+            {temErro && (
+              <p id={ID_ERRO} className="field-error" role="alert">
+                {status.message}
+              </p>
+            )}
           </form>
+
           <StatusLine status={status} />
         </div>
       </section>

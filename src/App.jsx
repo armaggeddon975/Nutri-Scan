@@ -31,7 +31,7 @@ import { buildAllergyVerdict } from "../shared/allergyVerdict.js";
 import { buildAssistantAnswer } from "./services/assistantService";
 import { getMe, loginAccount, logoutAccount, registerAccount } from "./services/authService";
 import { findLocalFoods } from "./services/foodService";
-import { fetchProductByBarcode, searchProductsByName } from "./services/openFoodFactsService";
+import { searchProductsByName } from "./services/openFoodFactsService";
 import { updateProfileAllergies } from "./services/profileService";
 import {
   clearHistory as apiClearHistory,
@@ -69,6 +69,13 @@ import { shouldApplyAllergySaveResult } from "./utils/allergySaveQueue";
 import { EMPTY_CONFIRMATION, nextConfirmation } from "./utils/barcodeConfirm";
 import { getNutrientRows, getNutritionScore } from "./utils/nutrition";
 import { getProductName } from "./utils/product";
+import { validarCodigoDeBarras } from "../shared/barcode.js";
+import {
+  CODIGO_INVALIDO,
+  ERRO_DE_REDE,
+  NAO_ENCONTRADO,
+  consultarProdutoPorCodigo,
+} from "./services/productLookup";
 import { cleanBarcode, isBarcodeQuery, normalizeText } from "./utils/text";
 import { hashPassword, hasSecureCrypto, legacyHashPassword } from "./utils/security";
 
@@ -460,8 +467,31 @@ function App() {
     }
   }, []);
 
+  // `origem` diz de onde o texto veio: "manual" quando a pessoa digitou,
+  // "camera" quando a @zxing decodificou.
+  //
+  // O CAMINHO DE CONSULTA E UM SO - esta funcao. Busca, motor deterministico e
+  // veredito acontecem aqui para os dois, e por isso o mesmo codigo devolve o
+  // mesmo resultado venha de onde vier.
+  //
+  // O que muda entre as origens e apenas a conferencia de ENTRADA, e muda por
+  // um motivo concreto: o scanner le EAN-13, EAN-8, UPC-A, UPC-E, ITF e
+  // CODE_128. Desses, ITF e CODE_128 nao tem digito verificador de EAN para
+  // conferir - ITF-14 tem 14 digitos e CODE_128 aceita letra. Exigir digito
+  // verificador de EAN na saida da camera recusaria caixa de papelao e
+  // etiqueta de balanca, que sao leituras legitimas.
+  //
+  // E nao faria falta: a propria @zxing confere o checksum da simbologia ao
+  // decodificar e lanca `ChecksumException` quando ele nao bate - por isso esse
+  // erro esta na lista de transitorios do `scannerService`. Uma leitura de EAN
+  // que chega aqui JA passou pelo digito verificador.
+  //
+  // Digitar nao tem essa protecao. E por isso que a conferencia existe: erro de
+  // um digito e transposicao de vizinhos sao exatamente o que o digito
+  // verificador pega, e num app de alergia o resultado de um digito errado nao
+  // e "nao encontrado" - e outro produto, com outros alergenicos.
   const searchProduct = useCallback(
-    async (rawQuery) => {
+    async (rawQuery, { origem = "manual" } = {}) => {
       const nextQuery = rawQuery.trim();
       if (!nextQuery) {
         setStatus({ type: "warning", message: "Digite um alimento ou código de barras." });
@@ -517,30 +547,47 @@ function App() {
         return;
       }
 
-      const barcode = cleanBarcode(nextQuery);
-      setStatus({ type: "loading", message: `Buscando produto ${barcode}...` });
+      // Daqui para baixo quem decide e `consultarProdutoPorCodigo`, em
+      // `services/productLookup.js`. A conferencia de entrada, a busca e a
+      // distincao entre "codigo invalido" e "nao encontrado" moram la, num
+      // unico lugar que o gate E2E e os testes tambem executam.
+      //
+      // A recusa por codigo invalido acontece ANTES de qualquer requisicao:
+      // consultar primeiro e decidir depois ja seria tarde, porque um digito
+      // errado nao devolve "nao encontrado" - devolve outro produto, com
+      // outros alergenicos.
+      const previa =
+        origem === "manual" ? validarCodigoDeBarras(nextQuery).codigo ?? nextQuery : nextQuery;
+      setStatus({ type: "loading", message: `Buscando produto ${previa}...` });
 
-      try {
-        const foundProduct = await fetchProductByBarcode(barcode);
-        if (token !== searchTokenRef.current) return;
+      const resultado = await consultarProdutoPorCodigo(nextQuery, { origem });
+      if (token !== searchTokenRef.current) return;
 
-        if (!foundProduct) {
-          lastDetectedRef.current = "";
-          setStatus({
-            type: "warning",
-            message: `Produto ${barcode} não está cadastrado na Open Food Facts. Você pode buscar pelo nome ou conferir o rótulo.`,
-          });
-          return;
-        }
-        selectProduct(foundProduct);
-      } catch {
-        if (token !== searchTokenRef.current) return;
+      if (resultado.estado === CODIGO_INVALIDO) {
+        lastDetectedRef.current = "";
+        setStatus({ type: "warning", message: resultado.mensagem });
+        return;
+      }
+
+      if (resultado.estado === NAO_ENCONTRADO) {
+        lastDetectedRef.current = "";
+        setStatus({
+          type: "warning",
+          message: `Produto ${resultado.codigo} não está cadastrado na Open Food Facts. Você pode buscar pelo nome ou conferir o rótulo.`,
+        });
+        return;
+      }
+
+      if (resultado.estado === ERRO_DE_REDE) {
         lastDetectedRef.current = "";
         setStatus({
           type: "error",
           message: "Não consegui buscar. Verifique sua internet.",
         });
+        return;
       }
+
+      selectProduct(resultado.produto);
     },
     [selectProduct],
   );
@@ -601,7 +648,7 @@ function App() {
             setScannerState("idle");
             setTorch({ available: false, on: false });
 
-            searchProduct(confirmation.confirmed);
+            searchProduct(confirmation.confirmed, { origem: "camera" });
             return;
           }
 

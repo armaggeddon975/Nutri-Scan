@@ -1,4 +1,4 @@
-# API NutriScan v0.7.2
+# API NutriScan v0.7.3
 
 Base local: `http://localhost:3000/api`
 
@@ -19,7 +19,7 @@ Exemplo:
   "database": "not_configured",
   "ai": "not_configured",
   "aiProvider": "anthropic",
-  "version": "0.7.2"
+  "version": "0.7.3"
 }
 ```
 
@@ -217,6 +217,40 @@ aceitam o mesmo objeto:
 `productCode` e `productName` sao obrigatorios. `productBrand` e `imageUrl` sao
 opcionais e aceitam `null`. `imageUrl` precisa ser `https`. Qualquer outra chave
 enviada e descartada pelo schema.
+
+#### Validacao de `productCode` (v0.7.3)
+
+```text
+formato      letra, digito, ponto, hifen e sublinhado; ate 64 caracteres
+digito       EXIGIDO quando o codigo e todo numerico E tem 8, 12 ou 13 digitos
+resposta     400, "Código do produto tem dígito verificador inválido."
+```
+
+A conferencia usa `shared/barcode.js` - a mesma implementacao que o frontend
+usa. **A do frontend e conveniencia; esta e a que vale**: uma requisicao direta,
+sem passar pela interface, e recusada do mesmo jeito.
+
+Ela existe porque um digito errado nao produz "produto nao encontrado". Produz
+outro produto, que existe e tem outros alergenicos. Guardar aquilo associa o
+alergenico de um produto ao codigo de outro.
+
+A regra e estreita de proposito. A base da Open Food Facts tem cadastros com
+codigo alfanumerico, e o scanner le ITF e CODE_128, que nao tem digito
+verificador de EAN. Esses continuam aceitos:
+
+```text
+7891000100103    aceito    EAN-13 com digito correto
+7891000100104    RECUSADO  EAN-13 com digito errado
+96385074         aceito    EAN-8
+036000291452     aceito    UPC-A
+20003404_0001    aceito    alfanumerico da base, sem digito de EAN
+12345678901234   aceito    14 digitos, ITF-14, fora dos tamanhos de EAN
+```
+
+Um UPC-A de 12 digitos digitado no app chega aqui ja normalizado para EAN-13
+com zero a esquerda. A normalizacao acontece no cliente, antes da busca, e
+existe pela deduplicacao: a unicidade e `(user_id, product_code)`, entao sem ela
+o mesmo produto escaneado e digitado viraria duas linhas.
 
 ### `GET /api/history`
 

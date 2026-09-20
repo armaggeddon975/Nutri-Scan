@@ -28,12 +28,191 @@ const LIMITADOR = "backend/src/middleware/rateLimit.js";
 const REPO_HISTORICO = "backend/src/repositories/historyRepository.js";
 const REPO_FAVORITOS = "backend/src/repositories/favoritesRepository.js";
 
+const BARCODE = "shared/barcode.js";
+const VEREDITO = "shared/allergyVerdict.js";
+const LOOKUP = "src/services/productLookup.js";
+const APP = "src/App.jsx";
+const VALIDACAO_BACKEND = "backend/src/utils/validation.js";
+
+const SUITE_BARCODE = "tests/barcode.test.js";
+const SUITE_LOOKUP = "tests/productLookup.test.js";
 const SUITE_LIMITE = "tests/rateLimit.test.js";
 const SUITE_INTEGRACAO = "tests/collectionsIntegration.test.js";
 
 const COMPOSICAO = "  return [porUsuario, porIp];";
 
 const MUTACOES = [
+  {
+    id: "P1",
+    requisito: "M1",
+    descricao: "o digito verificador passa a aceitar qualquer codigo",
+    arquivo: BARCODE,
+    de:
+      "export function digitoVerificadorConfere(codigo) {\n" +
+      "  const corpo = codigo.slice(0, -1);\n" +
+      "  const informado = Number(codigo[codigo.length - 1]);\n" +
+      "  return calcularDigitoVerificador(corpo) === informado;\n" +
+      "}",
+    para: "export function digitoVerificadorConfere(codigo) {\n  return Boolean(codigo);\n}",
+    suite: SUITE_BARCODE,
+    deveQuebrar: "M1 codigos com digito verificador errado sao recusados pelo motivo certo",
+    banco: false,
+  },
+  {
+    id: "P1b",
+    requisito: "M1",
+    descricao: "o calculo do digito verificador usa peso fixo pela esquerda",
+    arquivo: BARCODE,
+    de: "  for (let i = digitos.length - 1, peso = 3; i >= 0; i -= 1, peso = peso === 3 ? 1 : 3) {",
+    para: "  for (let i = 0, peso = 1; i < digitos.length; i += 1, peso = peso === 3 ? 1 : 3) {",
+    suite: SUITE_BARCODE,
+    deveQuebrar: "M1 codigos validos de EAN-13, EAN-8 e UPC-A sao aceitos",
+    banco: false,
+  },
+  {
+    id: "P2",
+    requisito: "M3",
+    descricao: "tira a validacao do backend e deixa so no frontend",
+    arquivo: VALIDACAO_BACKEND,
+    de:
+      "  .refine(\n" +
+      "    (valor) => !exigeDigitoVerificador(valor) || digitoVerificadorConfere(valor),\n" +
+      '    "Código do produto tem dígito verificador inválido.",\n' +
+      "  );",
+    para: '  .refine(() => true, "Código do produto tem dígito verificador inválido.");',
+    suite: SUITE_BARCODE,
+    deveQuebrar: "M3 o backend recusa productCode com digito verificador invalido",
+    banco: false,
+  },
+  {
+    id: "P2b",
+    requisito: "M3",
+    descricao: "a regra do backend passa a exigir digito verificador de TODO codigo",
+    arquivo: BARCODE,
+    de: "  return /^\\d+$/.test(texto) && TAMANHOS.has(texto.length);",
+    para: "  return true;",
+    suite: SUITE_BARCODE,
+    deveQuebrar: "M3 a regra do backend e estreita e nao quebra cadastro legitimo",
+    banco: false,
+  },
+  {
+    id: "P3",
+    requisito: "M4",
+    descricao: "o caminho manual monta o resultado por conta propria",
+    arquivo: APP,
+    de: "      const resultado = await consultarProdutoPorCodigo(nextQuery, { origem });",
+    para:
+      "      const resultado = {\n" +
+      "        estado: \"encontrado\",\n" +
+      "        codigo: nextQuery,\n" +
+      "        produto: await fetchProductByBarcode(nextQuery),\n" +
+      "      };",
+    suite: SUITE_LOOKUP,
+    deveQuebrar: "o caminho manual nao monta o resultado por conta propria",
+    banco: false,
+  },
+  {
+    id: "P3b",
+    requisito: "M4",
+    descricao: "o caminho manual deixa de conferir a entrada e vira o da camera",
+    arquivo: LOOKUP,
+    de: "    const validacao = validarCodigoDeBarras(entrada);",
+    para: "    const validacao = { valido: true, codigo: cleanBarcode(entrada) };",
+    suite: SUITE_LOOKUP,
+    deveQuebrar: "M2 codigo invalido nao chega a rede",
+    banco: false,
+  },
+  {
+    id: "P4",
+    requisito: "M5",
+    descricao: "remove o piso de risco do veredito",
+    arquivo: VEREDITO,
+    de: "    minimumSafety: status === VERDICT_STATUS.conflict ? CONFLICT_MINIMUM_SAFETY : null,",
+    para: "    minimumSafety: null,",
+    suite: SUITE_LOOKUP,
+    deveQuebrar: "M5 o piso de risco vale no caminho manual",
+    banco: false,
+  },
+  {
+    id: "P5",
+    requisito: "M9",
+    descricao: "o frontend ganha copia propria da funcao de digito verificador",
+    arquivo: APP,
+    de: 'import { validarCodigoDeBarras } from "../shared/barcode.js";',
+    para:
+      "function calcularDigitoVerificador(digitos) {\n" +
+      "  let soma = 0;\n" +
+      "  for (let i = digitos.length - 1, peso = 3; i >= 0; i -= 1, peso = peso === 3 ? 1 : 3) {\n" +
+      "    soma += Number(digitos[i]) * peso;\n" +
+      "  }\n" +
+      "  return (10 - (soma % 10)) % 10;\n" +
+      "}\n" +
+      'import { validarCodigoDeBarras } from "../shared/barcode.js";',
+    suite: SUITE_BARCODE,
+    deveQuebrar: "M9 nao existe segunda implementacao do digito verificador",
+    banco: false,
+  },
+  {
+    id: "P5b",
+    requisito: "M9",
+    descricao: "o backend para de importar a validacao compartilhada",
+    arquivo: VALIDACAO_BACKEND,
+    de: 'import {\n  digitoVerificadorConfere,\n  exigeDigitoVerificador,\n} from "../../../shared/barcode.js";',
+    para:
+      "const digitoVerificadorConfere = () => true;\n" +
+      "const exigeDigitoVerificador = () => false;",
+    suite: SUITE_BARCODE,
+    deveQuebrar: "M9 backend e frontend usam a MESMA implementacao de shared/",
+    banco: false,
+  },
+  {
+    id: "P6",
+    requisito: "M7",
+    descricao: "UPC-A deixa de normalizar para EAN-13",
+    arquivo: BARCODE,
+    de: "  const canonico = formato === FORMATO_UPCA ? upcaParaEan13(semSeparadores) : semSeparadores;",
+    para: "  const canonico = semSeparadores;",
+    suite: SUITE_BARCODE,
+    deveQuebrar: "M7 UPC-A vira EAN-13 com zero a esquerda, e o produto e o mesmo",
+    banco: false,
+  },
+  {
+    id: "P7",
+    requisito: "M6",
+    descricao: "colapsa digito invalido e nao encontrado na mesma mensagem",
+    arquivo: BARCODE,
+    de: '      return "Esse código não existe. Confira número por número na embalagem.";',
+    para: '      return "Digite o código de barras do produto.";',
+    suite: SUITE_BARCODE,
+    deveQuebrar: "M6 cada motivo de recusa tem mensagem propria",
+    banco: false,
+  },
+  {
+    id: "P8",
+    requisito: "M8",
+    descricao: "passa a limpar qualquer caractere em silencio, nao so espaco e traco",
+    arquivo: BARCODE,
+    de: "const SEPARADORES = /[\\s-]/g;",
+    para: "const SEPARADORES = /[^\\d]/g;",
+    suite: SUITE_BARCODE,
+    deveQuebrar: "M8 nenhum outro caractere e removido em silencio",
+    banco: false,
+  },
+  {
+    id: "P9",
+    requisito: "M10",
+    descricao: "remove a validacao do backend: codigo invalido chega ao banco",
+    arquivo: VALIDACAO_BACKEND,
+    de:
+      "  .refine(\n" +
+      "    (valor) => !exigeDigitoVerificador(valor) || digitoVerificadorConfere(valor),\n" +
+      '    "Código do produto tem dígito verificador inválido.",\n' +
+      "  );",
+    para: '  .refine(() => true, "Código do produto tem dígito verificador inválido.");',
+    suite: SUITE_INTEGRACAO,
+    deveQuebrar: "M10 o backend recusa gravar codigo com digito verificador invalido",
+    banco: true,
+  },
   {
     id: "N1",
     requisito: "R1/R3",
@@ -287,7 +466,19 @@ for (const m of MUTACOES) {
   const caminho = path.join(raiz, m.arquivo);
   const original = readFileSync(caminho, "utf8");
 
-  const ocorrencias = original.split(m.de).length - 1;
+  // A comparacao ignora o fim de linha.
+  //
+  // Parte dos arquivos do repositorio esta com CRLF, porque o Git converte na
+  // hora do checkout no Windows. Uma ancora de varias linhas escrita com `\n`
+  // simplesmente nao casa nesses arquivos, e o script marcava a mutacao como
+  // INAPLICAVEL - ou seja, anunciava que nao conseguiu testar em vez de testar
+  // errado. Melhor que um falso verde, mas ainda assim um teste que nao roda.
+  //
+  // `original` continua guardado com os bytes de origem: e ele que volta para o
+  // disco na restauracao, entao o fim de linha do arquivo nao muda por causa
+  // desta conferencia.
+  const normalizado = original.replace(/\r\n/g, "\n");
+  const ocorrencias = normalizado.split(m.de).length - 1;
   if (ocorrencias !== 1) {
     resultados.push({
       ...m,
@@ -301,7 +492,7 @@ for (const m of MUTACOES) {
   const registro = { caminho, original };
   pendentes.push(registro);
   anotarNoJornal(caminho, original);
-  writeFileSync(caminho, original.replace(m.de, m.para));
+  writeFileSync(caminho, normalizado.replace(m.de, m.para));
 
   console.log(`- ${m.id} (${m.requisito}) ${m.descricao}...`);
   const { codigo, saida } = rodar(m.suite);
