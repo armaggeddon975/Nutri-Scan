@@ -1,6 +1,547 @@
-# Relatorio de Auditoria - NutriScan v0.7.1
+# Relatorio de Auditoria - NutriScan v0.7.2
 
 Data: 2026-09-20
+
+## Escopo
+
+Correcao do defeito E1 e da ressalva E2 da auditoria externa da v0.7.1, mais a
+execucao do gate E2E real.
+
+Preservado sem alteracao: `shared/allergenEngine.js`,
+`shared/productAllergenAdapter.js`, `shared/allergyVerdict.js`, todo o
+`backend/src/ai/`, autenticacao, scrypt, sessoes e o schema do banco. Nenhuma
+migration nova. Os limites de `auth` e `assistente` nao foram tocados.
+
+A decisao da v0.7.1 de NAO implementar bypass foi mantida, como o auditor pediu.
+
+## E1 - a chave por usuario tinha eliminado o teto por IP
+
+### A afirmacao falsa
+
+O comentario que a v0.7.1 deixou no codigo dizia:
+
+```text
+"Isso conserta o harness sem afrouxar nada"
+```
+
+Era falso, e o proprio texto documentava o contrario do que o codigo fazia.
+`requireAuth` roda antes do limitador, entao toda requisicao que chega ali ja
+tem sessao e o ramo de IP nunca executava. O teto por usuario **substituiu** o
+teto por IP em vez de somar a ele.
+
+### A1 - reproducao ANTES da correcao
+
+App real contra PostgreSQL 17.10 real, contas criadas do mesmo endereco:
+
+```text
+Endereco de origem de todas as contas: 127.0.0.1
+Teto por usuario declarado: 300 por 10 minutos
+
+conta 0: 300 requisicoes aceitas, 429 na requisicao 301
+conta 1: 300 requisicoes aceitas, 429 na requisicao 301
+conta 2: 300 requisicoes aceitas, 429 na requisicao 301
+conta 3: 300 requisicoes aceitas, 429 na requisicao 301
+
+contas criadas do MESMO IP: 4
+TOTAL de requisicoes de colecoes aceitas: 1200
+teto efetivo por IP observado: 1200
+```
+
+Numero identico ao que o auditor mediu. Nao havia teto por IP nenhum: com mais
+contas, o total crescia linearmente.
+
+### A2 - DEPOIS da correcao
+
+Mesmo script, 12 contas:
+
+```text
+conta 0: 300 requisicoes aceitas, 429 na requisicao 301
+conta 1: 300 requisicoes aceitas, 429 na requisicao 301
+conta 2: 300 requisicoes aceitas, 429 na requisicao 301
+conta 3: 300 requisicoes aceitas, 429 na requisicao 301
+conta 4: 300 requisicoes aceitas, 429 na requisicao 301
+conta 5: 300 requisicoes aceitas, 429 na requisicao 301
+conta 6: 300 requisicoes aceitas, 429 na requisicao 301
+conta 7: 300 requisicoes aceitas, 429 na requisicao 301
+conta 8: 300 requisicoes aceitas, 429 na requisicao 301
+conta 9: 300 requisicoes aceitas, 429 na requisicao 301
+conta 10: 0 requisicoes aceitas, 429 na requisicao 1
+conta 11: 0 requisicoes aceitas, 429 na requisicao 1
+
+contas criadas do MESMO IP: 12
+TOTAL de requisicoes de colecoes aceitas: 3000
+```
+
+O total para em exatamente 3000, o teto por IP, e as contas 10 e 11 sao
+recusadas na PRIMEIRA requisicao. Criar conta nova deixou de ser um caminho para
+mais cota.
+
+Nota de honestidade sobre essa saida: o script de reproducao imprime, ao final,
+a frase "E1 REPRODUZIDO" sempre que o total passa do teto por usuario. Na
+execucao pos-correcao essa frase aparece e esta ERRADA - o rotulo compara com o
+teto por usuario, nao com o de IP. Os numeros acima e que valem, e eles mostram
+o teto por IP funcionando. O rotulo foi corrigido depois da captura.
+
+### A composicao escolhida
+
+```js
+export function criarLimitadoresDeColecoes({ tetoPorUsuario, tetoPorIp, janelaMs }) {
+  const porUsuario = rateLimit({ ..., keyGenerator: collectionsRateLimitKey });
+  const porIp      = rateLimit({ ..., keyGenerator: collectionsIpRateLimitKey });
+  return [porUsuario, porIp];
+}
+```
+
+Os dois rodam em sequencia. Passar exige caber nos dois; qualquer um recusando
+termina em 429, fail-closed.
+
+**A ordem nao e estilo.** O teto por usuario e conferido primeiro. Com o de IP
+na frente, a requisicao 301 de um usuario abusivo passaria pelo contador de IP -
+incrementando-o - para so entao ser recusada pelo contador de usuario. O abusivo
+gastaria orcamento compartilhado com requisicoes que nem foram atendidas,
+punindo os vizinhos de NAT. Com o usuario na frente, a recusa acontece antes de
+tocar no contador de IP.
+
+Isso tem teste proprio (`R4 a requisicao recusada pelo teto de usuario nao
+consome orcamento do IP`) e mutante proprio (`N3`, que inverte a ordem).
+
+### Alternativas descartadas
+
+```text
+so teto por IP                     era D1: quebra a suite de integracao e pune NAT
+so teto por usuario                era E1: contas novas contornam o teto
+teto por IP baixo, perto de 300    traz D1 de volta (a suite gasta 372)
+bypass so para teste               recusado na v0.7.1 e reafirmado pelo auditor
+teto global por rota               nao distingue abusivo de usuario legitimo
+```
+
+## A3 - a medicao que sustenta o teto por IP
+
+### Requisicao 4.2 (a): a suite de integracao
+
+A suite foi instrumentada - contagem no unico ponto por onde todas as
+requisicoes passam - e o numero e reportado a cada execucao:
+
+```text
+[R11] gasto de colecoes desta suite: 372 de 3000 (folga 8.06x)
+```
+
+**372 requisicoes de colecoes de um unico IP.** Isso explica D1 de forma
+definitiva: contra o teto de 300 por IP da v0.7.0, a suite estourava no oitavo
+teste. O contador do limitador e de modulo e sobrevive aos servidores que cada
+teste sobe e derruba, entao o gasto e a soma de tudo.
+
+### Requisicao 4.2 (b): o gate E2E
+
+`scripts/e2e-real.js` ja media o proprio gasto desde a v0.7.1:
+
+```text
+colecoes    9 requisicoes
+auth        3 requisicoes
+assistente  2 requisicoes
+```
+
+### Requisicao 4.2 (c) e (e): o teto escolhido e a folga
+
+```text
+teto por IP escolhido        3000 por 10 minutos
+maior gasto medido            372 (suite de integracao)
+folga                        8,06x
+```
+
+### Requisicao 4.2 (d): por que 3000, e nao um numero perto de 300
+
+A restricao que manda **nao e o teste** - e o caso NAT/CGNAT, que foi a
+motivacao original do teto por usuario. Atras de NAT corporativo ou de CGNAT de
+operadora, comum no celular, varias pessoas legitimas compartilham um endereco.
+
+O modelo declarado: uso intenso de verdade gira em torno de **60 requisicoes de
+colecoes por 10 minutos por pessoa** - cada produto aberto grava uma linha de
+historico, mais as leituras de lista. 3000 acomoda cerca de **50 pessoas nesse
+ritmo** atras do mesmo endereco, ou 10 pessoas gastando a cota individual
+inteira.
+
+Do outro lado, ele contem de verdade: antes, um endereco nao tinha teto algum e
+crescia com o numero de contas; agora para em 3000 por janela, independentemente
+de quantas contas o atacante criar.
+
+A folga de 8x e generosa de proposito. O teto por IP e rede de contencao contra
+abuso multiconta, nao o controle primario, e voltar a quebrar a suite de
+integracao seria repetir D1 - o defeito cujo custo foi uma versao inteira sem os
+testes de isolamento rodarem.
+
+### A folga e conferida sozinha, a cada execucao
+
+`R11` reprova se a folga cair abaixo de 4x, com mensagem que explica o que fazer.
+Se um teste novo empurrar o gasto da suite, o aviso chega antes de virar falha
+por quota com `Unexpected token 'T', "Too many r"`.
+
+## 4.3 - restricoes de seguranca do mecanismo
+
+### Nenhum bypass
+
+Nenhuma variavel de ambiente, cabecalho, query string ou cookie desliga qualquer
+um dos dois limitadores. Provado por `Q3` e `Q4`, e por mutacao (`M3`, `M3b`).
+
+### Nenhum dado do request escolhe balde
+
+`R5` prova por comportamento, com os dois baldes testados separadamente:
+
+```text
+R5 dados forjados no request nao conseguem balde de USUARIO novo
+R5 dados forjados no request nao conseguem balde de IP novo
+```
+
+Quinze tentativas ao todo: `x-usuario`, `x-user-id`, `x-teste-usuario`, cookie,
+`x-rate-limit`, query de usuario, query de desligamento, `X-Forwarded-For`,
+`X-Real-IP`, `X-Client-IP`, `True-Client-IP`, `CF-Connecting-IP`, `Forwarded`,
+`X-Originating-IP` e query de IP. Todas continuam recebendo 429.
+
+### `trust proxy` conferido por medicao
+
+`env.trustProxy` liga `app.set("trust proxy", 1)` em producao. Medido nesta
+versao, com um servidor real:
+
+```text
+XFF ausente                          -> req.ip = 127.0.0.1
+XFF "203.0.113.9"                    -> req.ip = 203.0.113.9
+XFF "1.2.3.4, 203.0.113.9"           -> req.ip = 203.0.113.9
+XFF "9.9.9.9, 8.8.8.8, 203.0.113.9"  -> req.ip = 203.0.113.9
+```
+
+`req.ip` e sempre o ultimo valor, que e o que o proxy do Render acrescenta. O
+cliente pode prefixar o que quiser e nao muda a propria identidade. E e por isso
+que o teto por IP nao vira teto global: sem `trust proxy`, todos apareceriam com
+o endereco do proxy.
+
+### IPv6: o /64 e a unidade
+
+Quem recebe um `/64` da operadora tem 2^64 enderecos. Sem normalizar, trocar de
+endereco a cada requisicao daria um balde novo toda vez e o teto por IP seria
+enfeite - protegeria nada, que e uma das condicoes de bloqueio da secao 11.
+
+```text
+2001:db8:1234:5678::1           -> ip:2001:db8:1234:5678::/64
+2001:db8:1234:5678:aaaa:b:c:d   -> ip:2001:db8:1234:5678::/64
+2001:db8:1234:9999::1           -> ip:2001:db8:1234:9999::/64   (outro bloco)
+::ffff:203.0.113.9              -> ip:203.0.113.9               (IPv4 mapeado)
+```
+
+`express-rate-limit` 7.5.1 nao exporta o auxiliar `ipKeyGenerator`, entao a
+normalizacao e propria e tem teste (`R5 um bloco IPv6 /64 nao vira infinitos
+baldes`) e mutante (`N5`).
+
+## 4.4 - o comentario falso
+
+Removido. O comentario novo descreve a composicao dos dois tetos, cita a medicao
+de 1200 requisicoes de 4 contas do mesmo IP como o motivo de o teto por IP
+existir, e explica por que a ordem de verificacao importa.
+
+## E2 - disciplina de escopo
+
+Entrada retroativa gravada no CHANGELOG, nomeando os cinco artefatos e por que
+entraram:
+
+```text
+src/components/allergies/AllergyPicker.jsx   commit 641aa5f
+src/styles-v070.css                          commit 641aa5f
+public/nutriscan-icon.svg                    commit 641aa5f
+public/nutriscan-logo.png                    commit 641aa5f
+scripts/pack-release.ps1                     commit 7b19c6e
+```
+
+Os quatro primeiros vieram no commit que aplicou o pacote de design enviado pelo
+dono do projeto. `pack-release.ps1` entrou no commit da v0.7.1.
+
+### Duas alteracoes desta versao que PRECISAM de decisao do auditor
+
+A secao 5 manda descrever em vez de implementar. Estas duas foram implementadas
+porque sao consequencia direta de falhas ocorridas durante o proprio trabalho
+desta versao, dentro da maquinaria que a secao 8 exige. Ficam declaradas aqui
+para julgamento:
+
+**1. `scripts/mutation-check.js` ganhou um jornal de restauracao em disco.**
+A versao anterior confiava em `process.on("exit")`. Uma execucao desta versao foi
+interrompida de fora, o manipulador nao rodou, e a arvore de trabalho ficou com a
+mutacao aplicada: `TETO_COLECOES_POR_USUARIO = 100000`, ou seja, o limitador de
+producao praticamente desligado. Um script que injeta defeitos de proposito nao
+pode depender de sair com educacao. Se o auditor preferir reverter, o defeito que
+isso evita esta descrito e pode ser reintroduzido.
+
+**2. `backend/tests/rateLimit.test.js` deixou de derivar o teto de producao da
+constante que vigia.** Descrito adiante, em "o que a mutacao encontrou".
+
+Fora esses dois e o que as secoes 4 e 6 pedem, nada novo foi entregue.
+
+## A4 - R1 a R11
+
+```text
+✔ R1  usuario dentro do teto mas IP estourado recebe 429
+✔ R2  IP dentro do teto mas usuario estourado recebe 429
+✔ R3  multiplas contas do mesmo IP nao ultrapassam o teto por IP
+✔ R4  usuarios de IPs distintos nao consomem cota um do outro
+✔ R4  dois usuarios atras do MESMO IP mantem cotas separadas ate o teto do IP
+✔ R4  a requisicao recusada pelo teto de usuario nao consome orcamento do IP
+✔ R5  dados forjados no request nao conseguem balde de USUARIO novo
+✔ R5  dados forjados no request nao conseguem balde de IP novo
+✔ R5  com trust proxy o cliente nao escolhe o proprio IP
+✔ R5  a chave de usuario vem da sessao, e a de IP vem de req.ip
+✔ R5  um bloco IPv6 /64 nao vira infinitos baldes
+✔ R6  os tres tetos por rota seguem nos valores declarados
+✔ R7  o teto por IP esta no valor medido, e ele cobre as suites com folga
+ℹ tests 17, pass 17, fail 0, skipped 0
+```
+
+R8, R9 e R11 ficam na suite de integracao, contra PostgreSQL real:
+
+```text
+✔ I1 usuario A nao le historico nem favorito de B
+✔ I2 usuario B nao remove item de A
+✔ I3 userId no corpo da requisicao e ignorado; vale a sessao
+✔ R11 o gasto de colecoes desta suite cabe no teto por IP
+[R11] gasto de colecoes desta suite: 372 de 3000 (folga 8.06x)
+ℹ tests 19, pass 19, fail 0, skipped 0
+```
+
+**R8 confirmado: 19/19 com o teto por IP ligado, zero SKIP, zero falha por
+quota.** D1 nao voltou.
+
+R10, a regressao C1:
+
+```text
+✔ T1 exploit C1: modelo negando conflito nao entrega falso seguro
+✔ T2 piso de risco: com conflito declarado o safety final nunca e normal
+✔ T3 barreira 1: schema rejeita allergyVerdict vindo do modelo
+✔ T3 barreira 2: veredito entregue vem do motor mesmo se o campo chegar montado
+ℹ tests 12, pass 12, fail 0
+```
+
+## A5 - validacao por mutacao
+
+`scripts/mutation-check.js` injeta o defeito, roda os testes que deveriam
+pega-lo e EXIGE que fiquem vermelhos. Os quatro mutantes sugeridos pelo auditor
+estao entre os catorze.
+
+```text
+N1   R1/R3 MORTA  remove o teto por IP e deixa so o de usuario (o defeito E1)
+N1b  R3    MORTA  remove o teto por IP: multiplas contas voltam a passar sem limite
+N2   R2    MORTA  remove o teto por usuario e deixa so o de IP (o defeito D1)
+N2b  R4    MORTA  remove o teto por usuario: vizinhos de NAT voltam a se derrubar
+N3   R4    MORTA  confere o IP antes do usuario: recusas gastam cota do IP
+N4   R5    MORTA  le o balde de IP de um cabecalho do request
+N5   R5    MORTA  para de normalizar IPv6: um bloco /64 vira 2^64 baldes
+M1   R6    MORTA  afrouxa o teto de autenticacao de 40 para 100
+M2   R7    MORTA  derruba o teto por IP para 300, valor que quebraria a suite
+M3   Q3    MORTA  cria um bypass por variavel de ambiente
+M3b  Q4    MORTA  adiciona um skip acionado por cabecalho
+M4   Q2    MORTA  eleva o teto por usuario a um valor inalcancavel
+M6   R9    MORTA  remove o filtro por dono da leitura de historico
+M7   R9    MORTA  remove o filtro por dono da remocao de favorito
+
+mortas 14 | nao executadas 0 | problemas 0
+APROVADO: toda mutacao foi detectada pelo teste correspondente.
+```
+
+**Nenhum mutante sobreviveu na rodada final.** Mas dois sobreviveram antes, e os
+dois apontavam defeitos reais nos testes.
+
+### O que a mutacao encontrou - 1: um balde escondia o outro
+
+`N4` troca a chave de IP por um cabecalho do request. Na primeira rodada ele
+**SOBREVIVEU** ao teste comportamental de `R5` e foi pego apenas pela leitura do
+codigo-fonte, que e a rede mais fraca das duas.
+
+A causa: `R5` rodava com os dois tetos em 10. O teto por usuario e conferido
+primeiro, entao era sempre ele quem devolvia o 429, e o balde de IP ficava
+escondido atras dele. Forjar o cabecalho criava um balde de IP novo, mas a
+resposta continuava 429 por outro motivo, e o teste nao via diferenca.
+
+A correcao nao foi alargar a expressao do teste de texto. `R5` virou dois testes,
+cada um com o OUTRO teto folgado, de modo que se saiba exatamente qual limitador
+produziu a recusa. Com isso `N4` morre por comportamento.
+
+### O que a mutacao encontrou - 2: um teste que lia a constante que vigiava
+
+`M4` infla `TETO_COLECOES_POR_USUARIO` para 100000. `Q2` montava o laco com
+`TETO_COLECOES_POR_USUARIO + 1` e, em vez de falhar, saiu fazendo 100001
+requisicoes ate estourar o tempo.
+
+Um teste que deriva a expectativa da mesma constante que deveria vigiar nao
+vigia nada: se alguem inflar a constante, o teste infla junto e continua verde.
+O valor de producao passou a ser escrito a mao no teste, e `R6` e quem confere
+que a constante bate com ele. Os dois precisam concordar.
+
+Essa execucao interrompida e a que deixou a mutacao no repositorio, e foi o que
+motivou o jornal de restauracao declarado na secao de escopo.
+
+## A14 - os 17 requisitos strict continuam exigidos
+
+`findMissingRequirements({})` com a flag da Anthropic ligada:
+
+```text
+ 1. backendProcess       7. isolation            13. historySync
+ 2. database             8. logout               14. favoritesSync
+ 3. migrations           9. assistantAuthority   15. verdictFreshness
+ 4. auth                10. deterministicEngine  16. anthropicReal
+ 5. sessionSchema       11. fallback             17. assistantAuthenticated
+ 6. multiDevice         12. privacy
+
+TOTAL: 17
+```
+
+Sem a flag sao 15; os dois ultimos sao condicionais a ela, por desenho. Nenhum
+requisito foi removido nesta versao.
+
+## A15 - residuo do nome antigo
+
+Varredura por `nutriva`, sem distincao de maiuscula:
+
+```text
+src/, backend/src/, shared/, public/, index.html    0 ocorrencias
+package.json, backend/package.json, os 2 lockfiles  0 ocorrencias
+```
+
+Onde ainda aparece, e por que e correto que apareca:
+
+```text
+CHANGELOG.md                  secoes historicas: registro do que aconteceu
+AUDIT_REPORT.md               secao historica
+backend/tests/productName.test.js   guarda o nome antigo como padrao de deteccao
+releases/README.md            cita o nome do pacote v0.6.9, com justificativa
+releases/SHA256SUMS.txt       nome do arquivo entregue ao auditor na v0.6.9
+```
+
+O pacote `nutriva-v0.6.9-auditoria.zip` nao foi renomeado de proposito: foi assim
+que saiu e foi assim que o auditor o recebeu. Renomea-lo quebraria a
+correspondencia com o `SHA256SUMS.txt`.
+
+## A13 - o gate E2E real, com credenciais reais
+
+**PASS, exit code 0.** Primeira versao do projeto em que o gate completo fecha.
+
+```text
+[OK] doctor:e2e
+[OK] e2e:strict
+[PASS] verify:e2e - PostgreSQL real e Claude real comprovados
+=== EXIT CODE: 0 ===
+```
+
+```text
+mode                    strict
+anthropic               configured
+anthropicReal           EXECUTED_GENERIC_AND_PRODUCT
+anthropicCalls          2
+historySync             PASSED
+favoritesSync           PASSED
+verdictFreshness        PASSED
+ok                      true
+```
+
+`anthropicReal` saiu de `NOT_EXECUTED`. Nenhum subgate ficou em SKIP.
+
+Saida literal completa, tabela de subgates e `E2E_LAST_RUN.json` integral estao
+no E2E_REPORT desta versao.
+
+### Residuo no banco apos a execucao
+
+```text
+users 4 | sessions 5 | product_history 0 | product_favorites 0
+residuo de teste: 0 em todos os seis padroes conferidos
+linhas orfas: 0
+```
+
+Os 4 usuarios sao contas reais, anteriores a execucao.
+
+### Uma decisao de risco, declarada
+
+O gate rodou contra o **Neon de producao**, por escolha explicita do dono do
+projeto, depois de eu apresentar por escrito o risco e o precedente da v0.6.6 -
+quando um `npm test` com a string de producao deixou linha de teste em producao.
+
+A precaucao tomada: `RUN_DB_INTEGRATION_TESTS` foi mantida DESLIGADA em toda
+execucao apontada para o Neon. Essa flag libera a suite de colecoes, que sozinha
+grava 201 favoritos e mais de 100 linhas de historico. Ela rodou apenas contra o
+PostgreSQL 17.10 local.
+
+### Exposicao de credencial ocorrida durante esta versao
+
+Ao pedir que o dono preenchesse `backend/.env`, eu mesmo criei o arquivo antes.
+Como o ambiente passa a rastrear arquivos que eu escrevo, o conteudo salvo
+voltou inteiro para o meu contexto - `DATABASE_URL` e `ANTHROPIC_API_KEY`
+incluidos. A regra 6.1 do prompt manda parar e avisar nesse caso, e foi o que
+aconteceu.
+
+O dono foi avisado, recomendou-se a troca das duas credenciais, e ele decidiu
+seguir com a execucao e trocar ao fim do projeto. A decisao e dele e esta
+registrada aqui. **A troca continua pendente.**
+
+O procedimento correto, para a proxima vez: nao criar nem ler o arquivo de
+credencial: pedir que o dono o crie do zero.
+
+## A8 a A12 - gates de codigo
+
+```text
+A8   npm run build                    OK, built in 6.51s
+A9   npm --prefix backend test        188 testes, 187 pass, 0 fail, 1 SKIP
+A10  suite contra PostgreSQL real     19/19, 0 fail, 0 skip
+A11  npm audit --audit-level=moderate found 0 vulnerabilities nos dois pacotes
+A12  node scripts/verify-release.js   exit code 0
+```
+
+### O unico SKIP da suite, declarado
+
+```text
+﹣ Claude real responde pergunta curta quando explicitamente habilitado
+  # NAO EXECUTADO - defina RUN_ANTHROPIC_INTEGRATION_TESTS=true e ANTHROPIC_API_KEY
+```
+
+E a protecao contra chamada paga acidental num `npm test` comum. **NAO EXECUTADO
+nao conta como PASS.** A propriedade que ele cobriria foi provada de outro jeito
+nesta versao: o gate E2E fez as duas chamadas reais a Claude, com
+`anthropicReal: EXECUTED_GENERIC_AND_PRODUCT`.
+
+### Uma leitura que pode enganar, declarada
+
+`verify:release` roda sem `RUN_DB_INTEGRATION_TESTS`, e a partir desta versao
+existe um `DATABASE_URL` em `backend/.env`. A combinacao faz as suites de banco
+se declararem NAO EXECUTADO em vez de ausentes, e a contagem do gate sai assim:
+
+```text
+ℹ tests 188
+ℹ pass 163
+ℹ fail 0
+ℹ skipped 25
+```
+
+**Os 25 SKIP nao sao regressao e nao sao PASS.** Sao as mesmas suites que rodam
+verdes com a flag ligada - 19 de colecoes, 5 de integracao e 1 da chamada paga.
+A execucao autoritativa e a de cima, com a flag ligada, contra PostgreSQL local:
+187 pass, 1 skip.
+
+A flag ficou desligada de proposito em toda execucao apontada para o Neon de
+producao, pelo motivo descrito na secao de risco.
+
+## O que esta versao NAO prova
+
+```text
+camera real em aparelho        NAO EXECUTADO - exige hardware
+carga simultanea real          NAO EXECUTADO - o limitador foi provado em processo
+suite de colecoes no Neon      NAO EXECUTADO - por decisao de risco, descrita acima
+```
+
+O teto por IP foi provado contra um servidor Express real, em processo, e contra
+o app real com contas criadas de verdade no banco. Ele nao foi exercitado com
+usuarios simultaneos atras de um NAT real - o modelo de 50 pessoas a 60
+requisicoes e uma estimativa declarada, nao uma medicao de campo. Se a producao
+mostrar 429 em usuario legitimo, o numero precisa ser revisto com dado real.
+
+Um aviso de depreciacao do driver `pg` sobre `sslmode=require` aparece em toda
+conexao ao Neon. Nao e erro e nao afeta o resultado; ficou sem correcao de
+proposito, por estar fora do escopo desta versao.
+
+## Historico de auditorias anteriores
+
+## Auditoria da v0.7.1 - 2026-09-20
 
 ## Escopo
 
@@ -360,7 +901,6 @@ por cabecalho em producao - mas ela e inalcancavel nas rotas de colecoes, porque
 `requireAuth` roda antes e devolve 401 sem sessao. Se alguem montar este
 limitador numa rota publica no futuro, isso precisa ser reavaliado.
 
-## Historico de auditorias anteriores
 
 ## Auditoria da v0.7.0 - 2026-09-18
 

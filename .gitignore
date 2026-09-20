@@ -18,3 +18,6 @@ src.backup-antes-correcoes/
 package.json.backup
 E2E_LAST_RUN.json
 releases/
+# Jornal de restauracao do scripts/mutation-check.js. Se este arquivo existir,
+# uma execucao foi interrompida e ha mutacao por desfazer.
+scripts/.mutation-restore.json

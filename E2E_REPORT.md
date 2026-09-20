@@ -1,6 +1,355 @@
-# E2E Report - NutriScan v0.7.1
+# E2E Report - NutriScan v0.7.2
 
 Data: 2026-09-20
+
+## Resultado geral
+
+```text
+verify:e2e          PASS, exit code 0
+doctor:e2e          PASS
+e2e:strict          PASS, mode=strict, ok=true
+PostgreSQL real     EXECUTADO - Neon de producao
+Claude real         EXECUTADO - 2 chamadas pagas
+residuo no banco    0
+```
+
+**Esta e a primeira versao do projeto em que o gate E2E completo fecha.** Ate a
+v0.7.1 ele reprovava antes de qualquer chamada, por falta de credencial, e o
+relatorio registrava `FAIL BEFORE CALL`. Nenhum resultado aqui foi herdado de
+versao anterior.
+
+O PASS historico da v0.6.8 continua preservado na secao historica, ao fim deste
+documento, e nao vale para esta versao.
+
+## Saida literal do gate
+
+```text
+NutriScan Doctor - modo STRICT E2E
+[OK] Node.js - 24.19.0
+[OK] npm - 11.17.0
+[OK] Frontend dependencies - installed (3 modules resolved)
+[OK] Backend dependencies - installed (4 modules resolved)
+[OK] backend/.env - found
+[OK] Env loader - backend/src/config/env.js
+[OK] DATABASE_URL - configured
+[OK] PostgreSQL - accessible
+[OK] Migrations - 2/2 applied
+[OK] ANTHROPIC_API_KEY - configured
+[OK] ANTHROPIC_MODEL - claude-sonnet-5
+[OK] RUN_ANTHROPIC_INTEGRATION_TESTS - enabled
+[OK] Backend port - 3000
+[OK] Frontend origin - http://localhost:5173
+[WARN] Docker - unavailable (optional)
+[OK] Doctor strict-e2e - todos os requisitos obrigatorios atendidos
+[OK] doctor:e2e
+[RUN] e2e:strict
+[OK] migrations - aplicadas duas vezes (idempotente)
+[RUN] backend - iniciando API temporaria na porta 3000
+[OK] health - status=ok database=connected ai=configured
+[OK] deterministic engine - contains/traces conforme baseline
+[OK] privacy - payload sem segredos e com snapshot deterministico
+[OK] anthropic real #1 - pergunta generica validada
+[OK] fallback - AI_NOT_CONFIGURED -> source local
+[OK] session schema - token_hash presente e sem coluna de token bruto
+[OK] assistant authority - PostgreSQL vence guestAllergies e snapshot marca conflito
+[OK] anthropic real #2 - produto com conflito validado com sessao autenticada
+[OK] multi-device - alergias sincronizadas entre dispositivos A e B
+[OK] isolation - contas permanecem isoladas
+[OK] history sync - A gravou, B leu, conta isolada nao viu
+[OK] favorites sync - A gravou, B leu, remocao cruzada recusada com 404
+[OK] verdict freshness - item salvo sem veredito; perfil muda sem alterar o registro
+[OK] auth - register, me, allergies, login, logout idempotente
+[OK] e2e:strict
+[PASS] verify:e2e - PostgreSQL real e Claude real comprovados
+
+=== EXIT CODE: 0 ===
+```
+
+`[WARN] Docker - unavailable (optional)` e opcional por desenho e nao bloqueia o
+gate: o PostgreSQL usado foi real, nao um contêiner.
+
+## Tabela de subgates
+
+```text
+backendProcess          STARTED_BY_RUNNER
+database                EXECUTED
+migrations              EXECUTED_IDEMPOTENT
+auth                    PASSED
+sessionSchema           PASSED
+multiDevice             PASSED
+isolation               PASSED
+historySync             PASSED
+favoritesSync           PASSED
+verdictFreshness        PASSED
+logout                  PASSED
+deterministicEngine     PASSED
+assistantGuest          PASSED
+assistantAuthenticated  PASSED
+assistantAuthority      PASSED
+fallback                PASSED
+privacy                 PASSED
+anthropic               configured
+anthropicReal           EXECUTED_GENERIC_AND_PRODUCT
+```
+
+**`anthropicReal` saiu de `NOT_EXECUTED`.** Na v0.7.1 ele era `NOT_EXECUTED` por
+falta de chave; agora registra as duas chamadas reais, uma generica e uma com
+produto em conflito sob sessao autenticada.
+
+`historySync`, `favoritesSync` e `verdictFreshness` estao em `PASSED`, contra
+banco real.
+
+Nenhum subgate ficou em SKIP ou NOT_EXECUTED. O gate nao reportaria PASS se
+algum tivesse ficado - `decideGateOutcome` exige as duas etapas com exit 0, e
+`findMissingRequirements` exige os 17 requisitos em modo strict.
+
+## E2E_LAST_RUN.json - conteudo integral
+
+O arquivo esta no `.gitignore` e por isso NAO vai no ZIP, conforme a secao 12 do
+prompt. O conteudo integral fica transcrito aqui:
+
+```json
+{
+  "version": "0.7.2",
+  "mode": "strict",
+  "startedAt": "2026-09-20T21:17:13.577Z",
+  "finishedAt": "2026-09-20T21:17:28.112Z",
+  "baseUrl": "http://127.0.0.1:3000/api",
+  "backendProcess": "STARTED_BY_RUNNER",
+  "database": "EXECUTED",
+  "migrations": "EXECUTED_IDEMPOTENT",
+  "auth": "PASSED",
+  "sessionSchema": "PASSED",
+  "multiDevice": "PASSED",
+  "isolation": "PASSED",
+  "historySync": "PASSED",
+  "favoritesSync": "PASSED",
+  "verdictFreshness": "PASSED",
+  "logout": "PASSED",
+  "deterministicEngine": "PASSED",
+  "assistantGuest": "PASSED",
+  "assistantAuthenticated": "PASSED",
+  "assistantAuthority": "PASSED",
+  "fallback": "PASSED",
+  "privacy": "PASSED",
+  "anthropic": "configured",
+  "anthropicReal": "EXECUTED_GENERIC_AND_PRODUCT",
+  "anthropicCalls": 2,
+  "ok": true,
+  "rateLimitBudget": {
+    "margem": "no maximo 50% do teto",
+    "baldes": [
+      {
+        "balde": "assistente",
+        "usado": 2,
+        "teto": 20,
+        "margemMaxima": 10,
+        "folga": 18,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "auth",
+        "usado": 3,
+        "teto": 40,
+        "margemMaxima": 20,
+        "folga": 37,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "colecoes",
+        "usado": 9,
+        "teto": 300,
+        "margemMaxima": 150,
+        "folga": 291,
+        "dentroDaMargem": true
+      }
+    ],
+    "estouraram": []
+  }
+}
+```
+
+`anthropicCalls: 2` bate com o teto de duas chamadas por execucao. Nenhuma
+chamada a mais foi feita.
+
+### Uma imprecisao neste JSON, declarada
+
+O balde `colecoes` mostra `"teto": 300`. Esse numero e o teto POR USUARIO. O
+orcamento foi escrito na v0.7.1, quando havia um teto so, e nao foi atualizado
+para mostrar tambem o teto por IP de 3000 - corrigi-lo exigiria outra execucao
+do gate, ou seja, mais duas chamadas pagas, o que nao se justifica.
+
+A medicao em si esta correta e e o que importa: **9 requisicoes de colecoes**,
+muito abaixo dos dois tetos. Fica registrado como ajuste de relatorio para uma
+proxima versao.
+
+## Medicao de 4.2 (b): quanto o gate gasta por limitador
+
+```text
+colecoes      9 de 300 por usuario e de 3000 por IP
+auth          3 de 40
+assistente    2 de 20
+```
+
+Nenhum limitador foi encostado. O gate e fail-closed quanto a isso: passar de
+metade do teto lanca antes de `report.ok = true`.
+
+## 6.4 - residuo no banco apos a execucao
+
+Conferido com o proprio pool do backend, que carrega `backend/.env` sozinho: a
+string de conexao nao foi lida nem impressa.
+
+```text
+=== CONTAGEM TOTAL NO BANCO ===
+users              4
+sessions           5
+product_history    0
+product_favorites  0
+
+=== RESIDUO DE TESTE (deve ser 0 em todas as linhas) ===
+gate E2E (e2e-real.js)         nutriscan-e2e-%          0
+suite de colecoes              colecoes-test-%          0
+suite de integracao antiga     e2e-%@example.test       0
+reproducao do E1               repro-e1-%               0
+qualquer @example.test         %@example.test           0
+qualquer @example.com          %@example.com            0
+
+RESIDUO SOMADO: 0
+
+=== LINHAS ORFAS (cascata da migration) ===
+product_history sem dono    0
+product_favorites sem dono  0
+```
+
+**Residuo zero.** Os 4 usuarios sao contas reais, anteriores a esta execucao. O
+`cleanupUsers` do runner roda no `finally`, entao apaga mesmo quando uma etapa
+falha, e a cascata `ON DELETE CASCADE` da migration levou historico e favoritos
+junto.
+
+## Observacao de ambiente: aviso de SSL do driver
+
+O `pg` emitiu, em toda conexao:
+
+```text
+Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca'
+are treated as aliases for 'verify-full'.
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+```
+
+E um aviso de depreciacao do driver, nao um erro, e nao afeta o resultado desta
+versao: o comportamento atual ja e o mais estrito dos dois. **Nao foi corrigido
+aqui de proposito** - a secao 5 do prompt manda descrever em vez de implementar
+o que estiver fora do escopo. Fica para decisao do auditor.
+
+## Suite de integracao de colecoes - PostgreSQL local
+
+Esta suite **nao** rodou contra o Neon de producao, por decisao explicita: ela
+grava muito - so F4 cria 201 favoritos, e H3 mais de 100 linhas de historico - e
+existe uma trava (`RUN_DB_INTEGRATION_TESTS`) criada depois do incidente da
+v0.6.6, quando um `npm test` com a string de producao no `.env` deixou linha de
+teste em producao. A flag foi mantida desligada em toda execucao apontada para o
+Neon.
+
+Contra PostgreSQL 17.10 local:
+
+```text
+✔ H1 ✔ F1 ✔ H2 ✔ H3 ✔ H4 ✔ F2 ✔ F3 ✔ F4
+✔ S1 ✔ S2 ✔ S3
+✔ I1 usuario A nao le historico nem favorito de B
+✔ I2 usuario B nao remove item de A
+✔ I3 userId no corpo da requisicao e ignorado; vale a sessao
+✔ I4 e V1 ✔ A1 ✔ D1
+✔ a migration aplica e reaplica sem quebrar
+[R11] gasto de colecoes desta suite: 372 de 3000 (folga 8.06x)
+✔ R11 o gasto de colecoes desta suite cabe no teto por IP
+ℹ tests 19
+ℹ pass 19
+ℹ fail 0
+ℹ skipped 0
+```
+
+**R8 confirmado com o teto por IP ligado: 19/19, zero SKIP, zero falha por
+quota.** D1 nao voltou.
+
+## Suite do limitador
+
+```text
+✔ R1 ✔ R2 ✔ R3
+✔ R4 (tres casos)  ✔ R5 (cinco casos)  ✔ R6 ✔ R7
+✔ Q2 ✔ Q3 (dois casos) ✔ Q4
+ℹ tests 17
+ℹ pass 17
+ℹ fail 0
+ℹ skipped 0
+```
+
+## Suite completa do backend
+
+Com `RUN_DB_INTEGRATION_TESTS=true`, contra PostgreSQL 17.10 local:
+
+```text
+ℹ tests 188
+ℹ pass 187
+ℹ fail 0
+ℹ skipped 1
+ℹ todo 0
+=== EXIT CODE: 0 ===
+```
+
+O unico SKIP:
+
+```text
+﹣ Claude real responde pergunta curta quando explicitamente habilitado
+  # NAO EXECUTADO - defina RUN_ANTHROPIC_INTEGRATION_TESTS=true e ANTHROPIC_API_KEY
+```
+
+E a protecao contra chamada paga acidental num `npm test` comum. **NAO EXECUTADO
+nao conta como PASS** - e, nesta versao, a propriedade que ele cobriria foi
+provada no gate, com duas chamadas reais.
+
+### `verify:release` conta SKIP diferente, e isso pode enganar
+
+`verify:release` roda sem a flag de banco, e a partir desta versao existe um
+`DATABASE_URL` em `backend/.env`. As suites de banco entao se declaram NAO
+EXECUTADO em vez de ausentes:
+
+```text
+ℹ tests 188
+ℹ pass 163
+ℹ fail 0
+ℹ skipped 25
+[OK] release verification
+=== EXIT CODE: 0 ===
+```
+
+Os 25 SKIP sao as mesmas suites que passam verdes acima com a flag ligada: 19 de
+colecoes, 5 de integracao e 1 da chamada paga. Nao sao regressao e nao contam
+como PASS.
+
+## Validacao por mutacao
+
+```text
+mortas 14 | nao executadas 0 | problemas 0
+APROVADO: toda mutacao foi detectada pelo teste correspondente.
+```
+
+Dois mutantes sobreviveram em rodadas anteriores e apontaram defeitos reais nos
+testes. Detalhe no AUDIT_REPORT.
+
+## O que NAO foi executado
+
+```text
+camera real em aparelho        NAO EXECUTADO - exige hardware
+carga simultanea real          NAO EXECUTADO - o limitador foi provado em processo
+suite de colecoes no Neon      NAO EXECUTADO - por decisao, descrita acima
+```
+
+Nenhum destes foi contornado, simulado ou declarado como aprovado.
+
+## Historico de auditorias anteriores
+
+## E2E da v0.7.1 - 2026-09-20
 
 ## Resultado geral
 
@@ -218,7 +567,6 @@ carga simultanea real          NAO EXECUTADO - o limitador foi provado em proces
 
 Nenhum destes foi contornado, simulado ou declarado como aprovado.
 
-## Historico de auditorias anteriores
 
 ## E2E da v0.7.0 - 2026-09-18
 

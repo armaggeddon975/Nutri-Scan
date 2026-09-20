@@ -1,4 +1,4 @@
-# Arquitetura NutriScan v0.7.1
+# Arquitetura NutriScan v0.7.2
 
 ## Visao geral
 
@@ -166,6 +166,97 @@ Browser
 
 O middleware aceita cookie e `Authorization: Bearer` para uso futuro. A web
 atual nao grava token em `localStorage`.
+
+## Limite de requisicoes
+
+Tres limitadores, com finalidades diferentes:
+
+```text
+auth          40 / 15 min   por IP      protege senha contra forca bruta
+assistente    20 / 10 min   por IP      cada chamada custa dinheiro
+colecoes     300 / 10 min   por USUARIO controle primario de escrita
+colecoes    3000 / 10 min   por IP      contencao de abuso multiconta
+```
+
+As rotas de colecoes - `/api/history` e `/api/favorites` - passam pelos DOIS
+ultimos. Passar exige caber nos dois; qualquer um recusando termina em 429.
+
+### Por que dois, e nao um
+
+O desenho e resultado de dois defeitos encontrados por auditoria externa, um
+depois do outro.
+
+**D1 (v0.7.0).** O limitador de colecoes contava so por IP. A suite de
+integracao roda todos os testes de `127.0.0.1`, na mesma janela, e o contador
+sobrevive aos servidores que cada teste sobe e derruba: **372 requisicoes**
+medidas. Contra um teto de 300, ela estourava no oitavo teste, e nove testes
+falhavam ao tentar ler `Too many requests` como JSON - entre eles I1, I2 e I3,
+os de isolamento entre contas.
+
+**E1 (v0.7.1).** A correcao trocou a chave para o usuario da sessao. Como
+`requireAuth` roda antes do limitador, toda requisicao que chega ali ja tem
+sessao, e o ramo de IP nunca executava: o teto por usuario **substituiu** o teto
+por IP em vez de somar. Quatro contas do mesmo endereco passavam 1200
+requisicoes.
+
+Os dois tetos resolvem coisas distintas e por isso precisam coexistir:
+
+```text
+por usuario   impede que uma conta sozinha encha a propria tabela
+              e protege o vizinho de NAT, que antes era punido junto
+
+por IP        impede que um endereco contorne o teto por usuario
+              simplesmente criando contas
+```
+
+### A ordem: usuario primeiro
+
+O teto por usuario e conferido antes do de IP. Com a ordem invertida, a
+requisicao 301 de um usuario abusivo passaria pelo contador de IP -
+incrementando-o - para so entao ser recusada pelo contador de usuario. O abusivo
+gastaria orcamento compartilhado com requisicoes que nem foram atendidas,
+punindo os vizinhos de NAT.
+
+### De onde vem o teto de 3000 por IP
+
+Medido, nao estimado:
+
+```text
+suite de integracao de colecoes   372 requisicoes de um unico IP
+scripts/e2e-real.js                 9 requisicoes
+```
+
+A restricao que manda nao e o teste - e o caso NAT/CGNAT. Uso intenso gira em
+torno de 60 requisicoes de colecoes por 10 minutos por pessoa; 3000 acomoda
+cerca de 50 pessoas nesse ritmo atras do mesmo endereco, ou 10 pessoas gastando
+a cota individual inteira. Um teto perto de 300 puniria exatamente quem o teto
+por usuario existe para proteger.
+
+A folga sobre a maior medicao e de 8,06x. O teste `R11`, em
+`backend/tests/collectionsIntegration.test.js`, confere essa folga a cada
+execucao e reprova com mensagem explicativa se um teste novo empurrar a conta
+para perto do limite - para que D1 nao volte por descuido.
+
+### `trust proxy` e a identidade do balde de IP
+
+Em producao `app.set("trust proxy", 1)` esta ligado, porque o Render coloca um
+proxy na frente. Com esse ajuste, `req.ip` e sempre o **ultimo** valor de
+`X-Forwarded-For`, que e o que o proxy acrescenta. Um cliente que prefixa
+valores proprios nao muda `req.ip`, entao nao escolhe o proprio balde.
+
+Isso tambem e o que impede o teto por IP de virar um teto global: sem
+`trust proxy`, todos os clientes apareceriam com o endereco do proxy e
+dividiriam um balde so.
+
+A chave de IP normaliza IPv6 para o prefixo `/64`. Quem recebe um `/64` da
+operadora tem 2^64 enderecos; sem normalizar, trocar de endereco a cada
+requisicao daria um balde novo toda vez.
+
+### Nenhum bypass
+
+Nenhuma variavel de ambiente, cabecalho, query string ou cookie desliga qualquer
+um dos limitadores. Um interruptor desses e uma porta, e uma porta que possa ser
+aberta em producao troca um defeito de teste por uma vulnerabilidade.
 
 ## Logout e sessoes
 

@@ -1,5 +1,169 @@
 # Changelog
 
+## NutriScan v0.7.2 - 2026-09-20
+
+Correcao do defeito E1 da auditoria externa da v0.7.1, mais a disciplina de
+escopo cobrada em E2.
+
+### E1 - a chave por usuario tinha ELIMINADO o teto por IP
+
+A v0.7.1 trocou a chave do limitador de colecoes de IP para usuario da sessao, e
+o comentario que ficou no codigo dizia:
+
+```text
+"Isso conserta o harness sem afrouxar nada"
+```
+
+**A frase era falsa.** `requireAuth` roda antes do limitador, entao toda
+requisicao que chega ali ja tem sessao e o ramo de IP nunca executava. O teto
+por usuario nao somou ao teto por IP: substituiu.
+
+O auditor externo subiu o app e mediu, criando contas do mesmo endereco:
+
+```text
+conta 0: 300 requisicoes aceitas, 429 na 301
+conta 1: 300 requisicoes aceitas, 429 na 301
+conta 2: 300 requisicoes aceitas, 429 na 301
+conta 3: 300 requisicoes aceitas, 429 na 301
+
+MESMO IP -> 4 contas, 1200 requisicoes de colecoes aceitas
+```
+
+A medicao foi reproduzida nesta versao antes de qualquer correcao, com o mesmo
+resultado. Com `authRateLimit` permitindo 40 registros por 15 minutos, um unico
+endereco podia criar cerca de 160 contas por hora: o teto pratico saiu de 1.800
+para cerca de 48.000 requisicoes por hora, fator 26.
+
+Nao houve vazamento entre contas nem quebra de isolamento, e o armazenamento por
+conta continuou limitado. E degradacao de disponibilidade, nao de
+confidencialidade.
+
+#### A correcao: os dois tetos coexistem
+
+```text
+teto por usuario   300 por 10 minutos   (inalterado)
+teto por IP       3000 por 10 minutos   (novo)
+```
+
+Os dois limitadores rodam em sequencia; passar exige caber nos dois, e qualquer
+um recusando termina em 429.
+
+**A ordem importa e nao e estilo.** O teto por usuario e conferido PRIMEIRO. Com
+o de IP na frente, a requisicao 301 de um usuario abusivo passaria pelo contador
+de IP - incrementando-o - para so entao ser recusada pelo contador de usuario. O
+abusivo gastaria orcamento compartilhado com requisicoes que nem foram
+atendidas, punindo os vizinhos de NAT. Conferindo o usuario primeiro, a recusa
+acontece antes de tocar no contador de IP.
+
+Depois da correcao, 12 contas do mesmo endereco:
+
+```text
+contas 0 a 9:  300 requisicoes aceitas cada, 429 na 301
+conta 10:      0 aceitas, 429 na PRIMEIRA requisicao
+conta 11:      0 aceitas, 429 na PRIMEIRA requisicao
+
+TOTAL: 3000, exatamente o teto por IP
+```
+
+#### De onde vem o numero 3000
+
+Medido, nao estimado:
+
+```text
+suite de integracao de colecoes   372 requisicoes de um unico IP
+scripts/e2e-real.js                 9 requisicoes
+```
+
+Os 372 explicam por que o teto de 300 por IP da v0.7.0 quebrava nove testes: a
+suite inteira roda de `127.0.0.1`, na mesma janela, e o contador do limitador
+sobrevive aos servidores que cada teste sobe e derruba.
+
+A restricao que manda, porem, nao e o teste - e o caso NAT/CGNAT, que foi o
+motivo de existir o teto por usuario. Uso intenso de verdade gira em torno de 60
+requisicoes de colecoes por 10 minutos por pessoa. 3000 acomoda cerca de 50
+pessoas nesse ritmo atras do mesmo endereco, ou 10 pessoas gastando a cota
+individual inteira. Um teto perto de 300 puniria exatamente quem a v0.7.1
+quis proteger.
+
+A folga sobre a maior medicao e de **8,06x** (3000 / 372). Ela e generosa de
+proposito: o teto por IP e rede de contencao contra abuso de multiplas contas,
+nao o controle primario, e voltar a quebrar a suite de integracao seria repetir
+D1. A suite agora confere essa folga sozinha, em `R11`, e avisa com uma mensagem
+explicativa se um teste novo empurrar a conta para perto do limite.
+
+#### IPv6: um bloco /64 e um balde so
+
+Quem recebe um `/64` da operadora tem 2^64 enderecos. Sem normalizar, trocar de
+endereco a cada requisicao daria um balde novo toda vez e o teto por IP viraria
+enfeite. A chave de IP usa o prefixo `/64`, que e a unidade que a operadora
+entrega. IPv4, e IPv6 mapeando IPv4, usam o endereco inteiro.
+
+#### `trust proxy` conferido, nao presumido
+
+Com `trust proxy: 1`, `req.ip` e sempre o ultimo valor de `X-Forwarded-For` - o
+que o proxy do Render acrescenta. Medido nesta versao: um cliente que prefixa
+`9.9.9.9, 8.8.8.8` antes do valor real continua sendo identificado pelo valor
+real. O cliente nao escolhe o proprio balde, e o teto por IP nao vira teto
+global.
+
+#### Nenhum bypass
+
+A decisao da v0.7.1 continua valendo e nao foi mexida: nenhuma variavel de
+ambiente, cabecalho, query string ou cookie desliga qualquer um dos dois
+limitadores.
+
+### E2 - entrada retroativa: artefatos entregues sem declaracao
+
+O auditor apontou que a v0.7.1 entregou cinco artefatos fora do escopo declarado
+(que era D1 + D2), e que ele os audita sem saber que existem. Nenhum e risco e a
+suite passa com todos, mas eles nunca foram nomeados em CHANGELOG. Ficam
+registrados agora:
+
+```text
+src/components/allergies/AllergyPicker.jsx   commit 641aa5f
+src/styles-v070.css                          commit 641aa5f
+public/nutriscan-icon.svg                    commit 641aa5f
+public/nutriscan-logo.png                    commit 641aa5f
+scripts/pack-release.ps1                     commit 7b19c6e
+```
+
+Os quatro primeiros vieram juntos, no commit que aplicou o pacote de design
+enviado pelo dono do projeto. O pacote trazia `styles.css` e os assets que ele
+referencia; `AllergyPicker.jsx` e `styles-v070.css` existem porque o
+`styles.css` do pacote entra intacto, por decisao do dono, e quem se ajusta e o
+codigo - as regras das telas que o pacote nao cobre vivem em arquivo separado
+para nao encostar nele. `nutriscan-icon.svg` e `nutriscan-logo.png` sao os
+assets que o pacote referencia.
+
+O quinto, `pack-release.ps1`, entrou no commit da v0.7.1: ate ali o ZIP de
+auditoria era montado colando comandos no terminal.
+
+A licao registrada: entrega pedida no meio do caminho continua precisando
+aparecer no CHANGELOG da versao que a carrega, mesmo quando o pedido e do dono e
+o escopo formal da versao era outro.
+
+### Um teste que vigiava uma constante lendo a propria constante
+
+`Q2` montava o laco com `TETO_COLECOES_POR_USUARIO + 1`. Com a constante mutada
+para 100000, o teste nao falhou: saiu fazendo 100001 requisicoes. Um teste que
+deriva a expectativa da mesma constante que deveria vigiar nao vigia nada - se
+alguem inflar a constante, o teste infla junto e continua verde.
+
+O valor de producao passou a ser escrito a mao no teste, e `R6` e quem confere
+que a constante bate com ele. Os dois precisam concordar.
+
+### O script de mutacao podia deixar o defeito no repositorio
+
+`scripts/mutation-check.js` confiava em `process.on("exit")` para desfazer a
+mutacao. Uma execucao desta versao foi interrompida de fora, o manipulador nao
+rodou, e a arvore ficou com `TETO_COLECOES_POR_USUARIO = 100000` - o limitador
+de producao praticamente desligado - ate a conferencia seguinte.
+
+O conteudo original agora vai para um jornal em disco ANTES da mutacao. Se o
+processo morrer, a proxima execucao comeca desfazendo o estrago e avisa. Um
+script que injeta defeitos de proposito nao pode depender de sair com educacao.
+
+
 ## NutriScan v0.7.1 - 2026-09-20
 
 Correcao do defeito D1 da auditoria externa da v0.7.0, mais a verificacao do

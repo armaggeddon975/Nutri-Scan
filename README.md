@@ -1,4 +1,4 @@
-# NutriScan v0.7.1
+# NutriScan v0.7.2
 
 NutriScan e um app web para consultar alimentos por nome ou codigo de barras,
 ver tabela nutricional, identificar ingredientes sensiveis e conversar com um
@@ -312,6 +312,35 @@ deploy, nao barrar um commit.
   para confirmar que nao existe coluna de token bruto.
 - A IA explica o snapshot deterministico; ela nao decide alergia sozinha.
 - O assistente e informativo e nao substitui medico ou nutricionista.
+
+### Limite de requisicoes
+
+```text
+auth          40 / 15 min   por IP
+assistente    20 / 10 min   por IP
+colecoes     300 / 10 min   por USUARIO   e   3000 / 10 min por IP
+```
+
+As rotas de historico e favoritos passam pelos dois ultimos ao mesmo tempo:
+passar exige caber nos dois, e qualquer um deles recusando devolve 429.
+
+Os dois existem porque resolvem coisas diferentes. O teto por usuario impede
+que uma conta encha a propria tabela e protege quem esta atras de NAT ou CGNAT,
+onde varias pessoas compartilham um endereco. O teto por IP impede que alguem
+contorne o primeiro simplesmente criando contas - sem ele, quatro contas do
+mesmo endereco passavam 1200 requisicoes.
+
+O teto por usuario e conferido primeiro, para que as requisicoes recusadas de um
+usuario abusivo nao consumam o orcamento de IP dos vizinhos.
+
+**Nao ha variavel de ambiente para nenhum dos dois.** Os valores sao constantes
+em `backend/src/middleware/rateLimit.js` (`TETO_COLECOES_POR_USUARIO` e
+`TETO_COLECOES_POR_IP`), e nenhuma variavel, cabecalho, query string ou cookie
+desliga os limitadores. Mudar um deles e alteracao de codigo, revisavel, e
+quebra os testes `R6` e `R7` se a medicao que sustenta o numero nao for
+atualizada junto.
+
+O teto de 3000 por IP vem de medicao, descrita em `docs/ARCHITECTURE.md`.
 
 ## Limite semantico milk/lactose
 

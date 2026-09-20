@@ -9,6 +9,7 @@ import test, { after } from "node:test";
 import { createApp } from "../src/app.js";
 import { env } from "../src/config/env.js";
 import { closePool, query } from "../src/database/pool.js";
+import { TETO_COLECOES_POR_IP } from "../src/middleware/rateLimit.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const backendRoot = path.resolve(__dirname, "..");
@@ -51,11 +52,32 @@ async function comServidor(callback) {
   }
 }
 
+// MEDICAO DO GASTO DESTA SUITE CONTRA UM UNICO IP
+//
+// A v0.7.2 passou a somar um teto por IP ao teto por usuario. Esta suite roda
+// todos os testes contra o mesmo `127.0.0.1`, dentro da mesma janela, e o
+// limitador e um modulo unico cujo contador sobrevive aos servidores que cada
+// teste sobe e derruba. Ou seja: o gasto de IP desta suite e a soma de tudo.
+//
+// Era exatamente por isso que o teto de 300 por IP da v0.7.0 quebrava nove
+// testes. O numero abaixo e medido, nao estimado, e o ultimo teste do arquivo
+// confere se ele cabe no teto com folga - se um teste novo empurrar a conta
+// para perto do limite, a suite avisa ANTES de virar falha por quota.
+let requisicoesDeColecoes = 0;
+
+function contarSeForColecao(pathname) {
+  const rota = pathname.split("?")[0];
+  if (rota.startsWith("/api/history") || rota.startsWith("/api/favorites")) {
+    requisicoesDeColecoes += 1;
+  }
+}
+
 // Cada agente guarda o proprio cookie. Dois agentes = dois dispositivos.
 function criarAgente(baseUrl) {
   const cookies = new Map();
   return {
     async request(pathname, options = {}) {
+      contarSeForColecao(pathname);
       const headers = {
         Accept: "application/json",
         ...(options.body ? { "Content-Type": "application/json" } : {}),
@@ -595,5 +617,42 @@ test("a migration aplica e reaplica sem quebrar", { skip: pular }, async () => {
   assert.deepEqual(
     tabelas.rows.map((r) => r.table_name),
     ["product_favorites", "product_history"],
+  );
+});
+
+// ---------------------------------------------------------------------------
+// R11 - o gasto desta suite cabe no teto por IP, com folga
+// ---------------------------------------------------------------------------
+//
+// Declarado por ultimo de proposito: com `--test-concurrency=1` os testes de um
+// arquivo rodam na ordem em que aparecem, entao aqui a contagem ja esta
+// completa.
+//
+// Este teste e a defesa contra o retorno de D1. Se alguem acrescentar testes
+// que empurrem o gasto para perto do teto por IP, a suite avisa com uma
+// mensagem que explica o problema - em vez de comecar a falhar com
+// `Unexpected token 'T', "Too many r"`, que foi como D1 apareceu.
+
+test("R11 o gasto de colecoes desta suite cabe no teto por IP", { skip: pular }, () => {
+  const FOLGA_MINIMA = 4;
+  const folga = TETO_COLECOES_POR_IP / requisicoesDeColecoes;
+
+  assert.ok(
+    requisicoesDeColecoes > 0,
+    "nenhuma requisicao contada - a instrumentacao parou de funcionar e a medicao virou enfeite",
+  );
+
+  assert.ok(
+    folga >= FOLGA_MINIMA,
+    `esta suite gasta ${requisicoesDeColecoes} requisicoes de colecoes de um unico IP e o teto ` +
+      `por IP e ${TETO_COLECOES_POR_IP}: folga de apenas ${folga.toFixed(2)}x. ` +
+      `Abaixo de ${FOLGA_MINIMA}x o defeito D1 volta - a suite passa a falhar por quota, e os ` +
+      `testes de isolamento I1, I2 e I3 param de rodar. Aumente o teto por IP com medicao nova ` +
+      `ou reduza o gasto da suite.`,
+  );
+
+  console.log(
+    `[R11] gasto de colecoes desta suite: ${requisicoesDeColecoes} de ${TETO_COLECOES_POR_IP} ` +
+      `(folga ${folga.toFixed(2)}x)`,
   );
 });

@@ -17,7 +17,7 @@
 //   node scripts/mutation-check.js --com-banco  inclui as que exigem PostgreSQL
 
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,27 +31,112 @@ const REPO_FAVORITOS = "backend/src/repositories/favoritesRepository.js";
 const SUITE_LIMITE = "tests/rateLimit.test.js";
 const SUITE_INTEGRACAO = "tests/collectionsIntegration.test.js";
 
+const COMPOSICAO = "  return [porUsuario, porIp];";
+
 const MUTACOES = [
   {
+    id: "N1",
+    requisito: "R1/R3",
+    descricao: "remove o teto por IP e deixa so o de usuario (o defeito E1)",
+    arquivo: LIMITADOR,
+    de: COMPOSICAO,
+    para: "  return [porUsuario];",
+    suite: SUITE_LIMITE,
+    deveQuebrar: "R1 usuario dentro do teto mas IP estourado recebe 429",
+    banco: false,
+  },
+  {
+    id: "N1b",
+    requisito: "R3",
+    descricao: "remove o teto por IP: multiplas contas voltam a passar sem limite",
+    arquivo: LIMITADOR,
+    de: COMPOSICAO,
+    para: "  return [porUsuario];",
+    suite: SUITE_LIMITE,
+    deveQuebrar: "R3 multiplas contas do mesmo IP nao ultrapassam o teto por IP",
+    banco: false,
+  },
+  {
+    id: "N2",
+    requisito: "R2",
+    descricao: "remove o teto por usuario e deixa so o de IP (o defeito D1)",
+    arquivo: LIMITADOR,
+    de: COMPOSICAO,
+    para: "  return [porIp];",
+    suite: SUITE_LIMITE,
+    deveQuebrar: "R2 IP dentro do teto mas usuario estourado recebe 429",
+    banco: false,
+  },
+  {
+    id: "N2b",
+    requisito: "R4",
+    descricao: "remove o teto por usuario: vizinhos de NAT voltam a se derrubar",
+    arquivo: LIMITADOR,
+    de: COMPOSICAO,
+    para: "  return [porIp];",
+    suite: SUITE_LIMITE,
+    deveQuebrar: "R4 dois usuarios atras do MESMO IP mantem cotas separadas",
+    banco: false,
+  },
+  {
+    id: "N3",
+    requisito: "R4",
+    descricao: "confere o IP antes do usuario: recusas passam a gastar cota do IP",
+    arquivo: LIMITADOR,
+    de: COMPOSICAO,
+    para: "  return [porIp, porUsuario];",
+    suite: SUITE_LIMITE,
+    deveQuebrar: "R4 a requisicao recusada pelo teto de usuario nao consome orcamento do IP",
+    banco: false,
+  },
+  {
+    id: "N4",
+    requisito: "R5",
+    descricao: "le o balde de IP de um cabecalho do request",
+    arquivo: LIMITADOR,
+    de:
+      "export function collectionsIpRateLimitKey(req) {\n" +
+      "  return `ip:${normalizarIp(req?.ip)}`;\n" +
+      "}",
+    para:
+      "export function collectionsIpRateLimitKey(req) {\n" +
+      '  return `ip:${normalizarIp(req?.get?.("x-real-ip") ?? req?.ip)}`;\n' +
+      "}",
+    suite: SUITE_LIMITE,
+    deveQuebrar: "R5 dados forjados no request nao conseguem balde de IP novo",
+    banco: false,
+  },
+  {
+    id: "N5",
+    requisito: "R5",
+    descricao: "para de normalizar IPv6: um bloco /64 vira 2^64 baldes",
+    arquivo: LIMITADOR,
+    de: '  return `${grupos.slice(0, 4).map((g) => g || "0").join(":")}::/64`;',
+    para: "  return semZona;",
+    suite: SUITE_LIMITE,
+    deveQuebrar: "R5 um bloco IPv6 /64 nao vira infinitos baldes",
+    banco: false,
+  },
+  {
     id: "M1",
-    requisito: "Q5",
+    requisito: "R6",
     descricao: "afrouxa o teto de autenticacao de 40 para 100 por janela",
     arquivo: LIMITADOR,
     de: "  limit: 40,",
     para: "  limit: 100,",
     suite: SUITE_LIMITE,
-    deveQuebrar: "Q5 os tres limitadores mantem janela e teto declarados",
+    deveQuebrar: "R6 os tres tetos por rota seguem nos valores declarados",
     banco: false,
   },
   {
     id: "M2",
-    requisito: "Q2",
-    descricao: "eleva o teto de colecoes a um valor que nunca e alcancado",
+    requisito: "R7",
+    descricao: "derruba o teto por IP para um valor que quebraria a suite",
     arquivo: LIMITADOR,
-    de: "  limit: 300,",
-    para: "  limit: 100000,",
+    de: "export const TETO_COLECOES_POR_IP = 3000;",
+    para: "export const TETO_COLECOES_POR_IP = 300;",
     suite: SUITE_LIMITE,
-    deveQuebrar: "Q2 em producao o limitador recusa na requisicao seguinte ao teto",
+    deveQuebrar: "R7 o teto por IP esta no valor medido",
     banco: false,
   },
   {
@@ -59,50 +144,39 @@ const MUTACOES = [
     requisito: "Q3",
     descricao: "cria um bypass por variavel de ambiente",
     arquivo: LIMITADOR,
-    de: "  keyGenerator: collectionsRateLimitKey,",
+    de: "    keyGenerator: collectionsRateLimitKey,",
     para:
-      '  skip: () => process.env.RATE_LIMIT_OFF === "1",\n' +
-      "  keyGenerator: collectionsRateLimitKey,",
+      '    skip: () => process.env.RATE_LIMIT_OFF === "1",\n' +
+      "    keyGenerator: collectionsRateLimitKey,",
     suite: SUITE_LIMITE,
-    deveQuebrar: "Q3 nenhuma variavel de ambiente desliga o limitador",
+    deveQuebrar: "Q3 nenhuma variavel de ambiente desliga os limitadores",
+    banco: false,
+  },
+  {
+    id: "M3b",
+    requisito: "Q4",
+    descricao: "adiciona um skip acionado por cabecalho, sem variavel de ambiente",
+    arquivo: LIMITADOR,
+    de: "    keyGenerator: collectionsRateLimitKey,",
+    para: '    skip: (req) => req.get("x-livre") === "1",\n    keyGenerator: collectionsRateLimitKey,',
+    suite: SUITE_LIMITE,
+    deveQuebrar: "Q4 nenhum dos limitadores tem opcao de pular requisicao",
     banco: false,
   },
   {
     id: "M4",
-    requisito: "Q4",
-    descricao: "faz a chave depender de um cabecalho enviado pelo cliente",
+    requisito: "Q2",
+    descricao: "eleva o teto por usuario a um valor que nunca e alcancado",
     arquivo: LIMITADOR,
-    de: "  const userId = req?.user?.id;",
-    para: '  const userId = req?.get?.("x-usuario") ?? req?.user?.id;',
+    de: "export const TETO_COLECOES_POR_USUARIO = 300;",
+    para: "export const TETO_COLECOES_POR_USUARIO = 100000;",
     suite: SUITE_LIMITE,
-    deveQuebrar: "Q4 nenhum dado vindo do request consegue um balde novo",
-    banco: false,
-  },
-  {
-    id: "M4b",
-    requisito: "Q4",
-    descricao: "adiciona um skip acionado por cabecalho, sem variavel de ambiente",
-    arquivo: LIMITADOR,
-    de: "  keyGenerator: collectionsRateLimitKey,",
-    para: '  skip: (req) => req.get("x-livre") === "1",\n  keyGenerator: collectionsRateLimitKey,',
-    suite: SUITE_LIMITE,
-    deveQuebrar: "Q4 o limitador nao tem opcao de pular requisicao",
-    banco: false,
-  },
-  {
-    id: "M5",
-    requisito: "D1",
-    descricao: "volta a contar por IP, que e exatamente o defeito relatado",
-    arquivo: LIMITADOR,
-    de: "  if (userId) return `user:${userId}`;",
-    para: "  if (false && userId) return `user:${userId}`;",
-    suite: SUITE_LIMITE,
-    deveQuebrar: "D1 a cota de um usuario nao consome a cota de outro",
+    deveQuebrar: "Q2 em producao o teto por usuario recusa na requisicao seguinte ao teto",
     banco: false,
   },
   {
     id: "M6",
-    requisito: "Q7",
+    requisito: "R9",
     descricao: "remove o filtro por dono da leitura de historico",
     arquivo: REPO_HISTORICO,
     de: "FROM product_history WHERE user_id = $1 ORDER BY viewed_at DESC",
@@ -113,7 +187,7 @@ const MUTACOES = [
   },
   {
     id: "M7",
-    requisito: "Q7",
+    requisito: "R9",
     descricao: "remove o filtro por dono da remocao de favorito",
     arquivo: REPO_FAVORITOS,
     de: "DELETE FROM product_favorites WHERE user_id = $1 AND id = $2 RETURNING id",
@@ -151,14 +225,49 @@ function falhasDe(saida) {
     );
 }
 
-// Restauracao garantida: se o processo morrer no meio, o arquivo mutado volta
-// ao original antes de sair. Deixar uma mutacao para tras seria pior que nao
-// ter rodado o script.
+// RESTAURACAO QUE SOBREVIVE A MORTE DO PROCESSO
+//
+// A primeira versao disto confiava so em `process.on("exit")`. Na v0.7.2 uma
+// execucao foi interrompida de fora, o manipulador nao rodou, e o repositorio
+// ficou com a mutacao M4 aplicada: `TETO_COLECOES_POR_USUARIO = 100000`, ou
+// seja, o limitador de producao praticamente desligado. Passou despercebido ate
+// a conferencia seguinte. Um script que injeta defeitos de proposito nao pode
+// depender de sair com educacao.
+//
+// Agora o conteudo original vai para um arquivo ANTES da mutacao. Se o processo
+// morrer, o proximo comeca lendo esse arquivo e desfaz o estrago.
+const JORNAL = path.join(raiz, "scripts/.mutation-restore.json");
+
+function anotarNoJornal(caminho, original) {
+  writeFileSync(JORNAL, JSON.stringify({ caminho, original }), "utf8");
+}
+
+function limparJornal() {
+  if (existsSync(JORNAL)) rmSync(JORNAL);
+}
+
+function restaurarJornalPendente() {
+  if (!existsSync(JORNAL)) return;
+  try {
+    const { caminho, original } = JSON.parse(readFileSync(JORNAL, "utf8"));
+    writeFileSync(caminho, original);
+    console.log(`[aviso] execucao anterior foi interrompida; ${path.relative(raiz, caminho)} restaurado`);
+  } catch (erro) {
+    console.error(`[ERRO] jornal de restauracao ilegivel: ${erro.message}`);
+    console.error(`Confira ${JORNAL} e o estado do repositorio A MAO antes de continuar.`);
+    process.exit(1);
+  }
+  limparJornal();
+}
+
+restaurarJornalPendente();
+
 const pendentes = [];
 process.on("exit", () => {
   for (const { caminho, original } of pendentes) writeFileSync(caminho, original);
+  if (pendentes.length === 0) limparJornal();
 });
-for (const sinal of ["SIGINT", "SIGTERM"]) {
+for (const sinal of ["SIGINT", "SIGTERM", "SIGHUP", "SIGBREAK"]) {
   process.on(sinal, () => process.exit(130));
 }
 
@@ -191,6 +300,7 @@ for (const m of MUTACOES) {
 
   const registro = { caminho, original };
   pendentes.push(registro);
+  anotarNoJornal(caminho, original);
   writeFileSync(caminho, original.replace(m.de, m.para));
 
   console.log(`- ${m.id} (${m.requisito}) ${m.descricao}...`);
@@ -198,6 +308,7 @@ for (const m of MUTACOES) {
 
   writeFileSync(caminho, original);
   pendentes.splice(pendentes.indexOf(registro), 1);
+  limparJornal();
 
   const falhas = falhasDe(saida);
   const pegou = falhas.some((nome) => nome.includes(m.deveQuebrar));
