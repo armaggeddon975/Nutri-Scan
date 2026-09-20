@@ -234,3 +234,31 @@
     transform: translateX(calc((48px + 12px) / 2));
   }
 }
+
+/* -------------------------------------------------------------------------
+   AJUSTE PEDIDO PELO DONO - logo centralizada no menu lateral
+   -------------------------------------------------------------------------
+   Pedido em 19/09/2026, depois do ajuste do celular: no computador a logo
+   continuava torta.
+
+   Medido a 1360px, antes: menu de 0 a 256 (centro em 128), logo de 38 a 163
+   (centro em 101). Desvio de 27px para a esquerda.
+
+   Duas causas somadas:
+   - `.rail-brand` tem `align-self: flex-start`, entao o bloco da marca encosta
+     na esquerda em vez de ocupar a coluna;
+   - o menu tem recuo assimetrico (28px a esquerda, 20px a direita), o que
+     deixaria o centro do conteudo em 132 mesmo depois de esticar.
+
+   `align-self: stretch` mais `justify-content: center` resolvem a primeira;
+   os 8px de margem a direita compensam a segunda, puxando o centro de 132
+   para 128. A pilula de hover continua com largura de menu, nao de tela.
+
+   Os itens do menu abaixo seguem alinhados a esquerda, como o design fez. */
+@media (min-width: 960px) {
+  .rail-brand {
+    align-self: stretch;
+    justify-content: center;
+    margin-right: 8px;
+  }
+}
