@@ -1,6 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import pg from "pg";
 
 import { env } from "../src/config/env.js";
@@ -40,8 +40,24 @@ async function run() {
   await client.connect();
   try {
     await ensureMigrationsTable();
+
+    // MIGRATIONS EM .js, ALEM DE .sql (v0.7.4)
+    //
+    // A migration 003 precisa decidir se um codigo de 12 digitos e um UPC-A de
+    // verdade, e isso depende do digito verificador. Escrever esse calculo em
+    // SQL seria uma SEGUNDA implementacao da regra que vive em
+    // `shared/barcode.js` - exatamente o tipo de copia que diverge com o tempo,
+    // e que o proprio prompt da versao proibe.
+    //
+    // Uma migration em JavaScript importa a funcao compartilhada e usa a mesma
+    // regra do backend e do frontend. Ela e registrada em `schema_migrations`
+    // pelo nome do arquivo, como qualquer outra, entao a idempotencia vem do
+    // mesmo mecanismo: aplicada uma vez, e pulada nas seguintes.
+    //
+    // Os dois tipos sao ordenados juntos pelo nome, para que a numeracao
+    // continue definindo a ordem.
     const files = (await readdir(migrationsDir))
-      .filter((file) => file.endsWith(".sql"))
+      .filter((file) => file.endsWith(".sql") || file.endsWith(".js"))
       .sort();
 
     for (const file of files) {
@@ -50,10 +66,19 @@ async function run() {
         continue;
       }
 
-      const sql = await readFile(path.join(migrationsDir, file), "utf8");
       await client.query("BEGIN");
       try {
-        await client.query(sql);
+        if (file.endsWith(".js")) {
+          const modulo = await import(pathToFileURL(path.join(migrationsDir, file)).href);
+          if (typeof modulo.up !== "function") {
+            throw new Error(`${file} nao exporta uma funcao \`up\``);
+          }
+          await modulo.up(client);
+        } else {
+          const sql = await readFile(path.join(migrationsDir, file), "utf8");
+          await client.query(sql);
+        }
+
         await client.query("INSERT INTO schema_migrations (filename) VALUES ($1)", [file]);
         await client.query("COMMIT");
         console.log(`applied ${file}`);

@@ -342,3 +342,68 @@ test("M12 o campo manual fica sempre visivel, nao escondido atras da camera", as
     "o formulario de codigo parece estar dentro de um condicional de estado da camera",
   );
 });
+
+// ---------------------------------------------------------------------------
+// N1 - canonicalizacao no schema do backend (v0.7.4)
+// ---------------------------------------------------------------------------
+//
+// Ate a v0.7.3 o schema CONFERIA o digito verificador e gravava o codigo como
+// veio. O modulo compartilhado documentava a normalizacao; o backend nao a
+// aplicava. Estes testes cobrem o schema isoladamente; N1a a N1g, na suite de
+// integracao, atravessam o banco.
+
+function canonicoDoSchema(codigo) {
+  const resultado = productRefSchema.safeParse({ ...PRODUTO_BASE, productCode: codigo });
+  assert.equal(resultado.success, true, `${codigo} foi recusado pelo schema`);
+  return resultado.data.productCode;
+}
+
+test("N1 o schema canonicaliza UPC-A para EAN-13", () => {
+  assert.equal(canonicoDoSchema("036000291452"), "0036000291452");
+
+  // E a forma canonica passa por ele inalterada: canonicalizar duas vezes da o
+  // mesmo resultado, senao o valor mudaria a cada gravacao.
+  assert.equal(canonicoDoSchema("0036000291452"), "0036000291452");
+});
+
+test("N1e o schema nao altera EAN-13 nem EAN-8", () => {
+  for (const codigo of ["7891000100103", "5449000000996", "3017624010701", "96385074"]) {
+    assert.equal(canonicoDoSchema(codigo), codigo, `${codigo} foi alterado`);
+  }
+});
+
+test("N1d o schema nao altera codigo que nao e EAN/UPC", () => {
+  // Canonicalizar um ITF-14 ou um codigo alfanumerico seria inventar um codigo
+  // que nao existe. A isencao e a mesma que dispensa esses formatos do digito
+  // verificador.
+  for (const codigo of ["12345678901234", "20003404_0001", "ABC123", "1234567", "036000291452X"]) {
+    const resultado = productRefSchema.safeParse({ ...PRODUTO_BASE, productCode: codigo });
+    assert.equal(resultado.success, true, `${codigo} foi recusado`);
+    assert.equal(resultado.data.productCode, codigo, `${codigo} foi alterado pela canonicalizacao`);
+  }
+});
+
+test("N1 a canonicalizacao nao afrouxa a conferencia do digito", () => {
+  // Um UPC-A com digito errado continua recusado. Canonicalizar antes de
+  // conferir transformaria "12 digitos errados" em "13 digitos errados
+  // aceitos".
+  for (const codigo of ["036000291453", "7891000100104", "96385075"]) {
+    const resultado = productRefSchema.safeParse({ ...PRODUTO_BASE, productCode: codigo });
+    assert.equal(resultado.success, false, `${codigo} passou pelo schema`);
+  }
+});
+
+test("N1 a canonicalizacao usa shared/barcode.js, sem copia local", async () => {
+  const fonte = await readFile(path.join(rootDir, "backend/src/utils/validation.js"), "utf8");
+  const codigo = fonte
+    .split(/\r?\n/)
+    .filter((linha) => !linha.trim().startsWith("//"))
+    .join("\n");
+
+  assert.match(codigo, /validarCodigoDeBarras/, "o schema nao usa a funcao compartilhada");
+
+  // "Prefixa um zero" escrito a mao aqui seria a segunda implementacao.
+  assert.doesNotMatch(codigo, /`0\$\{/, "o schema monta a forma canonica por conta propria");
+  assert.doesNotMatch(codigo, /"0"\s*\+/, "o schema concatena o zero por conta propria");
+  assert.doesNotMatch(codigo, /padStart\(\s*13/, "o schema normaliza por conta propria");
+});

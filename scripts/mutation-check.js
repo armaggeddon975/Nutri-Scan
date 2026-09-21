@@ -33,6 +33,7 @@ const VEREDITO = "shared/allergyVerdict.js";
 const LOOKUP = "src/services/productLookup.js";
 const APP = "src/App.jsx";
 const VALIDACAO_BACKEND = "backend/src/utils/validation.js";
+const MIGRATION003 = "backend/migrations/003_canonicaliza_upca.js";
 
 const SUITE_BARCODE = "tests/barcode.test.js";
 const SUITE_LOOKUP = "tests/productLookup.test.js";
@@ -42,6 +43,110 @@ const SUITE_INTEGRACAO = "tests/collectionsIntegration.test.js";
 const COMPOSICAO = "  return [porUsuario, porIp];";
 
 const MUTACOES = [
+  {
+    id: "S1",
+    requisito: "N1a",
+    descricao: "remove o .transform() do productCodeSchema (o defeito N1)",
+    arquivo: VALIDACAO_BACKEND,
+    de: "  .transform(canonicalizarCodigo);",
+    para: "  .transform((valor) => valor);",
+    suite: SUITE_BARCODE,
+    deveQuebrar: "N1 o schema canonicaliza UPC-A para EAN-13",
+    banco: false,
+  },
+  {
+    id: "S1b",
+    requisito: "N1a",
+    descricao: "canonicaliza so no frontend: o banco volta a guardar o que veio",
+    arquivo: VALIDACAO_BACKEND,
+    de: "  .transform(canonicalizarCodigo);",
+    para: "  .transform((valor) => valor);",
+    suite: SUITE_INTEGRACAO,
+    deveQuebrar: "N1a o mesmo produto em UPC-A e EAN-13 vira UMA linha canonica",
+    banco: true,
+  },
+  {
+    id: "S1c",
+    requisito: "N1c",
+    descricao: "sem transform, a requisicao direta grava a forma de 12 digitos",
+    arquivo: VALIDACAO_BACKEND,
+    de: "  .transform(canonicalizarCodigo);",
+    para: "  .transform((valor) => valor);",
+    suite: SUITE_INTEGRACAO,
+    deveQuebrar: "N1c requisicao DIRETA ao backend grava a forma canonica",
+    banco: true,
+  },
+  {
+    id: "S2",
+    requisito: "N1e",
+    descricao: "prefixa zero tambem no EAN-8, nao so no UPC-A",
+    arquivo: BARCODE,
+    de: "  const canonico = formato === FORMATO_UPCA ? upcaParaEan13(semSeparadores) : semSeparadores;",
+    para: "  const canonico = formato !== FORMATO_EAN13 ? upcaParaEan13(semSeparadores) : semSeparadores;",
+    suite: SUITE_BARCODE,
+    deveQuebrar: "N1e o schema nao altera EAN-13 nem EAN-8",
+    banco: false,
+  },
+  {
+    id: "S2b",
+    requisito: "N1d",
+    descricao: "remove a isencao: todo codigo passa pela canonicalizacao",
+    arquivo: VALIDACAO_BACKEND,
+    de: "  if (!exigeDigitoVerificador(valor)) return valor;",
+    para: '  if (!exigeDigitoVerificador(valor)) return String(valor).padStart(13, "0");',
+    suite: SUITE_INTEGRACAO,
+    deveQuebrar: "N1d codigo nao-EAN passa intacto pela canonicalizacao",
+    banco: true,
+  },
+  {
+    id: "S3",
+    requisito: "N1g",
+    descricao: "a migration deixa sobreviver a linha NAO canonica",
+    arquivo: MIGRATION003,
+    de: "    await client.query(`DELETE FROM ${tabela} WHERE id = $1`, [linha.id]);",
+    para: "    await client.query(`DELETE FROM ${tabela} WHERE id = $1`, [existente.rows[0].id]);",
+    suite: SUITE_INTEGRACAO,
+    deveQuebrar: "N1g a migration funde as duas formas pela regra declarada",
+    banco: true,
+  },
+  {
+    id: "S4",
+    requisito: "N1g",
+    descricao: "a migration para de conferir o digito antes de canonicalizar",
+    arquivo: MIGRATION003,
+    de: "    if (!resultado.valido) continue;",
+    para: "    if (false) continue;",
+    suite: SUITE_INTEGRACAO,
+    deveQuebrar: "N1g a migration e idempotente e nao toca codigo nao-EAN",
+    banco: true,
+  },
+  {
+    id: "S5",
+    requisito: "R2",
+    descricao: "o digito verificador do backend passa a aceitar tudo",
+    arquivo: BARCODE,
+    de:
+      "export function digitoVerificadorConfere(codigo) {\n" +
+      "  const corpo = codigo.slice(0, -1);\n" +
+      "  const informado = Number(codigo[codigo.length - 1]);\n" +
+      "  return calcularDigitoVerificador(corpo) === informado;\n" +
+      "}",
+    para: "export function digitoVerificadorConfere(codigo) {\n  return Boolean(codigo);\n}",
+    suite: SUITE_BARCODE,
+    deveQuebrar: "N1 a canonicalizacao nao afrouxa a conferencia do digito",
+    banco: false,
+  },
+  {
+    id: "S6",
+    requisito: "N1",
+    descricao: "o schema monta a forma canonica por conta propria",
+    arquivo: VALIDACAO_BACKEND,
+    de: "  return resultado.valido ? resultado.codigo : valor;",
+    para: '  return valor.length === 12 ? `0${valor}` : valor;',
+    suite: SUITE_BARCODE,
+    deveQuebrar: "N1 a canonicalizacao usa shared/barcode.js, sem copia local",
+    banco: false,
+  },
   {
     id: "P1",
     requisito: "M1",
@@ -78,8 +183,8 @@ const MUTACOES = [
       "  .refine(\n" +
       "    (valor) => !exigeDigitoVerificador(valor) || digitoVerificadorConfere(valor),\n" +
       '    "Código do produto tem dígito verificador inválido.",\n' +
-      "  );",
-    para: '  .refine(() => true, "Código do produto tem dígito verificador inválido.");',
+      "  )",
+    para: '  .refine(() => true, "Código do produto tem dígito verificador inválido.")',
     suite: SUITE_BARCODE,
     deveQuebrar: "M3 o backend recusa productCode com digito verificador invalido",
     banco: false,
@@ -157,10 +262,21 @@ const MUTACOES = [
     requisito: "M9",
     descricao: "o backend para de importar a validacao compartilhada",
     arquivo: VALIDACAO_BACKEND,
-    de: 'import {\n  digitoVerificadorConfere,\n  exigeDigitoVerificador,\n} from "../../../shared/barcode.js";',
+    // A ancora nomeia a lista de imports inteira, entao ela precisa ser
+    // atualizada quando um import novo entra - foi o que aconteceu na v0.7.4,
+    // com `validarCodigoDeBarras`. O script acusou INAPLICAVEL em vez de passar
+    // batido, que e o modo de falhar certo: ele diz que nao conseguiu testar,
+    // em vez de dizer que testou.
+    de:
+      "import {\n" +
+      "  digitoVerificadorConfere,\n" +
+      "  exigeDigitoVerificador,\n" +
+      "  validarCodigoDeBarras,\n" +
+      '} from "../../../shared/barcode.js";',
     para:
       "const digitoVerificadorConfere = () => true;\n" +
-      "const exigeDigitoVerificador = () => false;",
+      "const exigeDigitoVerificador = () => false;\n" +
+      "const validarCodigoDeBarras = (v) => ({ valido: true, codigo: v });",
     suite: SUITE_BARCODE,
     deveQuebrar: "M9 backend e frontend usam a MESMA implementacao de shared/",
     banco: false,
@@ -207,8 +323,8 @@ const MUTACOES = [
       "  .refine(\n" +
       "    (valor) => !exigeDigitoVerificador(valor) || digitoVerificadorConfere(valor),\n" +
       '    "Código do produto tem dígito verificador inválido.",\n' +
-      "  );",
-    para: '  .refine(() => true, "Código do produto tem dígito verificador inválido.");',
+      "  )",
+    para: '  .refine(() => true, "Código do produto tem dígito verificador inválido.")',
     suite: SUITE_INTEGRACAO,
     deveQuebrar: "M10 o backend recusa gravar codigo com digito verificador invalido",
     banco: true,

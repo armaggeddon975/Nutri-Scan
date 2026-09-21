@@ -65,6 +65,20 @@ export async function consultarProdutoPorCodigo(
         codigoDigitado: validacao.codigoDigitado ?? "",
       };
     }
+
+    // A forma canonica sai daqui para a consulta a Open Food Facts, que NAO
+    // passa pelo nosso backend - entao este e o unico lugar onde ela pode ser
+    // decidida para a busca.
+    //
+    // Para o que vai ao BANCO, porem, quem decide e o servidor. Ate a v0.7.3
+    // nao era assim: o backend so conferia o digito verificador e gravava o
+    // codigo como viesse, entao um UPC-A lido pela camera - que nao passa por
+    // este ramo - virava uma segunda linha de historico do mesmo produto. Era o
+    // defeito N1.
+    //
+    // A canonicalizacao daqui continua existindo por conveniencia: a tela
+    // mostra o que sera buscado, e a consulta externa usa a forma certa. Ela
+    // nao e mais a que garante a unicidade no banco.
     codigo = validacao.codigo;
   } else {
     codigo = cleanBarcode(entrada);

@@ -1,4 +1,4 @@
-# NutriScan v0.7.3
+# NutriScan v0.7.4
 
 NutriScan e um app web para consultar alimentos por nome ou codigo de barras,
 ver tabela nutricional, identificar ingredientes sensiveis e conversar com um
@@ -262,6 +262,26 @@ mesmo produto escaneado e digitado nao vire duas linhas de historico.
 A conferencia vive em `shared/barcode.js` e e usada pelo frontend **e** pelo
 backend. A do frontend e conveniencia; a do backend e a que vale.
 
+### O codigo guardado e sempre a forma canonica
+
+Um UPC-A de 12 digitos vira EAN-13 com zero a esquerda **no servidor**, antes de
+chegar ao banco. Vale para todo caminho: digitado, escaneado ou requisicao
+direta a API.
+
+Sem isso, o mesmo produto lido pela camera e digitado a mao viraria duas linhas
+de historico, e favoritar por um caminho nao apareceria como favoritado pelo
+outro - a unicidade e `(user_id, product_code)`. Era exatamente o que acontecia
+ate a v0.7.3.
+
+Codigo que nao e EAN/UPC - ITF-14, alfanumerico da Open Food Facts - passa
+intacto. Canonicalizar esses seria inventar um codigo que nao existe.
+
+Quem ja usava o app antes da v0.7.4 nao precisa fazer nada: a migration `003`
+canonicaliza as linhas antigas na proxima subida. Quando as duas formas do mesmo
+produto existirem na mesma conta, a linha canonica sobrevive; o historico fica
+com a data de visualizacao mais recente das duas, e o favorito com a data de
+criacao mais antiga.
+
 O caminho da camera nao reconfere o digito de EAN, e isso e intencional: a
 `@zxing` ja confere o checksum da simbologia ao decodificar, e o scanner
 tambem le ITF e CODE_128, que nao tem digito verificador de EAN.
@@ -354,6 +374,11 @@ deploy, nao barrar um commit.
 
 ## Seguranca
 
+- Nome de usuario e unico, alem do e-mail. Duas pessoas com o mesmo nome nao
+  conseguem ter conta: o login aceita e-mail **ou** nome, e nomes repetidos
+  fariam a entrada por nome escolher uma conta qualquer entre as homonimas.
+- A recusa de cadastro nao diz se foi o e-mail ou o nome que ja existe, para
+  nao permitir descobrir quem tem conta testando uma lista de e-mails.
 - Sessao em cookie HttpOnly.
 - Token de sessao salvo no banco apenas como hash SHA-256.
 - Senhas com `crypto.scrypt`, salt unico e comparacao segura.

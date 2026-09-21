@@ -455,7 +455,7 @@ test("R6 os tres tetos por rota seguem nos valores declarados", async () => {
 
 test("R7 o teto por IP esta no valor medido, e ele cobre as suites com folga", () => {
   // Numeros medidos na v0.7.2, nao estimados:
-  const GASTO_DA_SUITE_DE_INTEGRACAO = 382;
+  const GASTO_DA_SUITE_DE_INTEGRACAO = 403;
   const GASTO_DO_GATE_E2E = 9;
   const FOLGA_MINIMA = 4;
 

@@ -1,6 +1,456 @@
-# Relatorio de Auditoria - NutriScan v0.7.3
+# Relatorio de Auditoria - NutriScan v0.7.4
 
 Data: 2026-09-20
+
+## Escopo
+
+Correcao do defeito N1 e documentacao da observacao N2, da auditoria externa da
+v0.7.3.
+
+Preservado sem alteracao: a matematica do digito verificador em
+`shared/barcode.js`, a isencao para codigos nao-EAN, `shared/allergenEngine.js`,
+`shared/allergyVerdict.js`, todo o `backend/src/ai/`, scrypt, sessoes,
+`backend/src/middleware/rateLimit.js` e as restricoes de unicidade do banco.
+Nenhum teto de limitador alterado. Nenhum bypass.
+
+O comportamento de unicidade de nome (N2) **nao foi alterado**, conforme o
+prompt pediu: foi documentado e avaliado.
+
+## A camera continua NAO ATESTADA
+
+Esta versao **nao fecha** a lacuna de atestacao da camera em hardware real, e
+nao afirma ter fechado. Nenhum aparelho com camera participou de nenhuma
+execucao.
+
+## N1 - a normalizacao que o codigo documentava e nao aplicava
+
+### A1 - reproducao ANTES da correcao
+
+App real contra PostgreSQL 17.10 real:
+
+```text
+modulo shared diz canonico de 036000291452 -> 0036000291452
+
+grava via camera (EAN-13)    code=0036000291452  -> 201
+grava via digitado (UPC-A)   code=036000291452   -> 201
+
+HISTORICO -> 2 linha(s):
+    036000291452  | Duracell AA
+    0036000291452 | Duracell AA
+
+favoritos: ["0036000291452"]
+UPC-A digitado aparece como favoritado? NAO
+
+N1 PRESENTE: o mesmo produto virou 2 linhas de historico.
+O backend gravou o codigo como veio, sem canonicalizar.
+```
+
+Resultado identico ao que o auditor mediu.
+
+### A2 - DEPOIS da correcao
+
+```text
+grava via camera (EAN-13)    code=0036000291452  -> 201
+grava via digitado (UPC-A)   code=036000291452   -> 201
+
+HISTORICO -> 1 linha(s):
+    0036000291452 | Duracell AA
+
+N1 CORRIGIDO: uma linha so, na forma canonica EAN-13.
+```
+
+### Causa raiz
+
+`productCodeSchema` importava `exigeDigitoVerificador` e
+`digitoVerificadorConfere`, e nunca `validarCodigoDeBarras` - que e a funcao que
+devolve a forma canonica. O schema CONFERIA o digito e gravava o codigo como
+veio na requisicao.
+
+O frontend normalizava, mas apenas no ramo `origem === "manual"` de
+`productLookup.js`. Um UPC-A lido pela camera, ou qualquer requisicao direta a
+API, gravava a forma de 12 digitos.
+
+**E a mesma classe do defeito E1 da v0.7.1**: um comentario afirmando uma
+propriedade que o codigo nao garantia. Na v0.7.1 a frase era falsa; aqui a frase
+estava certa e o codigo e que nao a cumpria. A segunda variante e mais dificil
+de ver, porque a leitura do comentario nao levanta suspeita.
+
+## Onde a canonicalizacao ficou, e por que nesse ponto
+
+No `.transform()` do `productCodeSchema`, em `backend/src/utils/validation.js`.
+
+```js
+function canonicalizarCodigo(valor) {
+  if (!exigeDigitoVerificador(valor)) return valor;
+  const resultado = validarCodigoDeBarras(valor);
+  return resultado.valido ? resultado.codigo : valor;
+}
+```
+
+O ponto e esse por tres motivos:
+
+```text
+passagem unica   todo caminho de entrada - manual, camera, requisicao direta -
+                 atravessa `productRefSchema` antes de tocar o banco
+ja validava      a conferencia do digito ja morava ali; canonicalizar em outro
+                 lugar criaria dois pontos de verdade sobre o mesmo campo
+ordem correta    o `.refine` roda ANTES do `.transform`, entao um digito errado
+                 e recusado sem nunca ser canonicalizado - canonicalizar antes
+                 transformaria "12 digitos errados" em "13 digitos errados"
+```
+
+A forma canonica vem de `validarCodigoDeBarras`, em `shared/barcode.js`. Um
+teste procura por `` `0${ ``, `"0" +` e `padStart(13` no arquivo do backend, para
+que escrever "prefixa um zero" a mao fique vermelho.
+
+### O frontend continua normalizando, e por que nao foi removido
+
+O prompt deixou a decisao em aberto. A normalizacao do cliente foi MANTIDA, como
+conveniencia de exibicao: a tela mostra "Vou buscar 0036000291452" antes do
+envio, e o codigo canonico e o que vai para a consulta a Open Food Facts - que
+nao passa pelo nosso backend e portanto nao teria outra chance de normalizar.
+
+Ela deixou de ser a que decide o que vai ao banco. A hierarquia esta escrita nos
+dois lugares: a do cliente e conveniencia, a do servidor e a que vale.
+
+## A3 - decisao sobre dados existentes: 4.2(a), migration
+
+### Medicao antes de decidir
+
+```text
+PRODUCAO (Neon)
+product_history      total 0 | de 12 digitos 0 | nao canonicos 0 | com colisao 0
+product_favorites    total 0 | de 12 digitos 0 | nao canonicos 0 | com colisao 0
+```
+
+Producao nao tem nada a migrar hoje. Ainda assim a escolha foi (a).
+
+O motivo: o banco do proprio auditor TEM as duplicatas - ele as produziu -, e
+qualquer instalacao que usou da v0.7.0 a v0.7.3 pode ter. Sem migrar, o usuario
+veria o mesmo produto duas vezes no historico para sempre, sem nenhuma pista do
+porque. "Producao esta vazia hoje" e argumento sobre esta instalacao, nao sobre
+o defeito.
+
+### A regra de sobrevivencia
+
+Escrita na propria migration, como o prompt exige:
+
+```text
+A LINHA CANONICA SOBREVIVE.
+A nao canonica e removida, depois de doar o que tem de mais recente.
+```
+
+O motivo: a canonica e a que vai continuar recebendo escrita daqui em diante.
+Manter a outra significaria apagar justamente a linha que o app vai usar.
+
+```text
+product_history    `viewed_at` mais recente das duas; nome, marca e imagem vem
+                   da linha mais recente. E a MESMA regra do
+                   `ON CONFLICT DO UPDATE` em escrita normal: vence a ultima
+                   escrita, medida pelo relogio do servidor.
+
+product_favorites  `created_at` mais ANTIGO das duas. Favoritar e ato
+                   intencional; a data que interessa e desde quando o produto e
+                   favorito, nao a da duplicata acidental.
+```
+
+### O que a migration NAO toca
+
+```text
+codigo de 12 digitos com digito verificador invalido   nao e UPC-A
+codigo de 13, 8 ou 14 digitos                          fora do caso
+codigo alfanumerico                                    fora do caso
+```
+
+Um numero de 12 digitos com digito errado pode ter entrado antes de a v0.7.3
+conferir o digito. Inventar canonico para ele seria pior que deixa-lo como esta.
+
+### Idempotencia
+
+Pelo mesmo mecanismo das outras: registro em `schema_migrations`. Aplicada duas
+vezes pelo runner:
+
+```text
+=== primeira aplicacao ===
+003 historico: 0 renomeada(s), 0 fundida(s) | favoritos: 0 renomeada(s), 0 fundida(s)
+applied 003_canonicaliza_upca.js
+
+=== segunda aplicacao ===
+skip 003_canonicaliza_upca.js
+```
+
+E o teste `N1g` chama a funcao diretamente duas vezes, com dados, e exige
+resultado identico - porque pular por registro nao prova que a logica e
+idempotente.
+
+### Uma mudanca de infraestrutura, declarada
+
+`backend/scripts/migrate.js` passou a aplicar migrations `.js` alem de `.sql`.
+
+Era necessario: decidir se um codigo de 12 digitos e um UPC-A de verdade depende
+do digito verificador, e escrever esse calculo em SQL seria a segunda
+implementacao que a secao 4.3 do prompt proibe. Uma migration em JavaScript
+importa a MESMA funcao compartilhada.
+
+Os dois tipos sao ordenados juntos pelo nome e registrados do mesmo jeito. Fica
+declarado aqui por ser mudanca em infraestrutura de banco, ainda que pequena.
+
+## N2 - unicidade de nome de usuario
+
+### O comportamento, documentado
+
+```text
+POST /api/auth/register com nome ja existente e e-mail novo
+  -> 409 ACCOUNT_EXISTS
+  -> "Já existe uma conta com esse e-mail ou usuário."
+```
+
+A comparacao usa `name_key`, que e o nome normalizado. "Joao Silva" e
+"joao silva" sao o mesmo nome. **Consequencia pratica: duas pessoas com o mesmo
+nome nao conseguem ter conta.**
+
+Agora documentado em `docs/API.md`, no README e em comentario no proprio
+`backend/src/services/authService.js`. **O comportamento nao foi alterado**,
+conforme o prompt pediu.
+
+### A avaliacao pedida: a regra NAO e arbitraria
+
+Fui ler o codigo antes de opinar, e a leitura mudou a resposta.
+
+`loginUser` aceita e-mail **ou** nome como identificador:
+
+```js
+const user = await findUserByEmailOrNameKey(identifier, data.identifierKey);
+// SELECT * FROM users WHERE email = $1 OR name_key = $2 LIMIT 1
+```
+
+Com nomes repetidos, entrar por nome escolheria **uma conta qualquer** entre as
+homonimas - a que o `LIMIT 1` pegasse. Isso nao e inconveniencia: e defeito de
+autenticacao. A senha de uma pessoa poderia abrir a conta de outra, se as duas
+tivessem o mesmo nome e a mesma senha.
+
+Ou seja: **a unicidade de nome sustenta o login por nome.** As duas andam
+juntas, e retirar uma exige retirar a outra.
+
+### A alternativa, descrita e NAO implementada
+
+Se o projeto quiser permitir nomes repetidos:
+
+```text
+1. login passa a aceitar SOMENTE e-mail
+2. `name` vira apelido de exibicao, sem unicidade
+3. `name_key` deixa de ter indice unico
+4. migration para remover o indice
+5. a mensagem de 409 passa a falar so de e-mail
+```
+
+E mudanca de contrato de autenticacao, fora do escopo desta versao. Fica para
+decisao.
+
+Observacao de produto, sem peso tecnico: um app de consumo com publico de mais
+idade tende a ter gente entrando por nome, porque e mais facil de lembrar que o
+e-mail. Retirar o login por nome tem custo de usabilidade para esse publico, e
+nao so de codigo.
+
+### A mensagem nao diz qual campo colidiu
+
+O efeito e real: quem recebe `409` sabe que um dos dois ja existe, mas nao qual.
+Dizer "esse e-mail ja tem conta" permitiria testar uma lista de e-mails e
+descobrir quem usa o app.
+
+**Nao ha registro de que isso tenha sido a intencao original** - nem em
+comentario, nem em CHANGELOG, nem em mensagem de commit. O comentario
+acrescentado documenta o motivo de MANTER, e diz explicitamente que nao
+comprova intencao. Inventar uma justificativa retroativa seria pior que a
+ausencia dela.
+
+Limite honesto dessa protecao: o `409` ainda revela que **um dos dois** existe.
+Quem testar um e-mail com um nome aleatorio improvavel sabe que a colisao foi do
+e-mail. A protecao reduz o custo do ataque, nao o elimina. Nao foi alterada
+nesta versao.
+
+## A4 - N1a a N1g, R1 a R5
+
+```text
+N1a  UPC-A e EAN-13 viram UMA linha canonica          verde (PostgreSQL real)
+N1b  favoritar por um formato vale pelo outro         verde (PostgreSQL real)
+N1c  requisicao DIRETA grava forma canonica           verde (conferido no banco)
+N1d  codigo nao-EAN passa intacto                     verde (schema + banco)
+N1e  EAN-13 e EAN-8 inalterados                       verde (schema + banco)
+N1f  deduplicacao continua funcionando                verde (PostgreSQL real)
+N1g  migration: canonicaliza, funde e e idempotente   verde, 3 testes
+R1   as 117 mutacoes de um digito continuam rejeitadas  verde
+R2   backend recusa digito errado sem o frontend      verde
+R3   regressao C1                                     verde, 12 testes
+R4   limitadores da v0.7.2 nos valores declarados     verde
+R5   isolamento entre contas (I1, I2, I3)             verde
+```
+
+`N1c` confere **no banco**, com `SELECT`, e nao pela resposta da API: a resposta
+poderia ecoar o que foi enviado sem que o valor gravado fosse esse.
+
+## A5 - validacao por mutacao
+
+Nove mutantes novos, vinte e sete herdados.
+
+```text
+S1   N1a  remove o .transform() do productCodeSchema (o defeito N1)   MORTA
+S1b  N1a  canonicaliza so no frontend, atravessando o banco           MORTA
+S1c  N1c  sem transform, requisicao direta grava 12 digitos           MORTA
+S2   N1e  prefixa zero tambem no EAN-8, nao so no UPC-A               MORTA
+S2b  N1d  remove a isencao: todo codigo passa pela canonicalizacao    MORTA
+S3   N1g  a migration deixa sobreviver a linha NAO canonica           MORTA
+S4   N1g  a migration para de conferir o digito antes de canonicalizar MORTA
+S5   R2   o digito verificador do backend passa a aceitar tudo        MORTA
+S6   N1   o schema monta a forma canonica por conta propria           MORTA
+```
+
+Os quatro mutantes sugeridos pelo prompt estao cobertos: remover o
+`.transform()` (S1, S1b, S1c), canonicalizar so no frontend (S1b - ele mede a
+diferenca ATRAVESSANDO o banco), canonicalizar tambem nao-EAN (S2b) e
+`digitoVerificadorConfere` sempre true (S5, alem do P1 herdado).
+
+### Tres mutantes meus estavam errados, e o que isso revelou
+
+**S2, na primeira versao, mutava codigo inalcancavel.** Ele trocava o ramo
+`: valor` de `canonicalizarCodigo` - o fallback que so roda se o `.refine`
+deixar passar um codigo invalido, o que nao acontece. Resultado: o mutante foi
+pego apenas pela leitura de codigo-fonte, nao pelo teste de comportamento.
+
+Isso e informacao util sobre o codigo: aquele ramo e defensivo e inalcancavel
+hoje. Fica declarado. O mutante foi substituido por um alcancavel - prefixar
+zero tambem no EAN-8 -, que morre pelo comportamento.
+
+**S3 ficou INAPLICAVEL por indentacao errada na ancora** (seis espacos contra
+quatro no arquivo).
+
+**P5b ficou INAPLICAVEL porque esta versao mudou o import que ele ancora**: a
+lista ganhou `validarCodigoDeBarras`. A ancora nomeia a lista inteira, entao
+precisou ser atualizada.
+
+Nos tres casos o script disse **INAPLICAVEL** ou apontou o teste errado, em vez
+de declarar sucesso. E o modo de falhar certo: ele reporta que nao conseguiu
+testar, em vez de reportar que testou.
+
+### Um defeito estrutural no proprio arquivo de teste, encontrado e corrigido
+
+Ao conferir a contagem de testes com e sem a flag de banco, os numeros nao
+bateram:
+
+```text
+COM  RUN_DB_INTEGRATION_TESTS=true   32 testes
+SEM  a flag                          23 testes
+```
+
+Testes pulados continuam sendo CONTADOS pelo runner, entao uma diferenca de
+total significa que nove testes nao estavam sequer sendo registrados.
+
+A causa: ao inserir os testes `N1a` a `N1g` no arquivo, um `});` foi consumido,
+e os nove ficaram **aninhados dentro do teste `M11`** em vez de no topo do
+arquivo. Com a flag ligada, `M11` executava e os nove se registravam como
+subtestes - por isso passavam e por isso a mutacao os matava. Com a flag
+desligada, `M11` era pulado, seu callback nunca rodava, e os nove sumiam sem
+deixar rastro.
+
+O efeito pratico era grave para auditoria: **um pai pulado escondia nove testes
+em silencio**, e a unica pista era a diferenca de total entre duas execucoes.
+
+Corrigido: os nove voltaram ao topo do arquivo. Agora sao 32 testes registrados
+nos dois casos - 32 verdes com banco, 32 pulados sem ele. A validacao por
+mutacao foi REEXECUTADA depois da correcao, porque o arquivo mudou de estrutura.
+
+## A12 - o gate E2E real
+
+**PASS, exit code 0.**
+
+```text
+mode                    strict
+manualCodeLookup        PASSED
+anthropicReal           EXECUTED_GENERIC_AND_PRODUCT
+anthropicCalls          2
+ok                      true
+```
+
+Saida literal, tabela de subgates e `E2E_LAST_RUN.json` integral estao no
+E2E_REPORT desta versao. Nenhum subgate em SKIP ou NOT_EXECUTED.
+
+A migration `003` rodou em producao e reportou `0 renomeada(s), 0 fundida(s)` -
+as tabelas estavam vazias. Os zeros sao o resultado correto, e estao registrados
+porque silencio nao e prova de que ela rodou.
+
+Residuo no banco apos a execucao: **0** nos seis padroes conferidos, e nenhuma
+linha orfa.
+
+## A13 - os 18 requisitos do modo strict
+
+```text
+modo strict, com a flag da IA:  18 requisitos
+os 17 anteriores a v0.7.3:      todos presentes
+manualCodeLookup:               presente, requisito BASE
+```
+
+O teste poe cada um em `NOT_EXECUTED` e exige que `findMissingRequirements`
+devolva exatamente aquele. Nenhum requisito foi acrescentado nem perdido nesta
+versao.
+
+## A7 a A11, A14 a A16
+
+```text
+A7   npm run build                     OK
+A8   npm --prefix backend test         238 testes, 237 pass, 0 fail, 1 SKIP
+A9   suite contra PostgreSQL real      32/32 na suite de colecoes, 0 fail
+A10  npm audit --audit-level=moderate  0 vulnerabilidades nos dois pacotes
+A11  node scripts/verify-release.js    exit code 0
+A14  gasto do gate por balde           colecoes 12, auth 3, assistente 2
+A15  residuo NutriVa                   0 em codigo, interface e manifestos
+A16  versao 0.7.4 nos 7 pontos         consistente
+```
+
+O unico SKIP e a chamada paga da Anthropic num `npm test` comum, que se declara
+`NAO EXECUTADO`. **Nao conta como PASS**, e a propriedade que ele cobriria foi
+provada no gate.
+
+## O que esta versao NAO prova
+
+```text
+camera em hardware real           NAO EXECUTADO - exige aparelho com camera
+decodificacao optica              NAO EXECUTADO
+Open Food Facts real              NAO EXECUTADO - a busca do gate e injetada
+migration 003 com dados reais     NAO EXECUTADO EM PRODUCAO - tabelas vazias
+suite de colecoes no Neon         NAO EXECUTADO - por decisao de risco
+carga simultanea real             NAO EXECUTADO
+```
+
+**A atestacao da camera em hardware continua ABERTA e esta versao nao a fecha.**
+
+Sobre a migration: a logica foi exercitada contra PostgreSQL local, com as duas
+formas do mesmo produto presentes na mesma conta - o caso que produz colisao de
+unicidade. Em producao ela rodou contra tabelas vazias. Ou seja: a regra de
+fusao esta provada por teste, **nao por execucao sobre dado real**. Se o banco
+do auditor tiver as duplicatas, essa sera a primeira execucao com dado de
+verdade.
+
+### Um ramo inalcancavel, declarado
+
+`canonicalizarCodigo` termina em `resultado.valido ? resultado.codigo : valor`.
+O ramo `: valor` **nunca executa hoje**: o `.refine` recusa antes qualquer
+codigo de tamanho EAN/UPC com digito invalido. Ele existe como defesa contra uma
+reordenacao futura das regras do schema, e esta comentado como tal.
+
+A consequencia para a auditoria: um mutante que ataque esse ramo so e detectavel
+por leitura de codigo-fonte, nao por comportamento. Foi exatamente o que
+aconteceu com a primeira versao do mutante `S2`, e por isso ele foi
+substituido. Fica declarado para que nao pareca cobertura que nao existe.
+
+### Uma observacao herdada, ainda aberta
+
+`cleanBarcode`, usado no caminho da camera, remove caracteres nao numericos.
+Um CODE_128 alfanumerico e portanto mutilado antes da busca. E anterior a esta
+versao, fora do escopo dela, e continua registrado para decisao.
+
+## Historico de auditorias anteriores
+
+## Auditoria da v0.7.3 - 2026-09-20
 
 ## Escopo
 
@@ -379,7 +829,6 @@ da camera, remove caracteres nao numericos. Um CODE_128 alfanumerico e portanto
 mutilado antes da busca. Isso e anterior a esta versao e fora do escopo dela;
 fica registrado para decisao.
 
-## Historico de auditorias anteriores
 
 ## Auditoria da v0.7.2 - 2026-09-20
 

@@ -1,4 +1,4 @@
-# API NutriScan v0.7.3
+# API NutriScan v0.7.4
 
 Base local: `http://localhost:3000/api`
 
@@ -19,7 +19,7 @@ Exemplo:
   "database": "not_configured",
   "ai": "not_configured",
   "aiProvider": "anthropic",
-  "version": "0.7.3"
+  "version": "0.7.4"
 }
 ```
 
@@ -152,9 +152,40 @@ Rate limit: 20 mensagens por 10 minutos por IP.
 
 Cria conta, salva alergias iniciais e inicia sessao.
 
+#### Unicidade de e-mail E de nome de usuario (documentado na v0.7.4)
+
+```text
+409 ACCOUNT_EXISTS   "Já existe uma conta com esse e-mail ou usuário."
+```
+
+O `409` acontece quando o e-mail **ou** o nome ja existe. Comparacao de nome e
+normalizada, entao "Joao Silva" e "joao silva" sao o mesmo nome.
+
+**Consequencia pratica: duas pessoas com o mesmo nome nao conseguem ter conta.**
+Isso nao estava documentado ate a v0.7.4; o auditor externo descobriu por
+acidente.
+
+A regra sustenta o login. `POST /api/auth/login` aceita e-mail **ou** nome como
+identificador, e a consulta termina em `LIMIT 1`. Com nomes repetidos, entrar
+por nome escolheria uma conta qualquer entre as homonimas - defeito de
+autenticacao, nao de conveniencia. Retirar a unicidade de nome exige antes
+retirar o login por nome.
+
+A mensagem nao diz QUAL campo colidiu. O efeito e limitar enumeracao de contas:
+quem recebe `409` sabe que um dos dois ja existe, mas nao qual. Nao ha registro
+de que isso tenha sido a intencao original; o comportamento foi mantido e o
+motivo esta escrito em `backend/src/services/authService.js`.
+
 ### `POST /api/auth/login`
 
-Entra usando e-mail ou usuario.
+Entra usando e-mail **ou** nome de usuario, no campo `identifier`.
+
+```text
+401 INVALID_CREDENTIALS   "Usuário, e-mail ou senha inválidos."
+```
+
+A mensagem tambem nao distingue "usuario nao existe" de "senha errada", pelo
+mesmo motivo de enumeracao.
 
 ### `GET /api/auth/me`
 
@@ -247,10 +278,36 @@ verificador de EAN. Esses continuam aceitos:
 12345678901234   aceito    14 digitos, ITF-14, fora dos tamanhos de EAN
 ```
 
-Um UPC-A de 12 digitos digitado no app chega aqui ja normalizado para EAN-13
-com zero a esquerda. A normalizacao acontece no cliente, antes da busca, e
-existe pela deduplicacao: a unicidade e `(user_id, product_code)`, entao sem ela
-o mesmo produto escaneado e digitado viraria duas linhas.
+#### Canonicalizacao de `productCode` (v0.7.4)
+
+**O que o banco guarda e o que este endpoint canonicalizou.** Um UPC-A de 12
+digitos vira EAN-13 com zero a esquerda, aqui, antes de chegar ao PostgreSQL:
+
+```text
+enviado          gravado          motivo
+036000291452  -> 0036000291452    UPC-A canonicalizado para EAN-13
+0036000291452 -> 0036000291452    ja canonico, inalterado
+7891000100103 -> 7891000100103    EAN-13, inalterado
+96385074      -> 96385074         EAN-8, inalterado
+12345678901234-> 12345678901234   nao e EAN/UPC, inalterado
+20003404_0001 -> 20003404_0001    alfanumerico da base, inalterado
+```
+
+A canonicalizacao vale para TODO caminho de entrada: app, camera e requisicao
+direta a API. **A normalizacao do cliente e conveniencia de exibicao; esta e a
+que vale.**
+
+Ela existe pela deduplicacao. A unicidade e `(user_id, product_code)`, entao sem
+canonicalizar no servidor o mesmo produto escaneado como EAN-13 e digitado como
+UPC-A vira duas linhas de historico, e favoritar por um caminho nao aparece como
+favoritado pelo outro.
+
+Ate a v0.7.3 esse defeito existia: o endpoint conferia o digito verificador e
+gravava o codigo como veio. Corrigido na v0.7.4 (achado N1). A migration `003`
+canonicaliza as linhas gravadas antes.
+
+Codigo que nao e EAN/UPC passa INTACTO. Canonicalizar um ITF-14 ou um codigo
+alfanumerico seria inventar um codigo que nao existe.
 
 ### `GET /api/history`
 

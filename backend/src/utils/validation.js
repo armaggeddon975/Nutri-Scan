@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   digitoVerificadorConfere,
   exigeDigitoVerificador,
+  validarCodigoDeBarras,
 } from "../../../shared/barcode.js";
 import { isValidAllergyId } from "../config/allergies.js";
 import { normalizeEmail, normalizeNameKey } from "./normalize.js";
@@ -96,6 +97,43 @@ export function validateAllergiesUpdate(input) {
 // `exigeDigitoVerificador` e `digitoVerificadorConfere` vem de
 // `shared/barcode.js` - a MESMA implementacao que o frontend usa. Duas copias
 // divergem, e a que sobrevive costuma ser a mais permissiva.
+// CANONICALIZACAO (v0.7.4 - defeito N1)
+//
+// Ate a v0.7.3 este schema CONFERIA o digito verificador e gravava o codigo
+// exatamente como veio na requisicao. `shared/barcode.js` documentava, por
+// escrito, que a normalizacao existia para impedir que o mesmo produto virasse
+// duas linhas - e o backend nao a aplicava. O auditor externo subiu o app e
+// mediu:
+//
+//   grava via camera (EAN-13)    code=0036000291452  -> 201
+//   grava via digitado (UPC-A)   code=036000291452   -> 201
+//   HISTORICO -> 2 linhas para o mesmo produto
+//   favoritar por um formato nao aparecia favoritado pelo outro
+//
+// O frontend normalizava, mas so no caminho manual. Um UPC-A vindo da camera,
+// ou uma requisicao direta a API, gravava a forma de 12 digitos.
+//
+// Agora a forma canonica e decidida AQUI, onde todo caminho de entrada passa -
+// manual, camera e requisicao direta. O que o banco guarda e o que este schema
+// canonicalizou.
+//
+// A canonicalizacao vem de `validarCodigoDeBarras`, em `shared/barcode.js`. Nao
+// ha segunda implementacao: escrever "prefixa um zero" aqui seria exatamente o
+// tipo de copia que diverge depois.
+function canonicalizarCodigo(valor) {
+  // Codigo que nao e EAN/UPC passa INTACTO. A base da Open Food Facts tem
+  // cadastros alfanumericos, e a camera le ITF-14 e CODE_128. Canonicalizar
+  // esses seria inventar um codigo que nao existe.
+  if (!exigeDigitoVerificador(valor)) return valor;
+
+  const resultado = validarCodigoDeBarras(valor);
+
+  // O `.refine` acima ja recusou digito verificador invalido, entao aqui o
+  // resultado e sempre valido. O `?? valor` existe para que uma mudanca futura
+  // na ordem das regras degrade para "nao altera" em vez de gravar `undefined`.
+  return resultado.valido ? resultado.codigo : valor;
+}
+
 const productCodeSchema = z
   .string()
   .trim()
@@ -105,7 +143,8 @@ const productCodeSchema = z
   .refine(
     (valor) => !exigeDigitoVerificador(valor) || digitoVerificadorConfere(valor),
     "Código do produto tem dígito verificador inválido.",
-  );
+  )
+  .transform(canonicalizarCodigo);
 
 const productNameSchema = z
   .string()

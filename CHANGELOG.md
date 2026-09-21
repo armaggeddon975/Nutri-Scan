@@ -1,5 +1,177 @@
 # Changelog
 
+## NutriScan v0.7.4 - 2026-09-20
+
+Correcao do defeito N1 e documentacao da observacao N2, da auditoria externa da
+v0.7.3.
+
+### N1 - a normalizacao que o codigo documentava e nao aplicava
+
+`shared/barcode.js` explicava, por escrito, por que a normalizacao de UPC-A
+existia:
+
+```text
+"Sem normalizar, o mesmo produto lido pela camera como EAN-13 e digitado pela
+ pessoa como UPC-A viraria DUAS linhas de historico, e favoritar por um caminho
+ nao apareceria como favoritado pelo outro."
+```
+
+**Esse defeito acontecia.** O auditor externo subiu o app e mediu:
+
+```text
+grava via camera (EAN-13)    code=0036000291452  -> 201
+grava via digitado (UPC-A)   code=036000291452   -> 201
+
+HISTORICO -> 2 linhas:
+    036000291452  | Duracell AA
+    0036000291452 | Duracell AA
+
+favoritos: ["0036000291452"]
+UPC-A digitado aparece como favoritado? NAO
+```
+
+A medicao foi reproduzida nesta versao antes de qualquer correcao, com o mesmo
+resultado.
+
+#### Causa
+
+`productCodeSchema` usava `exigeDigitoVerificador` e `digitoVerificadorConfere`.
+Ele CONFERIA o digito e nunca chamava `validarCodigoDeBarras`, que e a funcao
+que devolve a forma canonica. O codigo chegava ao PostgreSQL exatamente como
+veio na requisicao.
+
+O frontend normalizava, mas so no caminho manual - condicionado a
+`origem === "manual"`. Um UPC-A lido pela CAMERA, ou uma requisicao direta a
+API, gravava a forma de 12 digitos.
+
+E a mesma classe de erro do defeito E1 da v0.7.1: um comentario afirmando uma
+propriedade que o codigo nao garantia. Da primeira vez a frase era falsa; desta
+vez a frase estava certa e o codigo e que nao a cumpria.
+
+#### Correcao
+
+A canonicalizacao passou a acontecer no `.transform()` do `productCodeSchema` -
+onde a validacao ja acontecia, e por onde TODO caminho de entrada passa: manual,
+camera e requisicao direta.
+
+```text
+036000291452   -> 0036000291452   UPC-A canonicalizado
+0036000291452  -> 0036000291452   ja canonico
+7891000100103  -> 7891000100103   EAN-13, intacto
+96385074       -> 96385074        EAN-8, intacto
+12345678901234 -> 12345678901234  nao e EAN/UPC, intacto
+20003404_0001  -> 20003404_0001   alfanumerico da base, intacto
+```
+
+A forma canonica vem de `validarCodigoDeBarras`, em `shared/barcode.js`. Nao ha
+segunda implementacao: escrever "prefixa um zero" no backend seria a copia que
+diverge depois.
+
+**O que o banco guarda e o que o backend canonicalizou.** A normalizacao do
+cliente continua existindo, por conveniencia de exibicao, mas nao e mais a que
+decide.
+
+#### Por que a isencao para codigo nao-EAN permanece
+
+A base da Open Food Facts tem cadastros alfanumericos, e a camera le ITF-14 e
+CODE_128. Canonicalizar esses seria inventar um codigo que nao existe, e exigir
+digito verificador deles seria perda de funcionalidade vendida como seguranca.
+A isencao foi confirmada correta pelo auditor e nao foi tocada.
+
+#### Por que escapou aos testes
+
+Os testes da v0.7.3 exercitavam `validarCodigoDeBarras` isoladamente e a
+gravacao com EAN-13. **Nenhum atravessava os dois formatos ate o banco.** Os
+testes novos gravam de verdade e leem de volta - inclusive por requisicao direta,
+sem passar pelo frontend.
+
+### Dados ja existentes: migration 003
+
+Escolhida a opcao (a) do prompt: migration que canonicaliza as linhas gravadas
+antes.
+
+O motivo de nao escolher (b): producao esta hoje com zero linhas nas duas
+tabelas, mas o banco do proprio auditor tem as duplicatas, e qualquer instalacao
+que usou da v0.7.0 a v0.7.3 pode ter. Sem migrar, o usuario veria o mesmo produto
+duas vezes no historico, para sempre, sem saber por que.
+
+#### A regra de sobrevivencia, escrita na propria migration
+
+Quando o usuario ja tem as DUAS formas do mesmo produto - foi exatamente o que o
+auditor produziu -, canonicalizar violaria `(user_id, product_code)`.
+
+```text
+A LINHA CANONICA SOBREVIVE.
+A nao canonica e removida, depois de doar o que tem de mais recente.
+```
+
+O motivo: a canonica e a que vai continuar recebendo escrita daqui em diante.
+Manter a outra significaria apagar justamente a que o app vai usar.
+
+```text
+product_history    fica com o `viewed_at` mais recente das duas, e com nome,
+                   marca e imagem da linha mais recente. E a mesma regra que o
+                   `ON CONFLICT DO UPDATE` ja usa em escrita normal.
+
+product_favorites  fica com o `created_at` mais ANTIGO. Favoritar e ato
+                   intencional, e a data que interessa e desde quando o produto
+                   e favorito - nao a da duplicata acidental.
+```
+
+Nenhuma linha e apagada fora dessa regra. Codigo de 12 digitos com digito
+verificador invalido nao e UPC-A e nao e tocado: ele pode ter entrado antes de a
+v0.7.3 conferir o digito, e inventar canonico para ele seria pior.
+
+A migration e idempotente pelo mesmo mecanismo das outras - registro em
+`schema_migrations` - e o teste aplica duas vezes para confirmar.
+
+#### O runner passou a aceitar migration em JavaScript
+
+Decidir se um codigo de 12 digitos e um UPC-A de verdade depende do digito
+verificador. Escrever esse calculo em SQL seria a segunda implementacao que o
+proprio prompt proibe. `backend/scripts/migrate.js` passou a aplicar `.js` alem
+de `.sql`, na mesma ordem de nome e com o mesmo registro.
+
+### Nove testes estavam escondidos dentro de outro
+
+Ao conferir a contagem com e sem a flag de banco, os numeros nao bateram: 32
+testes com ela, 23 sem. Teste pulado continua sendo contado, entao a diferenca
+significava que nove nao estavam sequer sendo registrados.
+
+Ao inserir os testes `N1a` a `N1g` no arquivo, um `});` foi consumido e os nove
+ficaram **aninhados dentro do teste `M11`**. Com banco, `M11` executava e os
+nove rodavam como subtestes - passavam, e a mutacao os matava. Sem banco, `M11`
+era pulado e os nove sumiam sem deixar rastro.
+
+Um pai pulado escondia nove testes em silencio, e a unica pista era a diferenca
+de total entre duas execucoes. Corrigido; a validacao por mutacao foi
+reexecutada depois.
+
+### N2 - unicidade de nome de usuario, documentada
+
+Registrar com o mesmo nome e e-mail diferente devolve `409 ACCOUNT_EXISTS`. A
+regra era intencional e nao estava documentada; o auditor descobriu por
+acidente.
+
+**Consequencia pratica: duas pessoas chamadas "Joao Silva" nao conseguem ter
+conta.**
+
+Agora esta em `docs/API.md`, no README e em comentario no proprio
+`authService.js`. **O comportamento NAO foi alterado nesta versao**, conforme o
+prompt pediu.
+
+A avaliacao, para decisao: a unicidade de nome **nao e arbitraria** - ela
+sustenta o login. `loginUser` aceita e-mail ou nome como identificador, e a
+consulta termina em `LIMIT 1`. Com nomes repetidos, entrar por nome escolheria
+uma conta qualquer entre as homonimas, o que e defeito de autenticacao. Retirar
+a unicidade de nome exige antes retirar o login por nome; as duas andam juntas.
+
+Sobre a mensagem nao dizer qual campo colidiu: o efeito e limitar enumeracao de
+contas - quem recebe `409` sabe que um dos dois existe, mas nao qual. **Nao ha
+registro de que essa tenha sido a intencao original**, nem em comentario nem em
+CHANGELOG. O comentario acrescentado documenta o motivo de manter, e diz
+explicitamente que nao comprova intencao.
+
 ## NutriScan v0.7.3 - 2026-09-20
 
 Entrada manual de codigo de barras, com conferencia de digito verificador.

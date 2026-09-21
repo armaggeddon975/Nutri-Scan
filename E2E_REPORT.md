@@ -1,6 +1,297 @@
-# E2E Report - NutriScan v0.7.3
+# E2E Report - NutriScan v0.7.4
 
 Data: 2026-09-20
+
+## Resultado geral
+
+```text
+verify:e2e          PASS, exit code 0
+doctor:e2e          PASS
+e2e:strict          PASS, mode=strict, ok=true
+manualCodeLookup    PASSED
+PostgreSQL real     EXECUTADO - Neon de producao
+Claude real         EXECUTADO - 2 chamadas pagas
+migration 003       EXECUTADA e idempotente
+residuo no banco    0
+camera em hardware  NAO EXECUTADO
+```
+
+Nenhum resultado foi herdado. Os PASS da v0.7.3, da v0.7.2 e da v0.6.8 estao
+preservados na secao historica e nao valem para esta versao.
+
+## Saida literal do gate
+
+```text
+[OK] pre-requisito - Claude real exigido nesta execucao, contra o backend local
+[RUN] doctor:e2e
+[OK] Node.js - 24.19.0
+[OK] npm - 11.17.0
+[OK] Frontend dependencies - installed (3 modules resolved)
+[OK] Backend dependencies - installed (4 modules resolved)
+[OK] backend/.env - found
+[OK] Env loader - backend/src/config/env.js
+[OK] DATABASE_URL - configured
+[OK] PostgreSQL - accessible
+[OK] Migrations - 2/2 applied
+[OK] ANTHROPIC_API_KEY - configured
+[OK] ANTHROPIC_MODEL - claude-sonnet-5
+[OK] RUN_ANTHROPIC_INTEGRATION_TESTS - enabled
+[OK] Backend port - 3000
+[OK] Frontend origin - http://localhost:5173
+[WARN] Docker - unavailable (optional)
+[OK] Doctor strict-e2e - todos os requisitos obrigatorios atendidos
+[OK] doctor:e2e
+[RUN] e2e:strict
+[OK] migrations - aplicadas duas vezes (idempotente)
+[RUN] backend - iniciando API temporaria na porta 3000
+[OK] health - status=ok database=connected ai=configured
+[OK] deterministic engine - contains/traces conforme baseline
+[OK] privacy - payload sem segredos e com snapshot deterministico
+[OK] anthropic real #1 - pergunta generica validada
+[OK] fallback - AI_NOT_CONFIGURED -> source local
+[OK] session schema - token_hash presente e sem coluna de token bruto
+[OK] assistant authority - PostgreSQL vence guestAllergies e snapshot marca conflito
+[OK] anthropic real #2 - produto com conflito validado com sessao autenticada
+[OK] multi-device - alergias sincronizadas entre dispositivos A e B
+[OK] isolation - contas permanecem isoladas
+[OK] history sync - A gravou, B leu, conta isolada nao viu
+[OK] favorites sync - A gravou, B leu, remocao cruzada recusada com 404
+[OK] verdict freshness - item salvo sem veredito; perfil muda sem alterar o registro
+[OK] manual code lookup - digito verificador barra antes da rede; manual e camera dao o mesmo veredito
+[OK] auth - register, me, allergies, login, logout idempotente
+[OK] e2e:strict
+[PASS] verify:e2e - PostgreSQL real e Claude real comprovados
+
+=== EXIT CODE: 0 ===
+```
+
+`[OK] Migrations - 2/2 applied` conta apenas as `.sql`, que e o que o doctor
+inspeciona. A `003`, em JavaScript, e aplicada pelo runner e aparece na linha
+`migrations - aplicadas duas vezes (idempotente)`.
+
+## Tabela de subgates
+
+```text
+backendProcess          STARTED_BY_RUNNER
+database                EXECUTED
+migrations              EXECUTED_IDEMPOTENT
+auth                    PASSED
+sessionSchema           PASSED
+multiDevice             PASSED
+isolation               PASSED
+historySync             PASSED
+favoritesSync           PASSED
+verdictFreshness        PASSED
+manualCodeLookup        PASSED
+logout                  PASSED
+deterministicEngine     PASSED
+assistantGuest          PASSED
+assistantAuthenticated  PASSED
+assistantAuthority      PASSED
+fallback                PASSED
+privacy                 PASSED
+anthropic               configured
+anthropicReal           EXECUTED_GENERIC_AND_PRODUCT
+```
+
+**Nenhum subgate em SKIP ou NOT_EXECUTED.** Os 18 requisitos do modo strict
+foram satisfeitos; o gate nao reportaria PASS se algum tivesse ficado.
+
+## E2E_LAST_RUN.json - conteudo integral
+
+O arquivo esta no `.gitignore` e por isso NAO vai no ZIP, conforme a secao 11 do
+prompt. Conteudo integral:
+
+```json
+{
+  "version": "0.7.4",
+  "mode": "strict",
+  "startedAt": "2026-09-21T00:01:47.223Z",
+  "finishedAt": "2026-09-21T00:02:03.959Z",
+  "baseUrl": "http://127.0.0.1:3000/api",
+  "backendProcess": "STARTED_BY_RUNNER",
+  "database": "EXECUTED",
+  "migrations": "EXECUTED_IDEMPOTENT",
+  "auth": "PASSED",
+  "sessionSchema": "PASSED",
+  "multiDevice": "PASSED",
+  "isolation": "PASSED",
+  "historySync": "PASSED",
+  "favoritesSync": "PASSED",
+  "verdictFreshness": "PASSED",
+  "manualCodeLookup": "PASSED",
+  "logout": "PASSED",
+  "deterministicEngine": "PASSED",
+  "assistantGuest": "PASSED",
+  "assistantAuthenticated": "PASSED",
+  "assistantAuthority": "PASSED",
+  "fallback": "PASSED",
+  "privacy": "PASSED",
+  "anthropic": "configured",
+  "anthropicReal": "EXECUTED_GENERIC_AND_PRODUCT",
+  "anthropicCalls": 2,
+  "ok": true,
+  "rateLimitBudget": {
+    "margem": "no maximo 50% do teto",
+    "baldes": [
+      {
+        "balde": "assistente",
+        "usado": 2,
+        "teto": 20,
+        "margemMaxima": 10,
+        "folga": 18,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "auth",
+        "usado": 3,
+        "teto": 40,
+        "margemMaxima": 20,
+        "folga": 37,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "colecoes",
+        "usado": 12,
+        "teto": 300,
+        "margemMaxima": 150,
+        "folga": 288,
+        "dentroDaMargem": true
+      }
+    ],
+    "estouraram": []
+  }
+}
+```
+
+## A14 - contagem de requisicoes do gate por balde
+
+```text
+colecoes      12 de 300 por usuario (margem 150)  e de 3000 por IP
+auth           3 de 40  (margem 20)
+assistente     2 de 20  (margem 10)
+```
+
+Igual a v0.7.3: o subgate de consulta manual ja existia e esta versao nao
+acrescentou requisicao. Nenhum limitador foi encostado.
+
+O rotulo `"teto": 300` no balde de colecoes continua se referindo ao teto POR
+USUARIO; o orcamento nao mostra o teto por IP de 3000. E imprecisao de
+relatorio, herdada da v0.7.1, e corrigi-la custaria outra execucao paga do gate.
+A medicao esta correta.
+
+## Residuo no banco apos a execucao
+
+Conferido com o pool do proprio backend, que carrega `backend/.env` sozinho: a
+string de conexao nao foi lida nem impressa.
+
+```text
+=== CONTAGEM TOTAL NO BANCO ===
+users              4
+sessions           5
+product_history    0
+product_favorites  0
+
+=== RESIDUO DE TESTE (deve ser 0 em todas as linhas) ===
+gate E2E (e2e-real.js)         nutriscan-e2e-%          0
+suite de colecoes              colecoes-test-%          0
+suite de integracao antiga     e2e-%@example.test       0
+reproducao do E1               repro-e1-%               0
+qualquer @example.test         %@example.test           0
+qualquer @example.com          %@example.com            0
+
+RESIDUO SOMADO: 0
+
+=== LINHAS ORFAS (cascata da migration) ===
+product_history sem dono    0
+product_favorites sem dono  0
+```
+
+**Residuo zero.**
+
+## A migration 003 em producao
+
+```text
+003 historico: 0 renomeada(s), 0 fundida(s) | favoritos: 0 renomeada(s), 0 fundida(s)
+```
+
+Producao nao tinha nenhuma linha a canonicalizar - as duas tabelas estavam
+vazias antes e depois. Os zeros sao o resultado correto e estao registrados
+porque silencio nao e prova de que a migration rodou.
+
+## Suite completa do backend
+
+Com `RUN_DB_INTEGRATION_TESTS=true`, contra PostgreSQL 17.10 local:
+
+```text
+ℹ tests 238
+ℹ pass 237
+ℹ fail 0
+ℹ skipped 1
+[R11] gasto de colecoes desta suite: 403 de 3000 (folga 7.44x)
+```
+
+A suite cresceu de 224 para 238: cinco testes de canonicalizacao no schema e
+nove na suite de integracao (N1a a N1g).
+
+O unico SKIP:
+
+```text
+﹣ Claude real responde pergunta curta quando explicitamente habilitado
+  # NAO EXECUTADO - defina RUN_ANTHROPIC_INTEGRATION_TESTS=true e ANTHROPIC_API_KEY
+```
+
+Protecao contra chamada paga acidental num `npm test` comum. **NAO EXECUTADO
+nao conta como PASS** - e a propriedade que ele cobriria foi provada no gate,
+com duas chamadas reais.
+
+## Suite de integracao - PostgreSQL local
+
+A suite pesada **nao** rodou contra o Neon, pela mesma decisao das versoes
+anteriores: a trava `RUN_DB_INTEGRATION_TESTS` ficou desligada em toda execucao
+apontada para producao.
+
+```text
+✔ N1a o mesmo produto em UPC-A e EAN-13 vira UMA linha canonica
+✔ N1b favoritar por um formato aparece favoritado pelo outro
+✔ N1c requisicao DIRETA ao backend grava a forma canonica
+✔ N1d codigo nao-EAN passa intacto pela canonicalizacao
+✔ N1e EAN-13 e EAN-8 passam inalterados
+✔ N1f a deduplicacao continua funcionando apos a canonicalizacao
+✔ N1g a migration canonicaliza linha antiga sem colisao
+✔ N1g a migration funde as duas formas pela regra declarada
+✔ N1g a migration e idempotente e nao toca codigo nao-EAN
+✔ I1 ✔ I2 ✔ I3 (isolamento)   ✔ M10 ✔ M11   ✔ R11
+ℹ tests 32, pass 32, fail 0, skipped 0
+```
+
+## Validacao por mutacao
+
+```text
+mortas 36 | nao executadas 0 | problemas 0
+APROVADO: toda mutacao foi detectada pelo teste correspondente.
+```
+
+Nove mutantes novos, vinte e sete herdados. Detalhe no AUDIT_REPORT, incluindo
+os tres que precisaram de correcao.
+
+## O que NAO foi executado
+
+```text
+camera em hardware real        NAO EXECUTADO - exige aparelho com camera
+decodificacao optica           NAO EXECUTADO
+Open Food Facts real           NAO EXECUTADO - a busca do gate e injetada
+suite de colecoes no Neon      NAO EXECUTADO - por decisao, descrita acima
+migration 003 com dados reais  NAO EXECUTADO EM PRODUCAO - as tabelas estavam
+                               vazias; a logica foi exercitada contra
+                               PostgreSQL local, com as duas formas presentes
+carga simultanea real          NAO EXECUTADO
+```
+
+**A atestacao da camera em hardware continua ABERTA.** Esta versao nao a fecha.
+## Historico de auditorias anteriores
+
+## E2E da v0.7.3 - 2026-09-20
 
 ## Resultado geral
 
@@ -316,7 +607,6 @@ A busca a Open Food Facts e injetada no subgate de proposito: o que se prova ali
 e o NOSSO caminho - conferencia, normalizacao, motor, veredito, gravacao -, nao
 a disponibilidade de um terceiro. Um gate que depende da Open Food Facts estar
 no ar falharia por motivo alheio ao codigo.
-## Historico de auditorias anteriores
 
 ## E2E da v0.7.2 - 2026-09-20
 

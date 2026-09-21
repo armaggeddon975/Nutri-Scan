@@ -82,6 +82,30 @@ export async function registerUser(input) {
   const data = validateRegister(input);
 
   return withTransaction(async (client) => {
+    // UNICIDADE DE NOME DE USUARIO (documentado na v0.7.4, achado N2)
+    //
+    // `findUserConflict` recusa tanto e-mail repetido quanto NOME repetido.
+    // Consequencia pratica: duas pessoas chamadas "Joao Silva" nao conseguem
+    // ter conta.
+    //
+    // A regra nao e arbitraria - ela sustenta o login. `loginUser` aceita
+    // e-mail OU nome como identificador, e a consulta termina em `LIMIT 1`. Com
+    // nomes repetidos, entrar por nome escolheria uma conta qualquer entre as
+    // homonimas: um defeito de autenticacao, nao de conveniencia.
+    //
+    // Ou seja, retirar a unicidade de nome exige antes retirar o login por
+    // nome. As duas coisas andam juntas.
+    //
+    // A MENSAGEM NAO DIZ QUAL CAMPO COLIDIU
+    //
+    // O efeito e limitar enumeracao de contas: quem recebe 409 sabe que um dos
+    // dois ja existe, mas nao qual. Dizer "esse e-mail ja tem conta" permitiria
+    // testar uma lista de e-mails e descobrir quem e usuario do app.
+    //
+    // Registro honesto: esse efeito e real, mas NAO ha registro de que tenha
+    // sido a intencao original - nem em comentario, nem em CHANGELOG. Este
+    // comentario documenta o motivo de manter, nao uma intencao que eu possa
+    // comprovar.
     const conflict = await findUserConflict(data.email, data.nameKey, client);
     if (conflict) {
       throw new AppError("ACCOUNT_EXISTS", "Já existe uma conta com esse e-mail ou usuário.", 409);

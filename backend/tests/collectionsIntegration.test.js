@@ -34,6 +34,13 @@ after(async () => {
   await closePool();
 });
 
+async function aplicarMigration003() {
+  // Chama a funcao da migration diretamente. Rodar o runner nao serviria: ela
+  // ja esta registrada em `schema_migrations` e seria pulada.
+  const { up } = await import("../migrations/003_canonicaliza_upca.js");
+  await up({ query: (texto, params) => query(texto, params) });
+}
+
 function rodarMigrations() {
   execFileSync(process.execPath, ["scripts/migrate.js"], {
     cwd: backendRoot,
@@ -736,6 +743,355 @@ test("M11 visitante nao grava no PostgreSQL pelo caminho manual", { skip: pular 
     assert.equal(linhas.rows[0].total, 0, "o visitante gravou no PostgreSQL");
   });
 });
+
+// ---------------------------------------------------------------------------
+// N1 - a canonicalizacao precisa ATRAVESSAR o banco (v0.7.4)
+// ---------------------------------------------------------------------------
+//
+// O defeito N1 da auditoria da v0.7.3: `shared/barcode.js` documentava que a
+// normalizacao de UPC-A existia para impedir que o mesmo produto virasse duas
+// linhas, e o backend so conferia o digito verificador - gravava o codigo como
+// veio. O auditor subiu o app e mediu duas linhas.
+//
+// Os testes da v0.7.3 exercitavam `validarCodigoDeBarras` isoladamente e a
+// gravacao com EAN-13. Nenhum atravessava os DOIS formatos ate o banco. E por
+// isso que estes testes gravam de verdade e leem de volta.
+
+const UPCA = "036000291452";
+const EAN13_DO_UPCA = "0036000291452";
+
+test("N1a o mesmo produto em UPC-A e EAN-13 vira UMA linha canonica", { skip: pular }, async () => {
+  rodarMigrations();
+  await comServidor(async (baseUrl) => {
+    const agente = criarAgente(baseUrl);
+    await registrar(agente, novoEmail());
+
+    const base = { productName: "Duracell AA", productBrand: "Duracell", imageUrl: null };
+
+    // Como a camera entrega.
+    const viaCamera = await agente.request("/api/history", {
+      method: "POST",
+      body: { ...base, productCode: EAN13_DO_UPCA },
+    });
+    assert.equal(viaCamera.status, 201);
+
+    // Como a pessoa digita.
+    const viaDigitado = await agente.request("/api/history", {
+      method: "POST",
+      body: { ...base, productCode: UPCA },
+    });
+    assert.equal(viaDigitado.status, 201);
+
+    const lista = await agente.request("/api/history");
+    const itens = lista.body.items || [];
+
+    assert.equal(
+      itens.length,
+      1,
+      `o mesmo produto virou ${itens.length} linhas: ${itens.map((i) => i.productCode).join(", ")}`,
+    );
+    assert.equal(itens[0].productCode, EAN13_DO_UPCA, "a linha nao ficou na forma canonica");
+  });
+});
+
+test("N1b favoritar por um formato aparece favoritado pelo outro", { skip: pular }, async () => {
+  rodarMigrations();
+  await comServidor(async (baseUrl) => {
+    const agente = criarAgente(baseUrl);
+    await registrar(agente, novoEmail());
+
+    const base = { productName: "Duracell AA", productBrand: "Duracell", imageUrl: null };
+
+    const favoritado = await agente.request("/api/favorites", {
+      method: "POST",
+      body: { ...base, productCode: EAN13_DO_UPCA },
+    });
+    assert.equal(favoritado.status, 201);
+
+    // Favoritar de novo pelo UPC-A: e o MESMO produto, entao nao pode criar
+    // outra linha. Antes da correcao, criava.
+    const deNovo = await agente.request("/api/favorites", {
+      method: "POST",
+      body: { ...base, productCode: UPCA },
+    });
+    assert.notEqual(deNovo.status, 500, "favoritar pelo outro formato quebrou");
+
+    const lista = await agente.request("/api/favorites");
+    const codigos = (lista.body.items || []).map((item) => item.productCode);
+
+    assert.equal(codigos.length, 1, `favoritos ficaram com ${codigos.length} linhas: ${codigos}`);
+    assert.equal(codigos[0], EAN13_DO_UPCA);
+
+    // E o toggle pelo UPC-A precisa encontrar o favorito que ja existe. Se nao
+    // encontrasse, ele criaria um segundo em vez de desfazer o primeiro.
+    const alternado = await agente.request("/api/favorites/toggle", {
+      method: "POST",
+      body: { ...base, productCode: UPCA },
+    });
+    assert.equal(alternado.status, 200, `toggle devolveu ${alternado.status}`);
+
+    const depois = await agente.request("/api/favorites");
+    assert.equal(
+      (depois.body.items || []).length,
+      0,
+      "o toggle pelo UPC-A nao desfez o favorito gravado como EAN-13",
+    );
+  });
+});
+
+test("N1c requisicao DIRETA ao backend grava a forma canonica", { skip: pular }, async () => {
+  rodarMigrations();
+  await comServidor(async (baseUrl) => {
+    const agente = criarAgente(baseUrl);
+    const usuario = await registrar(agente, novoEmail());
+
+    // Sem passar pelo frontend: e esta a barreira que vale. O frontend
+    // normalizava so no caminho manual, entao a camera e qualquer outro cliente
+    // gravavam a forma de 12 digitos.
+    await agente.request("/api/history", {
+      method: "POST",
+      body: { productCode: UPCA, productName: "Duracell AA", productBrand: null, imageUrl: null },
+    });
+
+    // Conferido NO BANCO, nao pela resposta da API, e filtrado por ESTE
+    // usuario: outros testes desta suite gravam os mesmos codigos, e uma
+    // consulta sem dono contaria as linhas deles.
+    const linhas = await query(
+      "SELECT product_code FROM product_history WHERE user_id = $1 AND product_code IN ($2, $3)",
+      [usuario.id, UPCA, EAN13_DO_UPCA],
+    );
+
+    assert.equal(linhas.rowCount, 1, "esperada uma linha so");
+    assert.equal(
+      linhas.rows[0].product_code,
+      EAN13_DO_UPCA,
+      `o banco guardou ${linhas.rows[0].product_code}, nao a forma canonica`,
+    );
+  });
+});
+
+test("N1d codigo nao-EAN passa intacto pela canonicalizacao", { skip: pular }, async () => {
+  rodarMigrations();
+  await comServidor(async (baseUrl) => {
+    const agente = criarAgente(baseUrl);
+    await registrar(agente, novoEmail());
+
+    // A base da Open Food Facts tem cadastro alfanumerico, e a camera le ITF-14
+    // e CODE_128. Canonicalizar esses seria inventar um codigo que nao existe,
+    // e exigir digito verificador deles seria perda de funcionalidade vendida
+    // como seguranca.
+    const naoEan = ["12345678901234", "20003404_0001", "ABC123", "1234567"];
+
+    for (const codigo of naoEan) {
+      const resposta = await agente.request("/api/history", {
+        method: "POST",
+        body: { productCode: codigo, productName: "Produto", productBrand: null, imageUrl: null },
+      });
+      assert.equal(resposta.status, 201, `${codigo} foi recusado com ${resposta.status}`);
+    }
+
+    const lista = await agente.request("/api/history");
+    const guardados = (lista.body.items || []).map((item) => item.productCode).sort();
+
+    assert.deepEqual(
+      guardados,
+      [...naoEan].sort(),
+      "algum codigo nao-EAN foi alterado pela canonicalizacao",
+    );
+  });
+});
+
+test("N1e EAN-13 e EAN-8 passam inalterados", { skip: pular }, async () => {
+  rodarMigrations();
+  await comServidor(async (baseUrl) => {
+    const agente = criarAgente(baseUrl);
+    await registrar(agente, novoEmail());
+
+    for (const codigo of ["7891000100103", "96385074"]) {
+      await agente.request("/api/history", {
+        method: "POST",
+        body: { productCode: codigo, productName: "Produto", productBrand: null, imageUrl: null },
+      });
+    }
+
+    const lista = await agente.request("/api/history");
+    const guardados = (lista.body.items || []).map((item) => item.productCode).sort();
+
+    assert.deepEqual(guardados, ["7891000100103", "96385074"].sort());
+  });
+});
+
+test("N1f a deduplicacao continua funcionando apos a canonicalizacao", { skip: pular }, async () => {
+  rodarMigrations();
+  await comServidor(async (baseUrl) => {
+    const agente = criarAgente(baseUrl);
+    await registrar(agente, novoEmail());
+
+    const base = { productName: "Leite", productBrand: "Marca", imageUrl: null };
+
+    await agente.request("/api/history", { method: "POST", body: { ...base, productCode: UPCA } });
+    const primeira = await agente.request("/api/history");
+    const dataInicial = primeira.body.items[0].viewedAt;
+
+    await new Promise((r) => setTimeout(r, 15));
+    await agente.request("/api/history", { method: "POST", body: { ...base, productCode: UPCA } });
+
+    const segunda = await agente.request("/api/history");
+    assert.equal(segunda.body.items.length, 1, "a segunda gravacao duplicou");
+    assert.notEqual(
+      segunda.body.items[0].viewedAt,
+      dataInicial,
+      "a linha nao foi atualizada: a deduplicacao virou ignorar",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// N1g - a migration 003
+// ---------------------------------------------------------------------------
+
+test("N1g a migration canonicaliza linha antiga sem colisao", { skip: pular }, async () => {
+  rodarMigrations();
+  await comServidor(async (baseUrl) => {
+    const agente = criarAgente(baseUrl);
+    const usuario = await registrar(agente, novoEmail());
+
+    // Insercao DIRETA, para simular o dado gravado antes da v0.7.4. Passar pela
+    // API canonicalizaria e o teste nao teria o que consertar.
+    await query(
+      `INSERT INTO product_history (id, user_id, product_code, product_name)
+       VALUES (gen_random_uuid(), $1, $2, $3)`,
+      [usuario.id, UPCA, "Duracell AA"],
+    );
+
+    await aplicarMigration003();
+
+    const linhas = await query(
+      "SELECT product_code FROM product_history WHERE user_id = $1",
+      [usuario.id],
+    );
+    assert.equal(linhas.rowCount, 1);
+    assert.equal(linhas.rows[0].product_code, EAN13_DO_UPCA, "a linha antiga nao foi canonicalizada");
+  });
+});
+
+test("N1g a migration funde as duas formas pela regra declarada", { skip: pular }, async () => {
+  rodarMigrations();
+  await comServidor(async (baseUrl) => {
+    const agente = criarAgente(baseUrl);
+    const usuario = await registrar(agente, novoEmail());
+
+    // O caso que o auditor produziu: as DUAS formas do mesmo produto, na mesma
+    // conta. Canonicalizar a de 12 digitos violaria `(user_id, product_code)`.
+    //
+    // Regra declarada na migration: a linha CANONICA sobrevive, e o historico
+    // fica com o `viewed_at` mais recente das duas.
+    const antiga = new Date("2026-01-01T10:00:00Z");
+    const recente = new Date("2026-06-01T10:00:00Z");
+
+    await query(
+      `INSERT INTO product_history (id, user_id, product_code, product_name, viewed_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4)`,
+      [usuario.id, EAN13_DO_UPCA, "Nome da canonica", antiga],
+    );
+    await query(
+      `INSERT INTO product_history (id, user_id, product_code, product_name, viewed_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4)`,
+      [usuario.id, UPCA, "Nome da nao canonica", recente],
+    );
+
+    // Favoritos: a regra e a data mais ANTIGA, porque favoritar e ato
+    // intencional e o que importa e desde quando.
+    await query(
+      `INSERT INTO product_favorites (id, user_id, product_code, product_name, created_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4)`,
+      [usuario.id, EAN13_DO_UPCA, "Favorito canonico", recente],
+    );
+    await query(
+      `INSERT INTO product_favorites (id, user_id, product_code, product_name, created_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4)`,
+      [usuario.id, UPCA, "Favorito nao canonico", antiga],
+    );
+
+    await aplicarMigration003();
+
+    const historico = await query(
+      "SELECT product_code, product_name, viewed_at FROM product_history WHERE user_id = $1",
+      [usuario.id],
+    );
+    assert.equal(historico.rowCount, 1, "a fusao deixou mais de uma linha de historico");
+    assert.equal(historico.rows[0].product_code, EAN13_DO_UPCA, "sobreviveu a linha errada");
+    assert.equal(
+      new Date(historico.rows[0].viewed_at).toISOString(),
+      recente.toISOString(),
+      "o historico nao ficou com o viewed_at mais recente",
+    );
+    assert.equal(
+      historico.rows[0].product_name,
+      "Nome da nao canonica",
+      "o nome deveria vir da linha mais recente, como no ON CONFLICT DO UPDATE",
+    );
+
+    const favoritos = await query(
+      "SELECT product_code, created_at FROM product_favorites WHERE user_id = $1",
+      [usuario.id],
+    );
+    assert.equal(favoritos.rowCount, 1, "a fusao deixou mais de um favorito");
+    assert.equal(favoritos.rows[0].product_code, EAN13_DO_UPCA);
+    assert.equal(
+      new Date(favoritos.rows[0].created_at).toISOString(),
+      antiga.toISOString(),
+      "o favorito nao ficou com o created_at mais antigo",
+    );
+  });
+});
+
+test("N1g a migration e idempotente e nao toca codigo nao-EAN", { skip: pular }, async () => {
+  rodarMigrations();
+  await comServidor(async (baseUrl) => {
+    const agente = criarAgente(baseUrl);
+    const usuario = await registrar(agente, novoEmail());
+
+    // Um numero de 12 digitos com digito verificador INVALIDO nao e UPC-A. Pode
+    // ter entrado antes de a v0.7.3 conferir o digito, e a migration nao pode
+    // inventar canonico para ele.
+    const doze_invalido = "036000291453";
+    for (const codigo of [UPCA, doze_invalido, "12345678901234", "ABC123"]) {
+      await query(
+        `INSERT INTO product_history (id, user_id, product_code, product_name)
+         VALUES (gen_random_uuid(), $1, $2, $3)`,
+        [usuario.id, codigo, "Produto"],
+      );
+    }
+
+    await aplicarMigration003();
+    const depoisDaPrimeira = await query(
+      "SELECT product_code FROM product_history WHERE user_id = $1 ORDER BY product_code",
+      [usuario.id],
+    );
+
+    await aplicarMigration003();
+    const depoisDaSegunda = await query(
+      "SELECT product_code FROM product_history WHERE user_id = $1 ORDER BY product_code",
+      [usuario.id],
+    );
+
+    assert.deepEqual(
+      depoisDaSegunda.rows,
+      depoisDaPrimeira.rows,
+      "aplicar a migration duas vezes mudou o resultado",
+    );
+
+    const codigos = depoisDaPrimeira.rows.map((r) => r.product_code).sort();
+    assert.deepEqual(
+      codigos,
+      [EAN13_DO_UPCA, doze_invalido, "12345678901234", "ABC123"].sort(),
+      "a migration alterou codigo que nao deveria tocar",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // R11 - o gasto desta suite cabe no teto por IP, com folga
 // ---------------------------------------------------------------------------
 //
