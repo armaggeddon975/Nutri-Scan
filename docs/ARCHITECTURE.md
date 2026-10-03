@@ -1,4 +1,4 @@
-# Arquitetura NutriScan v0.7.4
+# Arquitetura NutriScan v0.7.5
 
 ## Visao geral
 
@@ -281,14 +281,43 @@ PUT /api/profile/allergies -> PostgreSQL.user_allergies
 O frontend usa fila sequencial para salvar alergias e impedir que uma resposta
 antiga sobrescreva a intencao mais nova.
 
-## Deploy futuro
+## Deploy
 
-Para producao, a arquitetura web deve preferir frontend e API sob a mesma origem
-logica, por exemplo:
+O app esta publicado no Render, em `https://nutriscan-h1wp.onrender.com`, com
+banco no Neon. Um unico servico serve frontend e API **na mesma origem**:
 
 ```text
-https://nutriscan.com
-https://nutriscan.com/api
+https://nutriscan-h1wp.onrender.com/        frontend compilado
+https://nutriscan-h1wp.onrender.com/api/*   API
 ```
 
-Nenhum deploy foi feito nesta etapa.
+Ate a v0.7.4 esta secao dizia "Nenhum deploy foi feito nesta etapa". Isso ja
+nao era verdade: o servico estava no ar, anunciando uma versao anterior.
+
+As tres decisoes de producao estao em [DEPLOY.md](DEPLOY.md), com o motivo de
+cada uma:
+
+```text
+HTTPS        redirecionamento no proxy do Render; HSTS mandado pelo backend
+cookie       HttpOnly, Secure em producao, SameSite=Lax - funciona porque a
+             origem e a mesma; separar frontend e API em dois servicos do
+             Render quebraria isso (onrender.com esta na Public Suffix List)
+migrations   no build, nao no start: migration que falha impede a publicacao
+```
+
+### Boot em producao
+
+Com `NODE_ENV=production`, `backend/src/server.js` confere
+`DATABASE_URL`, `DATABASE_SSL`, `FRONTEND_ORIGIN` e `TRUST_PROXY` antes de abrir
+a porta. Faltando qualquer uma, ou com booleano nao reconhecido, o processo sai
+com codigo 1 e diz qual variavel falta, sem imprimir valor.
+
+A regra comum as quatro: a falta seria silenciosa. O app subiria, pareceria
+funcionar, e o defeito so apareceria depois - CORS confiando em localhost,
+conexao sem TLS, ou o teto por IP virando teto global.
+
+### Versao
+
+A versao tem uma fonte so: `backend/package.json`. `env.js` le de la, e o
+`/api/health` devolve esse valor. O `verify:deploy` compara o que o deploy
+anuncia com o `package.json` da raiz, por igualdade estrita.

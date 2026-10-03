@@ -34,15 +34,171 @@ const LOOKUP = "src/services/productLookup.js";
 const APP = "src/App.jsx";
 const VALIDACAO_BACKEND = "backend/src/utils/validation.js";
 const MIGRATION003 = "backend/migrations/003_canonicaliza_upca.js";
+const ENV_BACKEND = "backend/src/config/env.js";
+const ERRO_BACKEND = "backend/src/middleware/errorMiddleware.js";
+const APP_BACKEND = "backend/src/app.js";
+const VERSION_CHECK = "scripts/version-check.js";
+const VERIFY_DEPLOY = "scripts/verify-deploy.js";
 
 const SUITE_BARCODE = "tests/barcode.test.js";
 const SUITE_LOOKUP = "tests/productLookup.test.js";
 const SUITE_LIMITE = "tests/rateLimit.test.js";
 const SUITE_INTEGRACAO = "tests/collectionsIntegration.test.js";
+const SUITE_PRODUCAO = "tests/productionHardening.test.js";
+const SUITE_DEPLOY = "tests/verifyDeploy.test.js";
 
 const COMPOSICAO = "  return [porUsuario, porIp];";
 
 const MUTACOES = [
+  {
+    id: "T1",
+    requisito: "P2",
+    descricao: "FRONTEND_ORIGIN deixa de ser obrigatoria em producao",
+    arquivo: ENV_BACKEND,
+    de: '  "DATABASE_SSL",\n  "FRONTEND_ORIGIN",\n  "TRUST_PROXY",',
+    para: '  "DATABASE_SSL",\n  "TRUST_PROXY",',
+    suite: SUITE_PRODUCAO,
+    deveQuebrar: "P2 producao sem FRONTEND_ORIGIN nao sobe, e diz qual falta",
+    banco: false,
+  },
+  {
+    id: "T1b",
+    requisito: "P2",
+    descricao: "FRONTEND_ORIGIN volta a ter default de localhost em producao",
+    arquivo: ENV_BACKEND,
+    de: '(NODE_ENV === "production" ? "" : DEFAULT_FRONTEND_ORIGIN_DEV)',
+    para: "DEFAULT_FRONTEND_ORIGIN_DEV",
+    suite: SUITE_PRODUCAO,
+    deveQuebrar: "P2 sem FRONTEND_ORIGIN, nem o createApp direto cai no default de localhost",
+    banco: false,
+  },
+  {
+    id: "T2",
+    requisito: "P5",
+    descricao: "o handler de erro passa a incluir err.stack na resposta",
+    arquivo: ERRO_BACKEND,
+    de: "      ...(!isProduction() ? { details: error.message } : {}),",
+    para: "      details: error.stack,",
+    suite: SUITE_PRODUCAO,
+    deveQuebrar: "P5 erro do driver do banco nao chega ao cliente",
+    banco: false,
+  },
+  {
+    id: "T2b",
+    requisito: "P5",
+    descricao: "o handler de erro para de registrar o detalhe no log",
+    arquivo: ERRO_BACKEND,
+    de: '  console.error("[erro interno]", error);',
+    para: "  void error;",
+    suite: SUITE_PRODUCAO,
+    deveQuebrar: "P5 o detalhe do erro vai para o log do servidor",
+    banco: false,
+  },
+  {
+    id: "T3",
+    requisito: "P9",
+    descricao: "DATABASE_SSL ausente passa a usar o default false em producao",
+    arquivo: ENV_BACKEND,
+    de: '  "DATABASE_URL",\n  "DATABASE_SSL",\n  "FRONTEND_ORIGIN",',
+    para: '  "DATABASE_URL",\n  "FRONTEND_ORIGIN",',
+    suite: SUITE_PRODUCAO,
+    deveQuebrar: "P9 cada variavel obrigatoria ausente impede a subida, e a mensagem diz qual",
+    banco: false,
+  },
+  {
+    id: "T3b",
+    requisito: "P9",
+    descricao: "valor booleano nao reconhecido volta a cair no default",
+    arquivo: ENV_BACKEND,
+    de: "    if (presente(fonte[variavel]) && !booleanoReconhecido(fonte[variavel])) {",
+    para: "    if (false) {",
+    suite: SUITE_PRODUCAO,
+    deveQuebrar: "P9 valor booleano nao reconhecido nao cai em default silencioso",
+    banco: false,
+  },
+  {
+    id: "T4",
+    requisito: "P12",
+    descricao: "verify:deploy compara versao com includes em vez de igualdade",
+    arquivo: VERSION_CHECK,
+    de: "  if (local !== remota) {",
+    para: "  if (!String(remota).includes(local)) {",
+    suite: SUITE_DEPLOY,
+    deveQuebrar: "P12 versao no ar diferente da do repositorio reprova o D1",
+    banco: false,
+  },
+  {
+    id: "T5",
+    requisito: "P13",
+    descricao: "verify:deploy manda o POST do D6 para uma rota de escrita",
+    arquivo: VERIFY_DEPLOY,
+    de: "  const { resposta, texto } = await cliente.requisitar(SONDA_INEXISTENTE, {",
+    para: '  const { resposta, texto } = await cliente.requisitar("/api/auth/login", {',
+    suite: SUITE_DEPLOY,
+    deveQuebrar: "P13 o registro de requisicoes do verify:deploy nao tem escrita",
+    banco: false,
+  },
+  {
+    id: "T5b",
+    requisito: "P13",
+    descricao: "o D5 passa a sondar autenticacao com POST de logout",
+    arquivo: VERIFY_DEPLOY,
+    de: '  for (const caminho of ["/api/auth/me", "/api/history", "/api/favorites", "/api/profile"]) {\n    const { resposta } = await cliente.requisitar(caminho);',
+    para:
+      '  for (const caminho of ["/api/auth/me", "/api/history", "/api/favorites", "/api/profile"]) {\n' +
+      '    await cliente.requisitar("/api/auth/logout", { method: "POST" });\n' +
+      "    const { resposta } = await cliente.requisitar(caminho);",
+    suite: SUITE_DEPLOY,
+    deveQuebrar: "P13 contra o roteador REAL, nenhuma rota de escrita e alcancada",
+    banco: false,
+  },
+  {
+    id: "T6",
+    requisito: "P3",
+    descricao: "o CORS passa a refletir a origem do request",
+    arquivo: APP_BACKEND,
+    de: "      origin: env.frontendOrigin || false,",
+    para: "      origin: true,",
+    suite: SUITE_PRODUCAO,
+    deveQuebrar: "P3 CORS devolve a origem configurada, nunca a do request",
+    banco: false,
+  },
+  {
+    id: "T7",
+    requisito: "P4",
+    descricao: "o app deixa de confiar no proxy em producao",
+    arquivo: APP_BACKEND,
+    de: '  if (env.trustProxy) app.set("trust proxy", 1);',
+    para: "  void env.trustProxy;",
+    suite: SUITE_PRODUCAO,
+    deveQuebrar: "P4 com trust proxy, req.ip segue o X-Forwarded-For e o balde acompanha",
+    banco: false,
+  },
+  {
+    id: "T8",
+    requisito: "P11",
+    descricao: "NOT_EXECUTED passa a contar como aprovacao no agregado",
+    arquivo: VERIFY_DEPLOY,
+    // Na primeira rodada este mutante SOBREVIVEU: o teste so exercitava o fluxo
+    // real, em que NOT_EXECUTED (D8) vem sempre junto do FAIL do D7. A regra foi
+    // isolada em `agregar` e testada com sete PASS e um NOT_EXECUTED.
+    de: "  return resultados.length === SUBGATES.length && resultados.every((r) => r.estado === PASS);",
+    para: "  return resultados.every((r) => r.estado !== FAIL);",
+    suite: SUITE_DEPLOY,
+    deveQuebrar: "P11 NOT_EXECUTED nao conta como PASS no agregado",
+    banco: false,
+  },
+  {
+    id: "T9",
+    requisito: "P11",
+    descricao: "o verify:deploy sai com codigo 0 mesmo com subgate reprovado",
+    arquivo: VERIFY_DEPLOY,
+    de: "  process.exitCode = saida.aprovado ? 0 : 1;",
+    para: "  process.exitCode = 0;",
+    suite: SUITE_DEPLOY,
+    deveQuebrar: "P11 o comando de verdade sai com codigo 1 quando um subgate falha",
+    banco: false,
+  },
   {
     id: "S1",
     requisito: "N1a",
@@ -520,6 +676,62 @@ function falhasDe(saida) {
     );
 }
 
+// Testes que PASSARAM de fato. Pulado (`﹣`, `# SKIP`) nao conta: um teste de
+// banco pulado por falta de flag "passa" sem ter rodado.
+function aprovadosDe(saida) {
+  return saida
+    .split(/\r?\n/)
+    .filter((linha) => /^\s*(✔|ok\s+\d+)/.test(linha) && !/#\s*(SKIP|TODO)/i.test(linha))
+    .map((linha) =>
+      linha
+        .replace(/^\s*(✔|ok\s+\d+\s*-?)\s*/, "")
+        .replace(/\s*\([\d.]+ms\)\s*$/, ""),
+    );
+}
+
+// LINHA DE BASE (v0.7.5)
+//
+// Um mutante so conta como MORTO se o teste que deveria pega-lo estava VERDE
+// sem a mutacao. Sem essa conferencia, qualquer falha do teste nomeado contava
+// como prova - inclusive o banco fora do ar.
+//
+// Foi o que aconteceu na v0.7.5: tres rodadas inteiras rodaram com o PostgreSQL
+// local parado, e todo mutante de banco "morreu" por conexao recusada. O script
+// reportou "mortas 49 | problemas 0 | APROVADO", e para os mutantes de banco
+// esse numero nao provava nada.
+//
+// A linha de base roda cada suite SEM mutacao, antes da primeira e depois da
+// ultima. Nas duas, a suite precisa sair verde e cada teste nomeado em
+// `deveQuebrar` precisa ter PASSADO - nao pulado, nao ausente. Um banco parado
+// nao volta sozinho: verde no comeco e verde no fim e o que permite dizer que
+// ele esteve de pe no meio.
+function linhaDeBase(momento, mutacoes) {
+  const porSuite = new Map();
+  for (const m of mutacoes) {
+    if (!porSuite.has(m.suite)) porSuite.set(m.suite, new Set());
+    porSuite.get(m.suite).add(m.deveQuebrar);
+  }
+
+  console.log(`[linha de base - ${momento}] ${porSuite.size} suite(s), sem mutacao`);
+  const problemas = [];
+  for (const [suite, nomes] of porSuite) {
+    const { codigo, saida } = rodar(suite);
+    const aprovados = aprovadosDe(saida);
+    const faltando = [...nomes].filter((nome) => !aprovados.some((a) => a.includes(nome)));
+
+    if (codigo !== 0) {
+      const falhas = falhasDe(saida).slice(0, 3).join("; ") || "nenhum teste nomeado";
+      problemas.push(`${suite} SEM mutacao saiu com codigo ${codigo} (${falhas})`);
+    }
+    for (const nome of faltando) {
+      problemas.push(`${suite}: "${nome}" nao passou SEM mutacao - falhou, foi pulado ou nao existe`);
+    }
+    console.log(`  ${codigo === 0 && faltando.length === 0 ? "VERDE   " : "VERMELHA"} ${suite}`);
+  }
+  for (const p of problemas) console.log(`  - ${p}`);
+  return problemas;
+}
+
 // RESTAURACAO QUE SOBREVIVE A MORTE DO PROCESSO
 //
 // A primeira versao disto confiava so em `process.on("exit")`. Na v0.7.2 uma
@@ -567,6 +779,17 @@ for (const sinal of ["SIGINT", "SIGTERM", "SIGHUP", "SIGBREAK"]) {
 }
 
 const resultados = [];
+
+const executaveis = MUTACOES.filter((m) => !m.banco || comBanco);
+const baseInicial = linhaDeBase("antes", executaveis);
+if (baseInicial.length > 0) {
+  console.log("");
+  console.log("REPROVADO ANTES DE MUTAR: a linha de base esta vermelha.");
+  console.log("Nenhuma mutacao foi aplicada. Um teste que ja falha sem defeito nao prova");
+  console.log("nada quando falha com ele. Confira o ambiente - banco de pe, flags - e rode de novo.");
+  process.exit(1);
+}
+console.log("");
 
 for (const m of MUTACOES) {
   if (m.banco && !comBanco) {
@@ -641,6 +864,9 @@ for (const m of MUTACOES) {
 }
 
 console.log("");
+const baseFinal = linhaDeBase("depois", executaveis);
+
+console.log("");
 console.log("=".repeat(78));
 const mortas = resultados.filter((r) => r.estado === "MORTA");
 const naoExecutadas = resultados.filter((r) => r.estado === "NAO EXECUTADO");
@@ -651,10 +877,18 @@ for (const r of resultados) {
 }
 console.log("=".repeat(78));
 console.log(
-  `mortas ${mortas.length} | nao executadas ${naoExecutadas.length} | problemas ${problemas.length}`,
+  `mortas ${mortas.length} | nao executadas ${naoExecutadas.length} | problemas ${problemas.length}` +
+    ` | linha de base: antes verde, depois ${baseFinal.length === 0 ? "verde" : "VERMELHA"}`,
 );
 
-if (problemas.length > 0) {
+if (baseFinal.length > 0) {
+  // O ambiente quebrou no meio da rodada. As mortes registradas depois desse
+  // ponto podem ser do ambiente, e nao do teste - nenhuma delas vale.
+  console.log("");
+  console.log("REPROVADO: a linha de base FINAL esta vermelha. O ambiente mudou durante a");
+  console.log("rodada, e nenhuma morte desta execucao pode ser tomada como prova.");
+  process.exitCode = 1;
+} else if (problemas.length > 0) {
   console.log("");
   console.log("REPROVADO: ha teste que nao detecta o defeito que deveria detectar.");
   process.exitCode = 1;

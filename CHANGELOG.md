@@ -1,5 +1,232 @@
 # Changelog
 
+## NutriScan v0.7.5 - 2026-10-02
+
+Prontidao de producao, e um comando que prova que o que esta no ar e o que foi
+auditado.
+
+### O problema: auditado e no ar eram coisas separadas
+
+Tudo o que `verify:release` e `verify:e2e` provavam valia para o backend LOCAL.
+`render.yaml` e `scripts/version-check.js` existiam desde versoes anteriores, e
+**nenhum dos dois tinha rodado contra o deploy real**. O projeto nunca tinha
+sido verificado no ar.
+
+O gate de versao desta entrega existe por causa do **achado R3** da auditoria da
+v0.6.9: os commits `9622ad8` e `168ae69` foram publicados sob o numero 0.6.8, e
+`/api/health` anunciava uma versao que nao correspondia ao que rodava. O projeto
+ja tinha publicado as cegas uma vez.
+
+#### Uma correcao na premissa
+
+O prompt desta versao diz que o NutriScan "nunca foi publicado". Isso nao e
+exato, e o registro correto e outro:
+
+```text
+publicado    SIM - https://nutriscan-h1wp.onrender.com esta no ar
+verificado   NUNCA, ate esta versao
+no ar        0.7.0, o codigo de 641aa5f
+local        0.7.1 a 0.7.4 em seis commits que nunca subiram
+```
+
+O primeiro `verify:deploy` contra a URL real reprovou exatamente no D1: o
+repositorio declara 0.7.5 e o deploy anuncia 0.7.0. Os outros sete subgates
+passaram. **E o achado R3 acontecendo de novo, agora pego por um gate em vez de
+por um auditor.**
+
+### Entrega A - endurecimento de producao
+
+```text
+6.1  cookie          ja estava certo; agora provado em producao
+6.2  CORS            FRONTEND_ORIGIN ausente caia em localhost - CORRIGIDO
+6.3  trust proxy     tinha default; agora obrigatorio e explicito
+6.4  erro interno    nao vazava, mas tambem nao registrava - CORRIGIDO
+6.5  HTTPS           decidido e documentado; nenhum redirect no backend
+6.6  estaticos       ja estava certo; agora provado
+6.7  /api/health     versao duplicada e provedor de IA exposto - CORRIGIDO
+6.8  migrations      rodam no build; documentado
+6.9  variaveis       quatro obrigatorias recusam subir - NOVO
+```
+
+#### O defeito mais serio: `FRONTEND_ORIGIN` caia em localhost
+
+Ate a v0.7.4, `FRONTEND_ORIGIN` ausente virava `http://localhost:5173` tambem
+em producao. O backend anunciava em CORS, com `credentials: true`, que confiava
+numa origem local. Ninguem via, porque o app funcionava: frontend e API estao na
+mesma origem e nao precisam de CORS.
+
+Agora o default de localhost so existe fora de producao. Em producao, falta a
+variavel e o processo nao sobe.
+
+O CORS **nunca refletiu a origem do request**: o pacote `cors` com origem fixa
+devolve sempre a configurada. Isso foi medido, mandando `Origin` de um atacante,
+e nao assumido. A configuracao sem origem passou a ser `false` explicito, para
+que a seguranca nao dependa de como a biblioteca trata string vazia.
+
+#### Quatro variaveis obrigatorias recusam subir
+
+Com `NODE_ENV=production`, `backend/src/server.js` confere a configuracao
+**antes de abrir a porta**:
+
+```text
+DATABASE_URL     sem ela, conta, perfil, historico e favoritos dariam 503
+DATABASE_SSL     um default false mandaria a senha do banco sem TLS
+FRONTEND_ORIGIN  o default de localhost descrito acima
+TRUST_PROXY      errado, o teto por IP vira teto global, ou o cliente escolhe o
+                 proprio IP
+```
+
+A regra comum as quatro: a falta seria silenciosa. Booleano que nao e
+`true`/`false` tambem recusa - um `TRUE_` digitado errado nao cai no default. A
+mensagem diz qual variavel e por que, **nunca o valor de nenhuma**.
+
+`FRONTEND_ORIGIN` em producao precisa ser `https://` e so a origem.
+
+`ANTHROPIC_API_KEY` continua opcional, por decisao de produto: sem ela o
+assistente responde localmente e o health diz `ai: not_configured`. A falta e
+visivel.
+
+**`SESSION_SECRET` nao existe neste projeto.** A sessao e um token aleatorio
+guardado no banco so como hash SHA-256; nao ha cookie assinado.
+
+#### Erro interno: o cliente nao ve, e agora o operador ve
+
+O handler de erro ja omitia o detalhe em producao. Mas o erro era descartado: um
+500 sumia sem rastro, nem no log. Agora o detalhe vai para o log do servidor,
+que e onde ele serve, e o cliente continua recebendo so `INTERNAL_ERROR` e uma
+frase generica.
+
+O teste derruba o banco de verdade - conexao recusada - e confere que nem a
+mensagem do driver, nem host, nem porta, nem stack chegam a resposta.
+
+#### `/api/health`: uma fonte de versao, e sem nome de fornecedor
+
+A versao era um literal em `env.js`, repetido em quatro arquivos e atualizado a
+mao a cada versao - e o caminho pelo qual o R3 aconteceu. Agora `env.js` le
+`backend/package.json`, e o health devolve esse valor.
+
+O campo `aiProvider: "anthropic"` saiu. O `CLAUDE.md` do projeto determina que o
+frontend nunca sabe qual provedor respondeu, e o health e API publica. Nenhum
+consumidor dependia do campo.
+
+O health expoe `status`, `database`, `ai` e `version`, e so isso. O teste exige
+exatamente essas quatro chaves.
+
+#### HTTPS, cookie e migrations: decisoes registradas
+
+O detalhe, com o motivo de cada uma, esta em `docs/DEPLOY.md`.
+
+```text
+HTTPS       redirect no proxy do Render, HSTS de 1 ano pelo backend. Um redirect
+            no backend derrubaria o health check interno.
+cookie      HttpOnly, Secure, SameSite=Lax. Lax funciona porque frontend e API
+            estao na mesma origem.
+migrations  no build. Migration que falha impede a publicacao, e o Render mantem
+            a versao anterior no ar.
+```
+
+Uma armadilha documentada para o futuro: `onrender.com` esta na Public Suffix
+List. Separar frontend e API em dois servicos do Render os tornaria sites
+diferentes, e o cookie Lax deixaria de ir junto.
+
+### Entrega B - `npm run verify:deploy`
+
+```bash
+npm run verify:deploy -- https://nutriscan-h1wp.onrender.com
+```
+
+```text
+D1  versao no ar IGUAL a do repositorio - o R3 virando gate
+D2  HTTPS, e http:// redireciona para https://
+D3  HSTS, CSP e nosniff
+D4  rota /api inexistente da 404 em JSON, nao o index.html
+D5  quatro rotas autenticadas dao 401 sem sessao
+D6  erro provocado nao vaza stack, SQL, tabela nem caminho
+D7  o HTML e servido, e cada script e estilo que ele cita carrega
+D8  nenhuma chave nem string de conexao no HTML ou nos bundles
+```
+
+A comparacao de versao e por igualdade estrita: `0.7.50`, `v0.7.5`,
+`0.7.5-rc1` e `0.7.5 ` com espaco reprovam. Sem URL, o comando falha e diz como
+informar - nunca assume localhost. Exit 0 so com os oito em PASS;
+`NOT_EXECUTED` nao conta como aprovacao.
+
+**O comando so le.** Nao cria conta, nao grava, nao chama a IA. A unica
+requisicao fora de GET e o D6: JSON quebrado para um caminho que nao e rota de
+nada. O teste roda o comando contra o roteador real, com um espiao contando
+cada requisicao, e exige que nenhuma rota de escrita seja alcancada.
+
+E separado do `verify:e2e`, que continua provando o backend local.
+
+### O que a mutacao encontrou
+
+Doze mutantes novos na primeira rodada. Onze morreram; **um sobreviveu**:
+
+```text
+T8  NOT_EXECUTED passa a contar como aprovacao no agregado   SOBREVIVEU
+```
+
+O teste do agregado so exercitava o fluxo real, em que o D8 fica `NOT_EXECUTED`
+apenas quando o D7 ja falhou. Esse FAIL do D7 reprovava o agregado de qualquer
+jeito, e escondia uma regra frouxa. A regra foi separada numa funcao e testada
+sozinha, com sete PASS e um NOT_EXECUTED. Na rodada seguinte, o T8 morreu.
+
+Ao revisar o P11, faltava tambem um teste do **codigo de saida** do processo -
+os outros olhavam o agregado em memoria. Acrescentado, com o mutante `T9`
+(exit 0 mesmo com subgate reprovado).
+
+### O script de mutacao aprovava com o banco fora do ar
+
+O achado mais serio desta versao e sobre a propria ferramenta de prova.
+
+Tres rodadas de mutacao desta versao rodaram com o **PostgreSQL local
+parado** - ele tinha caido em 20/09 e ninguem percebeu. Todo mutante de banco
+"morreu": os testes nomeados ficavam vermelhos por conexao recusada, nao pelo
+defeito injetado. O script reportou `mortas 49 | problemas 0 | APROVADO`.
+
+A causa: `mutation-check.js` aceitava QUALQUER falha do teste nomeado como
+prova, e nunca conferia que esse teste passava sem a mutacao.
+
+Corrigido com uma **linha de base**. Antes da primeira mutacao e depois da
+ultima, cada suite roda sem defeito, e cada teste que precisa quebrar tem de ter
+PASSADO - nao pulado, nao ausente. Com a base inicial vermelha, nenhuma mutacao
+e aplicada; com a final vermelha, a rodada inteira e reprovada.
+
+A guarda foi provada reproduzindo a situacao: banco parado de proposito, e a
+rodada parou antes de mutar, nomeando os oito testes que nao podiam servir de
+prova. Os mutantes de banco foram revalidados com o banco de pe.
+
+As rodadas das versoes anteriores nao sao afetadas: o log do PostgreSQL mostra
+o banco ativo durante elas.
+
+### O secret scan pegou uma isca de teste
+
+O `verify:release` reprovou uma vez nesta versao: `backend/tests/verifyDeploy.test.js`
+tinha, como literal, uma chave falsa com a forma de chave Anthropic - a isca que
+prova que o D8 pega chave num bundle. O scan estava certo em reprovar. O gate
+nao foi tocado; a isca passou a ser montada por partes em tempo de execucao.
+
+### Antes de publicar esta versao
+
+**Defina `FRONTEND_ORIGIN=https://nutriscan-h1wp.onrender.com` no painel do
+Render antes do push.** A partir desta versao, sem ela o processo nao sobe. O
+`render.yaml` declara a variavel com `sync: false`, mas o valor precisa ser
+preenchido no painel.
+
+### Observacoes descritas e NAO corrigidas
+
+Fora do escopo das secoes 6 e 7, ficam para decisao:
+
+```text
+NODE_ENV com erro de digitacao vira development, em silencio. Um teste
+  existente trava esse comportamento de proposito.
+JSON malformado devolve 500, e nao 400. Nao vaza nada; so o codigo esta errado.
+env.test.js sobrescreve o backend/.env real durante o teste e o restaura
+  depois. Uma execucao interrompida no meio deixaria o arquivo trocado.
+Janela de migration: entre o fim do build e a troca de versao, o codigo antigo
+  serve contra o schema novo.
+```
+
 ## NutriScan v0.7.4 - 2026-09-20
 
 Correcao do defeito N1 e documentacao da observacao N2, da auditoria externa da

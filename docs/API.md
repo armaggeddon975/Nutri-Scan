@@ -1,4 +1,4 @@
-# API NutriScan v0.7.4
+# API NutriScan v0.7.5
 
 Base local: `http://localhost:3000/api`
 
@@ -18,8 +18,7 @@ Exemplo:
   "status": "ok",
   "database": "not_configured",
   "ai": "not_configured",
-  "aiProvider": "anthropic",
-  "version": "0.7.4"
+  "version": "0.7.5"
 }
 ```
 

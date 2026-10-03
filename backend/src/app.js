@@ -62,9 +62,23 @@ export function createApp(options = {}) {
   if (env.trustProxy) app.set("trust proxy", 1);
 
   app.use(helmet({ contentSecurityPolicy: buildContentSecurityPolicy() }));
+  // CORS (v0.7.5, item 6.2).
+  //
+  // A origem e uma STRING FIXA, vinda da configuracao. O pacote `cors` com
+  // origem fixa devolve sempre essa origem em `Access-Control-Allow-Origin`, e
+  // nunca a do request - medido na v0.7.5 mandando `Origin` de um atacante:
+  // o cabecalho volta com a origem configurada, nao com a dele. Por isso
+  // `credentials: true` vale so para a origem configurada.
+  //
+  // Sem origem configurada, `false` desliga o CORS: nenhuma origem externa
+  // recebe permissao. Em producao isso nem chega a acontecer, porque
+  // `server.js` recusa subir sem `FRONTEND_ORIGIN`; o `false` explicito existe
+  // para que a seguranca nao dependa de como a biblioteca trata string vazia.
+  // (Medido tambem: hoje ela trata vazio como "sem cabecalho", que e o mesmo
+  // efeito - mas isso e detalhe de implementacao dela, nao contrato.)
   app.use(
     cors({
-      origin: env.frontendOrigin,
+      origin: env.frontendOrigin || false,
       credentials: true,
     }),
   );

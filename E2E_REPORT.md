@@ -1,6 +1,376 @@
-# E2E Report - NutriScan v0.7.4
+# E2E Report - NutriScan v0.7.5
 
-Data: 2026-09-20
+Data: 2026-10-02
+
+## Resultado geral
+
+```text
+verify:e2e                 PASS, exit code 0
+doctor:e2e                 PASS
+e2e:strict                 PASS, mode=strict, ok=true
+PostgreSQL real            EXECUTADO - Neon de producao
+Claude real                EXECUTADO - 2 chamadas pagas
+residuo no banco           0
+
+verify:deploy simulado     FAIL, exit code 1 - 7 PASS, D2 FAIL (alvo http, sem TLS)
+verify:deploy REAL         FAIL, exit code 1 - 7 PASS, D1 FAIL (no ar 0.7.0)
+
+camera em hardware         NAO EXECUTADO
+```
+
+Nenhum resultado foi herdado. Os PASS da v0.7.4, da v0.7.3, da v0.7.2 e da
+v0.6.8 estao preservados na secao historica e nao valem para esta versao.
+
+**Os dois FAIL do `verify:deploy` sao resultados corretos, e nao foram
+contornados.** O simulado nao tem TLS, e o D2 existe para reprovar isso. O real
+esta com codigo de outra versao no ar, e o D1 existe para reprovar isso.
+
+## Saida literal do gate E2E
+
+Os avisos de SSL do driver `pg` foram suprimidos desta transcricao; sao o mesmo
+aviso registrado na v0.7.2, sobre a semantica futura de `sslmode`. Todo o resto
+e literal.
+
+```text
+[OK] pre-requisito - Claude real exigido nesta execucao, contra o backend local
+[RUN] doctor:e2e
+NutriScan Doctor - modo STRICT E2E (C:\Users\diego\OneDrive\Área de Trabalho\PJ)
+[OK] Node.js - 24.19.0
+[OK] npm - 11.17.0
+[OK] Frontend dependencies - installed (3 modules resolved)
+[OK] Backend dependencies - installed (4 modules resolved)
+[OK] backend/.env - found
+[OK] Env loader - backend/src/config/env.js
+[OK] DATABASE_URL - configured
+[OK] PostgreSQL - accessible
+[OK] Migrations - 2/2 applied, 1 unknown in database
+[OK] ANTHROPIC_API_KEY - configured
+[OK] ANTHROPIC_MODEL - claude-sonnet-5
+[OK] RUN_ANTHROPIC_INTEGRATION_TESTS - enabled
+[OK] Backend port - 3000
+[OK] Frontend origin - http://localhost:5173
+[WARN] Docker - unavailable (optional)
+[OK] Doctor strict-e2e - todos os requisitos obrigatorios atendidos
+[OK] doctor:e2e
+[RUN] e2e:strict
+[OK] migrations - aplicadas duas vezes (idempotente)
+[RUN] backend - iniciando API temporaria na porta 3000
+[OK] health - status=ok database=connected ai=configured
+[OK] deterministic engine - contains/traces conforme baseline
+[OK] privacy - payload sem segredos e com snapshot deterministico
+[OK] anthropic real #1 - pergunta generica validada
+[OK] fallback - AI_NOT_CONFIGURED -> source local
+[OK] session schema - token_hash presente e sem coluna de token bruto
+[OK] assistant authority - PostgreSQL vence guestAllergies e snapshot marca conflito
+[OK] anthropic real #2 - produto com conflito validado com sessao autenticada
+[OK] multi-device - alergias sincronizadas entre dispositivos A e B
+[OK] isolation - contas permanecem isoladas
+[OK] history sync - A gravou, B leu, conta isolada nao viu
+[OK] favorites sync - A gravou, B leu, remocao cruzada recusada com 404
+[OK] verdict freshness - item salvo sem veredito; perfil muda sem alterar o registro
+[OK] manual code lookup - digito verificador barra antes da rede; manual e camera dao o mesmo veredito
+[OK] auth - register, me, allergies, login, logout idempotente
+[OK] e2e:strict
+[PASS] verify:e2e - PostgreSQL real e Claude real comprovados
+
+=== EXIT CODE: 0 ===
+```
+
+### `2/2 applied, 1 unknown in database`
+
+Na v0.7.4 esta linha dizia `2/2 applied`. A diferenca nao e regressao: o doctor
+inspeciona so as migrations `.sql`, e a `003` e `.js`. Na execucao da v0.7.4 o
+doctor rodou ANTES de o `e2e:strict` aplicar a `003` no Neon; agora ela ja esta
+registrada em `schema_migrations`, e o doctor a ve como desconhecida. O runner,
+que conhece as duas extensoes, aplica e pula as tres - e o que diz a linha
+`migrations - aplicadas duas vezes (idempotente)`.
+
+O doctor contar so `.sql` e imprecisao de relatorio, anterior a esta versao.
+Nao foi alterado: o doctor faz parte do gate E2E, que esta versao nao pode
+tocar.
+
+## Tabela de subgates do gate E2E
+
+```text
+backendProcess          STARTED_BY_RUNNER
+database                EXECUTED
+migrations              EXECUTED_IDEMPOTENT
+auth                    PASSED
+sessionSchema           PASSED
+multiDevice             PASSED
+isolation               PASSED
+historySync             PASSED
+favoritesSync           PASSED
+verdictFreshness        PASSED
+manualCodeLookup        PASSED
+logout                  PASSED
+deterministicEngine     PASSED
+assistantGuest          PASSED
+assistantAuthenticated  PASSED
+assistantAuthority      PASSED
+fallback                PASSED
+privacy                 PASSED
+anthropic               configured
+anthropicReal           EXECUTED_GENERIC_AND_PRODUCT
+```
+
+**Nenhum subgate em SKIP ou NOT_EXECUTED.** Os 18 requisitos do modo strict
+foram satisfeitos: `findMissingRequirements` sobre este arquivo devolve `[]`.
+
+## E2E_LAST_RUN.json - conteudo integral
+
+O arquivo esta no `.gitignore` (`.gitignore:19`) e por isso NAO vai no ZIP.
+Conteudo integral:
+
+```json
+{
+  "version": "0.7.5",
+  "mode": "strict",
+  "startedAt": "2026-10-02T23:50:57.157Z",
+  "finishedAt": "2026-10-02T23:51:11.049Z",
+  "baseUrl": "http://127.0.0.1:3000/api",
+  "backendProcess": "STARTED_BY_RUNNER",
+  "database": "EXECUTED",
+  "migrations": "EXECUTED_IDEMPOTENT",
+  "auth": "PASSED",
+  "sessionSchema": "PASSED",
+  "multiDevice": "PASSED",
+  "isolation": "PASSED",
+  "historySync": "PASSED",
+  "favoritesSync": "PASSED",
+  "verdictFreshness": "PASSED",
+  "manualCodeLookup": "PASSED",
+  "logout": "PASSED",
+  "deterministicEngine": "PASSED",
+  "assistantGuest": "PASSED",
+  "assistantAuthenticated": "PASSED",
+  "assistantAuthority": "PASSED",
+  "fallback": "PASSED",
+  "privacy": "PASSED",
+  "anthropic": "configured",
+  "anthropicReal": "EXECUTED_GENERIC_AND_PRODUCT",
+  "anthropicCalls": 2,
+  "ok": true,
+  "rateLimitBudget": {
+    "margem": "no maximo 50% do teto",
+    "baldes": [
+      {
+        "balde": "assistente",
+        "usado": 2,
+        "teto": 20,
+        "margemMaxima": 10,
+        "folga": 18,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "auth",
+        "usado": 3,
+        "teto": 40,
+        "margemMaxima": 20,
+        "folga": 37,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "colecoes",
+        "usado": 12,
+        "teto": 300,
+        "margemMaxima": 150,
+        "folga": 288,
+        "dentroDaMargem": true
+      }
+    ],
+    "estouraram": []
+  }
+}
+```
+
+Gasto por balde identico ao da v0.7.4: colecoes 12, auth 3, assistente 2. Esta
+versao nao acrescentou requisicao ao gate.
+
+## Residuo no banco apos a execucao
+
+Conferido com o pool do proprio backend, que carrega `backend/.env` sozinho: a
+string de conexao nao foi lida nem impressa.
+
+```text
+=== CONTAGEM TOTAL NO BANCO ===
+users              4
+sessions           5
+product_history    0
+product_favorites  0
+
+=== RESIDUO DE TESTE (deve ser 0 em todas as linhas) ===
+gate E2E (e2e-real.js)         nutriscan-e2e-%          0
+suite de colecoes              colecoes-test-%          0
+suite de integracao antiga     e2e-%@example.test       0
+reproducao do E1               repro-e1-%               0
+qualquer @example.test         %@example.test           0
+qualquer @example.com          %@example.com            0
+
+RESIDUO SOMADO: 0
+
+=== LINHAS ORFAS (cascata da migration) ===
+product_history sem dono    0
+product_favorites sem dono  0
+```
+
+**Residuo zero.**
+
+## `verify:deploy` contra alvo LOCAL simulado
+
+O backend real (`node backend/src/server.js`) em `NODE_ENV=production`, servindo
+o `dist/` desta versao, contra o PostgreSQL local. As 12 variaveis que o backend
+le foram definidas explicitamente, para que o `backend/.env` nao preenchesse
+nenhuma lacuna; `ANTHROPIC_API_KEY` vazia.
+
+```text
+[alvo] NutriScan API v0.7.5 ouvindo na porta 3999
+
+verify:deploy - alvo http://127.0.0.1:3999
+versao do repositorio: 0.7.5
+
+[PASS        ] D1  versao no ar igual a do repositorio
+                ambos declaram 0.7.5
+[FAIL        ] D2  resposta por HTTPS, e http:// redireciona
+                o alvo foi informado como http:// - o deploy precisa responder por HTTPS
+[PASS        ] D3  cabecalhos de seguranca (HSTS, CSP, nosniff)
+                HSTS max-age=31536000, CSP e nosniff presentes
+[PASS        ] D4  rota /api inexistente da 404 de API, nao index.html
+                404 de API, em JSON
+[PASS        ] D5  rota autenticada sem sessao da 401
+                4 rotas autenticadas recusam sem sessao com 401
+[PASS        ] D6  erro provocado nao vaza stack, SQL nem caminho
+                erro provocado (HTTP 500) sem stack, SQL, tabela nem caminho
+[PASS        ] D7  o frontend e servido e carrega
+                HTML e 2 asset(s) servidos (1 script(s))
+[PASS        ] D8  nenhuma chave no HTML nem nos bundles
+                3 arquivo(s) inspecionado(s), nenhum segredo
+
+PASS 7 | FAIL 1 | NOT_EXECUTED 0
+[FAIL] verify:deploy
+
+=== EXIT CODE do verify:deploy: 1 ===
+```
+
+O D2 reprova porque nao ha TLS local. Isso e o comportamento correto: o D2 nao
+pode aceitar http, e um alvo local nao prova HTTPS. A prova de HTTPS so pode vir
+do deploy real.
+
+## `verify:deploy` contra o deploy REAL
+
+`https://nutriscan-h1wp.onrender.com`, medido em 2026-10-02 20:53 (-03:00).
+Somente leitura.
+
+```text
+verify:deploy - alvo https://nutriscan-h1wp.onrender.com
+versao do repositorio: 0.7.5
+
+[FAIL        ] D1  versao no ar igual a do repositorio
+                repositorio declara 0.7.5 e o deploy anuncia 0.7.0
+[PASS        ] D2  resposta por HTTPS, e http:// redireciona
+                HTTPS responde, e http:// redireciona (301) para https://
+[PASS        ] D3  cabecalhos de seguranca (HSTS, CSP, nosniff)
+                HSTS max-age=31536000, CSP e nosniff presentes
+[PASS        ] D4  rota /api inexistente da 404 de API, nao index.html
+                404 de API, em JSON
+[PASS        ] D5  rota autenticada sem sessao da 401
+                4 rotas autenticadas recusam sem sessao com 401
+[PASS        ] D6  erro provocado nao vaza stack, SQL nem caminho
+                erro provocado (HTTP 500) sem stack, SQL, tabela nem caminho
+[PASS        ] D7  o frontend e servido e carrega
+                HTML e 2 asset(s) servidos (1 script(s))
+[PASS        ] D8  nenhuma chave no HTML nem nos bundles
+                3 arquivo(s) inspecionado(s), nenhum segredo
+
+PASS 7 | FAIL 1 | NOT_EXECUTED 0
+[FAIL] verify:deploy
+
+=== EXIT CODE: 1 ===
+```
+
+**O D1 reprova porque o que esta no ar e a v0.7.0.** Os commits da v0.7.1 a
+v0.7.4 nunca foram enviados ao GitHub - `origin/main` esta em `641aa5f` -, entao
+o Render nunca os publicou. E o achado R3 da v0.6.9 se repetindo, desta vez pego
+por gate.
+
+O que os sete PASS provam, e o que NAO provam: eles medem a v0.7.0 que esta no
+ar. HTTPS, cabecalhos, 404 de API, 401 sem sessao, ausencia de vazamento e de
+chave valem para AQUELE codigo. **Nenhum deles prova nada sobre a v0.7.5**, que
+nao esta publicada. O endurecimento desta versao - `FRONTEND_ORIGIN`
+obrigatoria, boot que recusa configuracao incompleta, health sem `aiProvider` -
+so pode ser provado no ar depois de publicado, rodando o mesmo comando.
+
+O D6 mediu `500` para JSON quebrado tambem no deploy real. Nao vaza nada, mas o
+codigo deveria ser `400` - observacao registrada no AUDIT_REPORT, nao corrigida.
+
+## Suite completa do backend
+
+Com `RUN_DB_INTEGRATION_TESTS=true`, contra PostgreSQL 17.10 local:
+
+```text
+ℹ tests 276
+ℹ pass 275
+ℹ fail 0
+ℹ skipped 1
+[R11] gasto de colecoes desta suite: 403 de 3000 (folga 7.44x)
+=== EXIT CODE: 0 ===
+```
+
+A suite cresceu de 238 para 276: 23 testes em `productionHardening.test.js` e 15
+em `verifyDeploy.test.js`. A suite de colecoes rodou inteira contra o banco:
+32 declarados, 32 verdes.
+
+Uma execucao anterior desta mesma suite, nesta versao, teve **44 falhas**: 4
+eram os testes que exigem estes relatorios atualizados, e 40 eram de banco - o
+PostgreSQL local estava parado desde 2026-09-20. O banco foi religado e a suite
+refeita; o numero acima e o da execucao com o banco de pe. O mesmo banco parado
+invalidou tres rodadas de mutacao, descritas no AUDIT_REPORT.
+
+O unico SKIP:
+
+```text
+﹣ Claude real responde pergunta curta quando explicitamente habilitado
+  # NAO EXECUTADO - defina RUN_ANTHROPIC_INTEGRATION_TESTS=true e ANTHROPIC_API_KEY
+```
+
+Protecao contra chamada paga acidental num `npm test` comum. **NAO EXECUTADO
+nao conta como PASS** - a propriedade que ele cobriria foi provada no gate, com
+duas chamadas reais.
+
+A suite pesada **nao** rodou contra o Neon, pela mesma decisao das versoes
+anteriores.
+
+## Validacao por mutacao
+
+```text
+mortas 49 | nao executadas 0 | problemas 0 | linha de base: antes verde, depois verde
+APROVADO: toda mutacao foi detectada pelo teste correspondente.
+```
+
+Treze mutantes novos, trinta e seis herdados. **Tres rodadas anteriores desta
+versao rodaram com o PostgreSQL local parado e nao valem** - detalhe no
+AUDIT_REPORT. A rodada acima foi feita sobre o codigo final, depois da ultima
+alteracao de teste, e a linha de base verde antes e depois confirma que o banco
+estava de pe do comeco ao fim.
+
+## O que NAO foi executado
+
+```text
+camera em hardware real          NAO EXECUTADO - exige aparelho com camera
+decodificacao optica             NAO EXECUTADO
+Open Food Facts real             NAO EXECUTADO - a busca do gate e injetada
+v0.7.5 no deploy real            NAO PUBLICADA - o verify:deploy mediu a v0.7.0
+HTTPS da v0.7.5                  NAO COMPROVADO - so o deploy real prova, e ela
+                                 nao esta no ar
+suite de colecoes no Neon        NAO EXECUTADO - por decisao de risco
+carga simultanea real            NAO EXECUTADO
+```
+
+**A atestacao da camera em hardware continua ABERTA.** Esta versao nao a fecha.
+
+## Historico de auditorias anteriores
+
+## E2E da v0.7.4 - 2026-09-20
 
 ## Resultado geral
 
@@ -289,7 +659,6 @@ carga simultanea real          NAO EXECUTADO
 ```
 
 **A atestacao da camera em hardware continua ABERTA.** Esta versao nao a fecha.
-## Historico de auditorias anteriores
 
 ## E2E da v0.7.3 - 2026-09-20
 

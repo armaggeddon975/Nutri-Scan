@@ -1,6 +1,589 @@
-# Relatorio de Auditoria - NutriScan v0.7.4
+# Relatorio de Auditoria - NutriScan v0.7.5
 
-Data: 2026-09-20
+Data: 2026-10-02
+
+## Escopo
+
+Entrada 0.7.4, saida 0.7.5. Prontidao de producao (Entrega A, itens 6.1 a 6.9) e
+o comando `npm run verify:deploy` (Entrega B, subgates D1 a D8).
+
+Preservado sem alteracao: `shared/`, todo o `backend/src/ai/`, scrypt, sessoes,
+schema do banco, `backend/src/middleware/rateLimit.js` (tetos 300 por usuario e
+3000 por IP, sem bypass), a canonicalizacao da v0.7.4 e `scripts/lib/e2eGate.js`
+com os 18 requisitos strict. Nenhuma migration nova. Nenhuma feature de produto.
+
+## A premissa do prompt, corrigida
+
+O prompt afirma que o NutriScan "nunca foi publicado". Medido nesta versao:
+
+```text
+publicado    SIM - https://nutriscan-h1wp.onrender.com responde
+verificado   NUNCA, ate esta versao
+no ar        0.7.0 - origin/main em 641aa5f
+local        seis commits a frente, v0.7.1 a v0.7.4, nunca enviados
+```
+
+A parte que importa da premissa continua verdadeira: **nada do que foi auditado
+da v0.7.1 em diante esta no ar**, e nenhuma ferramenta tinha conferido isso. O
+primeiro `verify:deploy` contra a URL real reprovou no D1 por exatamente esse
+motivo. E o achado R3 da v0.6.9 se repetindo - desta vez detectado por gate.
+
+## A camera continua NAO ATESTADA
+
+Esta versao nao toca o scanner e nao fecha a lacuna de atestacao em hardware
+real. Nenhum aparelho com camera participou de nenhuma execucao.
+
+## A1 - 6.1 a 6.9, item a item
+
+Cada item: estado encontrado, o que mudou, decisao, teste. Todos os testes P
+rodam com `NODE_ENV=production` sem deploy - processos filhos com ambiente
+montado do zero, para que o `backend/.env` real nao preencha nenhuma lacuna.
+
+### 6.1 - cookie de sessao
+
+```text
+estado      httpOnly true, sameSite lax, secure = isProduction(), path /,
+            maxAge = SESSION_TTL_DAYS - ja correto, sem teste em producao
+mudou       nada no codigo
+teste       P1 (2 testes)
+```
+
+`P1` sobe o app em producao, faz logout e le o `Set-Cookie` real: `HttpOnly`,
+`Secure`, `SameSite=Lax`, `Path=/`. O segundo teste mede `maxAge` do cookie e a
+expiracao gravada no banco por uma sonda, e exige que venham da mesma fonte.
+
+**Decisao: `SameSite=Lax`.** Frontend e API estao na mesma origem, entao `lax`
+manda o cookie em toda chamada do app e recusa subrequisicao de outro site.
+`none` so seria preciso com frontend e API em sites diferentes, e reabriria
+CSRF. Armadilha documentada em `docs/DEPLOY.md`: `onrender.com` esta na Public
+Suffix List, e dois servicos do Render sao sites diferentes.
+
+### 6.2 - CORS e `FRONTEND_ORIGIN`
+
+```text
+estado      FRONTEND_ORIGIN ausente -> "http://localhost:5173", TAMBEM em
+            producao. O backend anunciava confianca, com credenciais, numa
+            origem local.
+mudou       default de localhost so fora de producao; em producao a variavel
+            e obrigatoria, https e so a origem; origem vazia vira `false`
+teste       P2 (3 testes), P3 (2 testes)
+```
+
+O CORS **nunca refletiu a origem do request**. Medido mandando `Origin` de
+atacante contra o pacote `cors` com origem fixa: o cabecalho volta com a origem
+configurada. Uma suspeita minha durante o trabalho - que origem vazia viraria
+`*` - foi testada e era FALSA: vazio produz "sem cabecalho". O `false` explicito
+ficou assim mesmo, para nao depender de detalhe de implementacao da biblioteca,
+e o comentario no codigo registra o que foi medido.
+
+### 6.3 - `trust proxy`
+
+```text
+estado      TRUST_PROXY com default true em producao
+mudou       obrigatoria e explicita em producao; valor nao reconhecido recusa
+teste       P4 (2 testes)
+```
+
+`P4` sobe o app em producao e bate em `/api/auth/login` com `X-Forwarded-For`
+diferentes, lendo `RateLimit-Remaining`: cada IP tem o seu balde. O contraste,
+sem `trust proxy`, mostra todos no mesmo balde - o teto por IP virando global.
+
+O default `true` era correto para o Render. Virou obrigatorio porque errar para
+qualquer lado e silencioso, e o default esconde a decisao de quem configura.
+
+### 6.4 - vazamento em resposta de erro
+
+```text
+estado      500 em producao ja omitia o detalhe. Mas o erro era DESCARTADO:
+            nem cliente nem log. Um 500 em producao sumia sem rastro.
+mudou       console.error do erro no servidor; resposta inalterada
+teste       P5 (3 testes)
+```
+
+`P5` derruba o banco de verdade - `DATABASE_URL` apontando para porta fechada -,
+manda um cookie para forcar a consulta de sessao, e confere que nem
+`ECONNREFUSED`, nem host, nem porta, nem stack chegam ao corpo. O mesmo para
+JSON quebrado no corpo. O terceiro teste exige que o detalhe apareca no stderr
+do servidor.
+
+### 6.5 - HTTPS
+
+```text
+estado      HSTS do helmet ligado; nenhum redirect no backend
+mudou       nada no codigo; decisao documentada
+teste       6.5 (1 teste) e verify:deploy D2 + D3
+```
+
+**Decisao: redirect no proxy do Render, HSTS no backend.** Um redirect no
+backend, baseado em `req.secure`, derrubaria o health check interno do Render e
+poderia entrar em laco com `trust proxy` errado. O teste exige HSTS com
+`max-age` de pelo menos 180 dias e `/api/health` respondendo 200 sem
+redirecionar. Contra o deploy real, D2 mediu `301` de http para https e D3 mediu
+`max-age=31536000`.
+
+### 6.6 - arquivos estaticos e fallback de SPA
+
+```text
+estado      JA CORRETO. /api/* inexistente -> 404 JSON; rota de frontend ->
+            index.html; guarda insensivel a maiusculas desde a v0.6.7
+mudou       nada
+teste       P6, P7 - em NODE_ENV=production
+```
+
+O `productionServing.test.js` existente ja cobria os dois pontos que o prompt
+pede: o fallback de SPA (`/alergias` recebe o HTML) e o 404 de API em JSON para
+`/api/naoexiste`, `/API/naoexiste`, `/Api/naoexiste`, `/api` e `/API`. O que
+faltava era o modo: ele roda no ambiente do processo de teste, nao em producao.
+`P6` e `P7` repetem a prova num processo com `NODE_ENV=production`.
+
+### 6.7 - `/api/health`
+
+```text
+estado      versao em literal no env.js, repetida a mao; campo
+            aiProvider: "anthropic" exposto
+mudou       versao lida de backend/package.json; aiProvider removido
+teste       P8 (2 testes)
+```
+
+`P8` exige exatamente as chaves `ai`, `database`, `status` e `version`, e que
+nenhum valor pareca credencial, host ou caminho. O segundo teste exige que
+`env.js` nao tenha literal de versao.
+
+O `aiProvider` saiu pela regra do `CLAUDE.md`: o frontend nunca sabe qual
+provedor respondeu. O health e API publica. Nenhum consumidor usava o campo.
+
+O campo `database` (connected, error, not_configured) **foi mantido**: o gate
+E2E e o `verify:deploy` dependem dele, e ele nao revela host, porta nem nome.
+
+### 6.8 - migrations no deploy
+
+```text
+estado      buildCommand termina em `npm run db:migrate`; o start nao migra
+mudou       nada no codigo; documentado
+teste       nenhum novo - o runner e a idempotencia ja tem teste desde a v0.7.4
+```
+
+**Decisao: migration no build.** Falhou, o build falha e o Render mantem a
+versao anterior. Registrado como risco: entre o fim do build e a troca de
+versao, o codigo antigo serve contra o schema novo. Para a `003`, que e de
+dados, isso pode produzir uma linha UPC-A nao canonica nessa janela.
+
+### 6.9 - variaveis de ambiente
+
+```text
+estado      nenhuma variavel era obrigatoria em producao; todas tinham default
+mudou       quatro recusam subir; booleano nao reconhecido recusa
+teste       P9 (6 testes)
+```
+
+Detalhe na secao A2.
+
+## A2 - inventario completo de variaveis
+
+Todas as variaveis que o backend le, levantadas de `backend/src/config/env.js`:
+
+```text
+variavel                     producao      default             falta em producao
+NODE_ENV                     define modo   development         roda como dev (*)
+DATABASE_URL                 OBRIGATORIA   -                   NAO SOBE
+DATABASE_SSL                 OBRIGATORIA   false (dev)         NAO SOBE
+FRONTEND_ORIGIN              OBRIGATORIA   localhost (dev)     NAO SOBE
+TRUST_PROXY                  OBRIGATORIA   true em prod        NAO SOBE
+PORT                         opcional      3000                o Render injeta
+SESSION_TTL_DAYS             opcional      30                  30
+SESSION_COOKIE_NAME          opcional      nutriscan_session   nome padrao
+ANTHROPIC_API_KEY            opcional      vazia               assistente local
+ANTHROPIC_MODEL              opcional      claude-sonnet-5     padrao
+ANTHROPIC_TIMEOUT_MS         opcional      20000               padrao
+ANTHROPIC_MAX_OUTPUT_TOKENS  opcional      1200                padrao
+```
+
+A mensagem de recusa, real, de um processo em producao sem `FRONTEND_ORIGIN`:
+
+```text
+NutriScan NAO subiu: configuracao de producao incompleta.
+  - FRONTEND_ORIGIN: ausente ou vazia
+Defina as variaveis no painel da hospedagem. Nenhum valor e impresso aqui.
+```
+
+`P9 a mensagem de falha cita nomes, nunca valores` monta um ambiente com
+valores-isca e exige que nenhum apareca no stderr.
+
+**`SESSION_SECRET`**, citado no prompt, **nao existe** neste projeto: a sessao e
+token aleatorio com hash no banco, sem cookie assinado.
+
+**`ANTHROPIC_API_KEY` continua opcional** por decisao de produto documentada: sem
+ela o assistente responde localmente, e o health mostra `ai: not_configured`.
+
+(*) `NODE_ENV` com erro de digitacao vira `development` em silencio - ver
+"Observacoes NAO corrigidas".
+
+Para confirmar presenca das credenciais, so `configured` / `not_configured` foi
+consultado. Nenhum valor de credencial foi lido, impresso ou manipulado nesta
+versao.
+
+## A3 - `verify:deploy`, D1 a D8
+
+`scripts/verify-deploy.js`, `npm run verify:deploy -- <url>` ou `DEPLOY_URL`.
+
+```text
+D1  GET /api/health; version IGUAL a do package.json, por `compararVersoes`
+    de version-check.js - igualdade estrita, nunca includes nem prefixo
+D2  o alvo e https://; e GET http://<host>/api/health com redirect manual
+    precisa devolver 3xx com Location https://
+D3  Strict-Transport-Security com max-age >= 15552000, CSP presente,
+    X-Content-Type-Options nosniff
+D4  GET /api/__verify_deploy_inexistente -> 404, application/json, sem
+    <!doctype html
+D5  GET /api/auth/me, /api/history, /api/favorites, /api/profile sem cookie
+    -> 401 em todas
+D6  POST de JSON quebrado na sonda inexistente -> >= 400, corpo sem stack,
+    caminho, node_modules, SQL, mensagem do PostgreSQL, nome de tabela ou
+    codigo de driver
+D7  GET / -> 200 text/html, com pelo menos um <script src> da propria origem;
+    cada script e estilo referenciado -> 200
+D8  o HTML e os assets baixados no D7, varridos por chave Anthropic, chave
+    estilo OpenAI, o nome ANTHROPIC_API_KEY, string de conexao com senha,
+    senha e host do Neon. Sem o que o D7 baixou -> NOT_EXECUTED, nunca PASS
+```
+
+Regras do agregado: exit 0 so com os oito em PASS. `NOT_EXECUTED` e qualquer
+estado desconhecido reprovam. Excecao dentro de um subgate vira FAIL com o
+motivo. Sem URL, exit 1 com instrucao, sem nenhuma consulta. Tempo limite de
+60 s por requisicao, por causa do sono do plano free do Render.
+
+**Somente leitura.** Toda requisicao e GET, salvo o POST do D6 para um caminho
+que nao e rota. O teste `P13` registra cada requisicao do comando, e um segundo
+`P13` poe um espiao na frente do roteador REAL e exige que nada de escrita
+chegue.
+
+## A4 - P1 a P13, R1 a R4
+
+`backend/tests/productionHardening.test.js` (23 testes, P1 a P9 e 6.5) e
+`backend/tests/verifyDeploy.test.js` (15 testes, P10 a P13):
+
+```text
+P1   cookie em producao: HttpOnly, Secure, SameSite=Lax, Path    2 testes  verde
+P2   sem FRONTEND_ORIGIN nao sobe; https e so origem; createApp  3 testes  verde
+P3   CORS nunca reflete a origem; preflight estranho sem permissao 2 testes verde
+P4   trust proxy: req.ip segue o XFF e o balde acompanha         2 testes  verde
+P5   erro de driver e JSON quebrado nao vazam; detalhe vai ao log 3 testes verde
+P6   /api inexistente da 404 JSON, nunca index.html              1 teste   verde
+P7   rota de frontend recebe o app                               1 teste   verde
+P8   health: quatro chaves, nada de segredo; versao de fonte unica 2 testes verde
+P9   cada obrigatoria ausente recusa; booleano invalido recusa;
+     nomes sem valores; completo sobe; dev nao exige; inventario  6 testes  verde
+6.5  HSTS em producao, health sem redirect                       1 teste   verde
+P10  sem URL e com URL em branco: falha com instrucao            2 testes  verde
+P11  deploy perfeito; cada defeito; http; rede fora;
+     NOT_EXECUTED isolado; NOT_EXECUTED no fluxo; exit code real  7 testes  verde
+P12  sete versoes vizinhas reprovam; identica aprova             2 testes  verde
+P13  registro sem escrita; roteador real com espiao; sonda nao e rota 3 testes verde
+     mais: os oito subgates D1 a D8 existem                      1 teste   verde
+```
+
+As regressoes ficam nas suites que ja as provavam, e rodaram inteiras:
+
+```text
+R1  canonicalizacao da v0.7.4    barcode.test.js (N1) e collectionsIntegration
+                                 (N1a a N1g), contra PostgreSQL real
+R2  exploit C1                   allergyVerdict.test.js, T1 a T3
+R3  tetos de limitador           rateLimit.test.js, R6 e R7 - 40, 20, 300, 3000
+R4  isolamento entre contas      collectionsIntegration.test.js, I1 a I3
+```
+
+Nenhuma dessas suites foi alterada nesta versao.
+
+## A5 - validacao por mutacao
+
+### Resultado da rodada que vale
+
+```text
+T1   P2   FRONTEND_ORIGIN deixa de ser obrigatoria em producao          MORTA
+T1b  P2   FRONTEND_ORIGIN volta a ter default de localhost em producao  MORTA
+T2   P5   o handler de erro inclui err.stack na resposta                MORTA
+T2b  P5   o handler de erro para de registrar o detalhe no log          MORTA
+T3   P9   DATABASE_SSL ausente passa a usar o default false             MORTA
+T3b  P9   booleano nao reconhecido volta a cair no default              MORTA
+T4   P12  verify:deploy compara versao com includes                     MORTA
+T5   P13  o POST do D6 vai para uma rota de escrita                     MORTA
+T5b  P13  o D5 passa a sondar com POST de logout                        MORTA
+T6   P3   o CORS passa a refletir a origem do request                   MORTA
+T7   P4   o app deixa de confiar no proxy                               MORTA
+T8   P11  NOT_EXECUTED passa a contar como aprovacao                    MORTA
+T9   P11  o comando sai com 0 mesmo com subgate reprovado               MORTA
+
+mortas 49 | nao executadas 0 | problemas 0 | linha de base: antes verde, depois verde
+APROVADO: toda mutacao foi detectada pelo teste correspondente.
+```
+
+Treze novos, trinta e seis herdados (S1 a S6, P1 a P9, N1 a N5, M1 a M7), todos
+mortos. Os cinco mutantes sugeridos pelo prompt estao entre os treze:
+
+```text
+FRONTEND_ORIGIN volta a ter default em producao     T1b (e T1)
+handler de erro inclui err.stack                    T2
+variavel obrigatoria ausente usa default            T3 (e T3b)
+verify:deploy compara com includes                  T4
+verify:deploy chama rota de escrita                 T5 (e T5b)
+```
+
+`T6`, `T7`, `T8` e `T9` vao alem do pedido: cobrem P3, P4 e P11.
+
+### Um mutante sobreviveu, e o teste foi corrigido
+
+Na primeira rodada, **`T8` SOBREVIVEU**. O teste do agregado so exercitava o
+fluxo real, em que o D8 fica `NOT_EXECUTED` apenas quando o D7 ja falhou - e o
+FAIL do D7 reprovava o agregado de qualquer jeito, escondendo uma regra frouxa
+(`!== FAIL` em vez de `=== PASS`).
+
+A regra foi separada numa funcao, `agregar`, e testada sozinha: sete PASS e um
+NOT_EXECUTED, mais um estado desconhecido, um subgate faltando e a lista vazia.
+O mutante foi reancorado na funcao e morreu.
+
+Revisando o P11 por causa disso, faltava tambem o **codigo de saida** do
+processo: todos os testes olhavam o agregado em memoria. Acrescentado um teste
+que roda o comando contra o roteador real e exige exit 1, e o mutante `T9`.
+
+### O achado mais serio: tres rodadas validaram com o banco parado
+
+**Tres rodadas de mutacao desta versao rodaram com o PostgreSQL local fora do
+ar.** O ultimo registro do log do banco e de 2026-09-20 21:14; as rodadas sao de
+2026-10-02. Todo mutante de banco "morreu" porque os testes nomeados falhavam por
+conexao recusada, nao pelo defeito. O script imprimiu:
+
+```text
+1a  mortas 47 | nao executadas 0 | problemas 1   REPROVADO - pelo T8, unico achado real
+2a  mortas 48 | nao executadas 0 | problemas 0   APROVADO
+3a  mortas 49 | nao executadas 0 | problemas 0   APROVADO
+```
+
+Para os mutantes de banco, esses numeros nao provavam nada. O que denunciou foi
+a suite completa logo depois: 40 falhas de banco com o codigo SEM mutacao.
+
+A causa esta no proprio `scripts/mutation-check.js`: ele aceitava qualquer falha
+do teste nomeado como prova, e nunca conferia que esse teste passava sem a
+mutacao.
+
+**Alteracao no script, declarada para decisao do auditor:** uma linha de base.
+Antes da primeira mutacao e depois da ultima, cada suite roda sem defeito; a
+suite tem de sair verde e cada teste nomeado em `deveQuebrar` tem de ter PASSADO
+- nao pulado, nao ausente. Base inicial vermelha: nenhuma mutacao e aplicada.
+Base final vermelha: a rodada inteira e reprovada, porque o ambiente mudou no
+meio. A alteracao so torna o script mais exigente; nenhum criterio de morte foi
+afrouxado.
+
+A guarda foi provada reproduzindo o defeito - banco parado de proposito:
+
+```text
+[linha de base - antes] 6 suite(s), sem mutacao
+  VERDE    tests/productionHardening.test.js
+  VERDE    tests/verifyDeploy.test.js
+  VERDE    tests/barcode.test.js
+  VERMELHA tests/collectionsIntegration.test.js
+  VERDE    tests/productLookup.test.js
+  VERDE    tests/rateLimit.test.js
+  - tests/collectionsIntegration.test.js SEM mutacao saiu com codigo 1 (...)
+  - ... "N1a o mesmo produto em UPC-A e EAN-13 vira UMA linha canonica" nao passou SEM mutacao
+  - ... (mais sete testes nomeados)
+
+REPROVADO ANTES DE MUTAR: a linha de base esta vermelha.
+=== EXIT CODE: 1 ===
+```
+
+Com o banco religado, a rodada passou com as duas bases verdes. Ela foi refeita
+uma ultima vez sobre o codigo final, depois da correcao da isca de chave
+descrita em A10, com o mesmo resultado: 49 mortas, bases verdes antes e depois.
+
+Os mutantes `T` nao dependem de banco - a suite de producao ficou verde com o
+banco parado -, entao as mortes deles nas rodadas anteriores eram legitimas.
+As rodadas das versoes anteriores tambem nao sao afetadas: o log mostra o banco
+ativo em 2026-09-20, durante elas.
+
+## A6 a A10
+
+```text
+A6   npm run build                        OK, exit 0
+A7   npm --prefix backend test            276 testes, 275 pass, 0 fail, 1 SKIP, exit 0
+A8   suite contra PostgreSQL 17.10 local  incluida no A7, RUN_DB_INTEGRATION_TESTS=true;
+                                          32/32 na suite de colecoes; R11 mede 403 de 3000
+A9   npm audit --audit-level=moderate     0 vulnerabilidades, frontend e backend
+A10  node scripts/verify-release.js       exit 0; secret scan 0 segredos reais
+```
+
+A suite cresceu de 238 para 276: 23 testes em `productionHardening.test.js` e 15
+em `verifyDeploy.test.js`. O unico SKIP e a chamada paga da Anthropic num
+`npm test` comum, que se declara `NAO EXECUTADO`; **nao conta como PASS**, e a
+propriedade que ele cobriria foi provada no gate.
+
+Dentro do `verify:release` a mesma suite conta `238 pass, 38 skipped`: ali a flag
+de banco fica desligada e os testes de integracao se declaram NAO EXECUTADOS.
+Comportamento ja registrado na v0.7.2; nenhum desses SKIP conta como PASS.
+
+### O secret scan pegou uma isca minha
+
+A primeira execucao do `verify:release` desta versao **reprovou**:
+
+```text
+[FAIL] secret scan - 1 suspicious file(s)
+- backend/tests/verifyDeploy.test.js
+```
+
+O arquivo tinha, como literal, uma chave falsa com a forma de chave Anthropic -
+a isca que prova que o D8 pega chave num bundle. O scan estava certo: ele nao
+tem como saber que a chave e falsa, e um literal desses no codigo-fonte e
+exatamente o que ele existe para barrar.
+
+**O gate nao foi tocado.** A isca passou a ser montada por partes em tempo de
+execucao, de modo que a forma de chave existe no bundle servido pelo deploy
+simulado, mas nao no fonte. O teste do D8 continua reprovando o deploy com
+chave. Como o arquivo de teste mudou, a validacao por mutacao foi refeita sobre
+o codigo final.
+
+## A11 - `verify:e2e`
+
+**PASS, exit code 0.**
+
+```text
+mode                    strict
+manualCodeLookup        PASSED
+anthropicReal           EXECUTED_GENERIC_AND_PRODUCT
+anthropicCalls          2
+ok                      true
+residuo no Neon         0
+```
+
+Saida literal, tabela de subgates e `E2E_LAST_RUN.json` integral estao no
+E2E_REPORT desta versao. Nenhum subgate em SKIP ou NOT_EXECUTED.
+
+## A12 - `verify:deploy` executado
+
+```text
+alvo LOCAL simulado     D1 PASS  D2 FAIL  D3-D8 PASS   exit 1
+deploy REAL             D1 FAIL  D2-D8 PASS            exit 1
+```
+
+**Simulado:** o backend real em `NODE_ENV=production`, servindo o `dist/`, com as
+12 variaveis definidas explicitamente e sem chave de IA. O D2 reprova porque o
+alvo e `http://127.0.0.1` - nao ha TLS local, e o D2 existe para nao aceitar
+isso.
+
+**Real:** `https://nutriscan-h1wp.onrender.com`, medido em 2026-10-02 20:53
+(-03:00). O D1 reprova: o repositorio declara 0.7.5 e o deploy anuncia 0.7.0.
+
+Os sete PASS do deploy real medem a v0.7.0. **Nao provam nada sobre a v0.7.5**,
+que nao esta publicada. Saida literal das duas execucoes no E2E_REPORT.
+
+Nenhum dos dois FAIL foi contornado, e nenhum subgate foi alterado depois de
+ver o resultado.
+
+## A13 - os 18 requisitos strict
+
+`scripts/lib/e2eGate.js`, `scripts/e2e-real.js` e `scripts/verify-e2e.js`:
+`git diff` vazio. `buildStrictRequirements` nao foi tocado.
+
+```text
+ 1 backendProcess       7 isolation            13 historySync
+ 2 database             8 logout               14 favoritesSync
+ 3 migrations           9 assistantAuthority   15 verdictFreshness
+ 4 auth                10 deterministicEngine  16 manualCodeLookup
+ 5 sessionSchema       11 fallback             17 anthropicReal
+ 6 multiDevice         12 privacy              18 assistantAuthenticated
+```
+
+Conferido de duas formas. Os testes existentes (`D2`, `A10` e `A12` de
+`e2eGate.test.js`) passaram na suite. E, a parte, contra o `E2E_LAST_RUN.json`
+desta execucao: `findMissingRequirements` devolve `[]`, e pondo CADA um dos 18
+sozinho em `NOT_EXECUTED`, o gate reprova exatamente aquele.
+
+## A14, A15
+
+```text
+A14  residuo NutriVa     0 em codigo, interface e manifestos. Restam so: a secao
+                         historica do CHANGELOG, a secao da v0.7.4 no historico
+                         deste relatorio e o teste que proibe o nome
+A15  versao 0.7.5        package.json                         0.7.5
+                         backend/package.json                 0.7.5
+                         package-lock.json (raiz e "")        0.7.5
+                         backend/package-lock.json (raiz e "") 0.7.5
+                         /api/health de um processo real      0.7.5
+                         README                               # NutriScan v0.7.5
+                         CHANGELOG                            ## NutriScan v0.7.5 - 2026-10-02
+```
+
+Desde esta versao, o `/api/health` le de `backend/package.json`: incrementar a
+versao em mais um lugar a mao deixou de ser possivel.
+
+## Observacoes descritas e NAO corrigidas
+
+Fora do escopo das secoes 6 e 7. Descritas para decisao, como manda a secao 16.
+
+```text
+NODE_ENV com erro de digitacao   "prod" ou "producao" viram development, sem
+                                 aviso: Secure, boot check e omissao de
+                                 detalhe se desligam juntos. O teste existente
+                                 "valores invalidos de ambiente caem em
+                                 defaults seguros" trava isso de proposito.
+                                 Proposta: recusar subir com NODE_ENV fora de
+                                 development/test/production.
+
+JSON malformado devolve 500      o body-parser marca o erro com status 400, e
+                                 o handler ignora. Nao vaza nada - P5 e D6
+                                 provam -, mas o codigo HTTP esta errado.
+                                 Proposta: respeitar error.status 4xx com
+                                 `expose: true`.
+
+env.test.js troca o .env real    withTemporaryEnv sobrescreve backend/.env e
+                                 restaura no finally. Um processo morto no
+                                 meio deixa o arquivo temporario no lugar, e a
+                                 configuracao real se perde. Proposta: apontar
+                                 o loader para um caminho de teste.
+
+janela de migration              ver 6.8.
+
+migration que falha sem dizer    `backend/scripts/migrate.js` imprime so
+por que                          `error.message`. Uma conexao recusada a um host
+                                 com IPv4 e IPv6 vira AggregateError, cuja
+                                 message e VAZIA - medido nesta versao. Um build
+                                 do Render que nao alcance o banco falharia
+                                 com o log em branco. Proposta: imprimir
+                                 `error.code` e as mensagens de `error.errors`.
+
+credenciais expostas             a DATABASE_URL de producao e a
+                                 ANTHROPIC_API_KEY foram expostas no contexto
+                                 de uma sessao anterior (v0.7.2). O dono
+                                 decidiu rotacionar ao final do projeto. A
+                                 rotacao continua PENDENTE.
+```
+
+## O que esta versao NAO prova
+
+```text
+v0.7.5 no ar                       NAO PUBLICADA - o deploy real roda a v0.7.0
+endurecimento no deploy real       NAO COMPROVADO - so pode ser medido depois de
+                                   publicar, com o mesmo verify:deploy
+HTTPS da v0.7.5                    NAO COMPROVADO - o alvo simulado nao tem TLS
+camera em hardware real            NAO EXECUTADO - exige aparelho com camera
+decodificacao optica               NAO EXECUTADO
+Open Food Facts real               NAO EXECUTADO - a busca do gate e injetada
+suite de colecoes no Neon          NAO EXECUTADO - por decisao de risco
+carga simultanea real              NAO EXECUTADO
+```
+
+**A atestacao da camera em hardware continua ABERTA e esta versao nao a fecha.**
+
+### Antes de publicar
+
+**`FRONTEND_ORIGIN=https://nutriscan-h1wp.onrender.com` precisa estar definida
+no painel do Render antes do push.** Sem ela, a v0.7.5 nao sobe - por desenho.
+O Render manteria a versao anterior no ar, e o `verify:deploy` continuaria
+reprovando no D1.
+
+Publicar nao foi feito: a secao 17 manda parar depois do ZIP.
+
+## Historico de auditorias anteriores
+
+## Auditoria da v0.7.4 - 2026-09-20
 
 ## Escopo
 
@@ -447,8 +1030,6 @@ substituido. Fica declarado para que nao pareca cobertura que nao existe.
 `cleanBarcode`, usado no caminho da camera, remove caracteres nao numericos.
 Um CODE_128 alfanumerico e portanto mutilado antes da busca. E anterior a esta
 versao, fora do escopo dela, e continua registrado para decisao.
-
-## Historico de auditorias anteriores
 
 ## Auditoria da v0.7.3 - 2026-09-20
 

@@ -40,12 +40,33 @@ services:
       - key: ANTHROPIC_MODEL
         value: claude-sonnet-5
 
-      # FRONTEND_ORIGIN nao aparece aqui de proposito. Em producao o backend
-      # serve o proprio frontend, entao as chamadas sao de mesma origem e nao
-      # passam por CORS. Exigir essa variavel no blueprint travaria a criacao do
-      # servico: a URL publica so existe depois que o servico e criado.
+      # FRONTEND_ORIGIN - OBRIGATORIA desde a v0.7.5.
+      #
+      # Ate a v0.7.4 esta variavel ficava de fora, com a justificativa de que o
+      # backend serve o proprio frontend (mesma origem, sem CORS) e de que a URL
+      # publica so existe depois de o servico ser criado. Sem ela, porem, o
+      # backend caia no default `http://localhost:5173` e anunciava em CORS, com
+      # credenciais, que confiava numa origem local - configuracao errada e
+      # silenciosa.
+      #
+      # Agora, em producao, o processo NAO SOBE sem ela. Preencher no painel com
+      # a origem publica do servico, so esquema e host, sem barra no fim:
+      #
+      #   https://nutriscan-h1wp.onrender.com
+      #
+      # O problema do "ovo e galinha" continua valendo para um servico NOVO: na
+      # primeira criacao a URL ainda nao existe, o primeiro deploy falha, e e
+      # preciso preencher a variavel e reimplantar. Para o servico que ja existe,
+      # a URL e conhecida - basta preencher ANTES de publicar a v0.7.5.
+      - key: FRONTEND_ORIGIN
+        sync: false
 
       - key: SESSION_TTL_DAYS
         value: "30"
+
+      # TRUST_PROXY - OBRIGATORIA em producao desde a v0.7.5, e explicita.
+      # O Render termina TLS num proxy na frente do servico, entao `true` e o
+      # valor certo AQUI. Sem proxy, `true` deixaria o cliente escolher o proprio
+      # IP pelo `X-Forwarded-For` e fugir do teto de requisicoes por IP.
       - key: TRUST_PROXY
         value: "true"

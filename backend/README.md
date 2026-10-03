@@ -1,4 +1,4 @@
-# NutriScan Backend v0.7.4
+# NutriScan Backend v0.7.5
 
 API Express responsavel por contas, sessoes e alergias sincronizadas.
 
@@ -46,6 +46,11 @@ Variaveis ja definidas pelo sistema tem prioridade sobre o `.env` local.
 
 `ANTHROPIC_API_KEY` deve receber apenas uma chave real localmente ou na hospedagem.
 Nunca coloque uma chave real em arquivos versionados.
+
+Em producao (`NODE_ENV=production`), o servidor nao sobe sem `DATABASE_URL`,
+`DATABASE_SSL`, `FRONTEND_ORIGIN` (https, so a origem) e `TRUST_PROXY`. A
+mensagem de recusa diz qual falta, nunca o valor. O inventario completo esta em
+[docs/DEPLOY.md](../docs/DEPLOY.md).
 
 ## PostgreSQL
 
@@ -104,15 +109,15 @@ curl http://localhost:3000/api/health
 Respostas possiveis:
 
 ```json
-{ "status": "ok", "database": "not_configured", "ai": "not_configured", "aiProvider": "anthropic", "version": "0.7.4" }
+{ "status": "ok", "database": "not_configured", "ai": "not_configured", "version": "0.7.5" }
 ```
 
 ```json
-{ "status": "ok", "database": "connected", "ai": "configured", "aiProvider": "anthropic", "version": "0.7.4" }
+{ "status": "ok", "database": "connected", "ai": "configured", "version": "0.7.5" }
 ```
 
 ```json
-{ "status": "degraded", "database": "error", "ai": "not_configured", "aiProvider": "anthropic", "version": "0.7.4" }
+{ "status": "degraded", "database": "error", "ai": "not_configured", "version": "0.7.5" }
 ```
 
 ## Testes

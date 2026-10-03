@@ -37,6 +37,18 @@ export function errorHandler(error, _req, res, _next) {
     });
   }
 
+  // ERRO INTERNO (v0.7.5, item 6.4)
+  //
+  // O cliente recebe codigo e frase genericos. Em producao, NUNCA: stack, SQL,
+  // nome de tabela, caminho de arquivo nem mensagem de driver. Qualquer desses
+  // ensina a um atacante como o sistema e por dentro - a mensagem do `pg`, por
+  // exemplo, cita nome de coluna e de restricao.
+  //
+  // O detalhe vai para o LOG do servidor, que e onde ele serve. Ate a v0.7.4 o
+  // erro era descartado: o cliente nao via, mas o operador tambem nao, e um 500
+  // em producao sumia sem rastro.
+  console.error("[erro interno]", error);
+
   return res.status(500).json({
     error: {
       code: "INTERNAL_ERROR",

@@ -36,7 +36,8 @@ test("health reporta o estado real do banco e da IA, sem vazar configuracao", as
       assert.equal(body.database, "not_configured");
     }
     assert.equal(body.ai, env.anthropicApiKey ? "configured" : "not_configured");
-    assert.equal(body.aiProvider, "anthropic");
+    // v0.7.5: o health deixou de anunciar o provedor de IA (regra de neutralidade do CLAUDE.md).
+    assert.equal("aiProvider" in body, false, "o health voltou a anunciar o provedor de IA");
     assert.equal(body.version, env.version);
     assert.equal("environment" in body, false);
   });

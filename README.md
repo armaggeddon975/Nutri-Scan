@@ -1,4 +1,4 @@
-# NutriScan v0.7.4
+# NutriScan v0.7.5
 
 NutriScan e um app web para consultar alimentos por nome ou codigo de barras,
 ver tabela nutricional, identificar ingredientes sensiveis e conversar com um
@@ -67,6 +67,9 @@ ANTHROPIC_MAX_OUTPUT_TOKENS=1200
 O backend carrega `backend/.env` automaticamente usando caminho absoluto. Se a
 mesma variavel ja existir no sistema operacional ou hospedagem, ela tem
 prioridade sobre o arquivo local.
+
+Em desenvolvimento nenhuma variavel e obrigatoria. Em producao quatro sao, e o
+backend nao sobe sem elas - ver [Deploy](#deploy).
 
 ## Como rodar
 
@@ -346,13 +349,71 @@ Sem isso o build morre com "vite: not found".
 O PostgreSQL fica no **Neon**, nao no Render: o plano gratuito do Render expira
 em 90 dias e apaga os dados.
 
-Variaveis marcadas `sync: false` nao vivem no arquivo. Elas sao preenchidas no
-painel do Render para nao entrarem no Git:
+O passo a passo completo, com as decisoes de HTTPS, cookie e migrations, esta
+em [docs/DEPLOY.md](docs/DEPLOY.md).
+
+### Variaveis obrigatorias em producao
+
+Com `NODE_ENV=production`, o backend **recusa subir** se faltar qualquer uma
+destas, ou se um booleano nao for `true`/`false`. A mensagem diz qual variavel
+falta - nunca o valor de nenhuma.
 
 ```text
-DATABASE_URL        string de conexao do Neon
-ANTHROPIC_API_KEY   sem ela o assistente cai para a resposta local
+DATABASE_URL      string de conexao do Neon                    painel (sync: false)
+DATABASE_SSL      true                                         render.yaml
+FRONTEND_ORIGIN   https://nutriscan-h1wp.onrender.com          painel (sync: false)
+TRUST_PROXY       true - o Render tem um proxy na frente       render.yaml
 ```
+
+Ate a v0.7.4, `FRONTEND_ORIGIN` ausente caia em `http://localhost:5173` em
+producao, sem aviso. `FRONTEND_ORIGIN` precisa ser `https://` e so a origem,
+sem caminho nem barra no fim.
+
+**Antes de publicar a v0.7.5, defina `FRONTEND_ORIGIN` no painel do Render.**
+Sem ela, a versao nova nao sobe.
+
+Opcionais, com default:
+
+```text
+ANTHROPIC_API_KEY            sem ela o assistente cai para a resposta local
+ANTHROPIC_MODEL              claude-sonnet-5
+ANTHROPIC_TIMEOUT_MS         20000
+ANTHROPIC_MAX_OUTPUT_TOKENS  1200
+SESSION_TTL_DAYS             30
+SESSION_COOKIE_NAME          nutriscan_session
+PORT                         3000 - o Render injeta a sua
+```
+
+Nao existe `SESSION_SECRET`: a sessao e um token aleatorio guardado no banco so
+como hash, sem assinatura de cookie.
+
+### Migrations
+
+As migrations rodam no **build** (`npm run db:migrate`, ultimo passo do
+`buildCommand`), nao no start. Se uma migration falhar, o build falha e o Render
+mantem a versao anterior no ar. Cada migration e registrada em
+`schema_migrations` e nao roda duas vezes.
+
+Para aplicar a mao, contra o banco da `DATABASE_URL`:
+
+```bash
+npm run db:migrate
+```
+
+### Verificar o deploy
+
+```bash
+npm run verify:deploy -- https://nutriscan-h1wp.onrender.com
+```
+
+Prova, contra a URL publicada, que o que esta no ar e o que foi auditado. Sao
+oito subgates, D1 a D8: versao igual a do repositorio, HTTPS com redirecionamento,
+cabecalhos de seguranca, 404 de API em JSON, 401 sem sessao, erro sem vazamento,
+frontend servido e nenhuma chave nos bundles. Exit 0 so com os oito em PASS.
+
+O comando so le. Nao cria conta, nao grava nada e nao chama a IA. Sem URL, ele
+falha - nunca assume localhost. E separado do `verify:e2e`, que prova o backend
+local.
 
 ### Conferir a versao publicada
 
@@ -372,6 +433,8 @@ Este comando nao roda em CI de proposito. Exigir rede em CI transforma
 indisponibilidade de terceiro em build vermelho, e o objetivo dele e conferir um
 deploy, nao barrar um commit.
 
+Desde a v0.7.5, a mesma comparacao e o subgate D1 do `verify:deploy`.
+
 ## Seguranca
 
 - Nome de usuario e unico, alem do e-mail. Duas pessoas com o mesmo nome nao
@@ -379,7 +442,11 @@ deploy, nao barrar um commit.
   fariam a entrada por nome escolher uma conta qualquer entre as homonimas.
 - A recusa de cadastro nao diz se foi o e-mail ou o nome que ja existe, para
   nao permitir descobrir quem tem conta testando uma lista de e-mails.
-- Sessao em cookie HttpOnly.
+- Sessao em cookie HttpOnly, SameSite=Lax e, em producao, Secure.
+- CORS so para a origem de `FRONTEND_ORIGIN`; a origem do request nunca e
+  refletida.
+- Erro interno chega ao cliente como frase generica, sem stack, SQL nem caminho;
+  o detalhe vai para o log do servidor.
 - Token de sessao salvo no banco apenas como hash SHA-256.
 - Senhas com `crypto.scrypt`, salt unico e comparacao segura.
 - Nenhuma chave secreta no frontend.
@@ -430,6 +497,7 @@ como `sem proteinas do leite`. Se o rotulo tambem trouxer `leite`, `whey`,
 
 - [API](docs/API.md)
 - [Arquitetura](docs/ARCHITECTURE.md)
+- [Deploy](docs/DEPLOY.md)
 - [Nutri Assistente IA](docs/AI_ASSISTANT.md)
 - [Relatorio de auditoria](AUDIT_REPORT.md)
 - [Relatorio E2E](E2E_REPORT.md)
