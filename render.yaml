@@ -45,19 +45,23 @@ services:
       # Ate a v0.7.4 esta variavel ficava de fora, com a justificativa de que o
       # backend serve o proprio frontend (mesma origem, sem CORS) e de que a URL
       # publica so existe depois de o servico ser criado. Sem ela, porem, o
-      # backend caia no default `http://localhost:5173` e anunciava em CORS, com
+      # backend caia no endereco local do Vite e anunciava em CORS, com
       # credenciais, que confiava numa origem local - configuracao errada e
       # silenciosa.
       #
-      # Agora, em producao, o processo NAO SOBE sem ela. Preencher no painel com
-      # a origem publica do servico, so esquema e host, sem barra no fim:
+      # Agora, em producao, o processo NAO SOBE sem ela - e nem com ela comecando
+      # por outra coisa que nao https://. Preencher no painel com a origem
+      # publica do servico, so esquema e host, sem barra no fim:
       #
       #   https://nutriscan-h1wp.onrender.com
       #
       # O problema do "ovo e galinha" continua valendo para um servico NOVO: na
       # primeira criacao a URL ainda nao existe, o primeiro deploy falha, e e
       # preciso preencher a variavel e reimplantar. Para o servico que ja existe,
-      # a URL e conhecida - basta preencher ANTES de publicar a v0.7.5.
+      # a URL e conhecida - basta preencher ANTES de publicar.
+      #
+      # Um teste (`backend/tests/renderSync.test.js`) reprova se este arquivo
+      # mostrar qualquer endereco que nao seja https://.
       - key: FRONTEND_ORIGIN
         sync: false
 

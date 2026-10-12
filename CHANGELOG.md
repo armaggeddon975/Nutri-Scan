@@ -1,5 +1,100 @@
 # Changelog
 
+## NutriScan v0.7.6 - 2026-10-12
+
+Prontidao de publicacao: que o primeiro deploy nao quebre por configuracao.
+
+### O projeto segue NAO PUBLICADO
+
+As versoes 0.7.1 a 0.7.6 nunca foram ao ar. O servico `nutriscan` no Render
+continua rodando a **0.7.0**: os commits desde entao nunca foram enviados ao
+GitHub, e publicar e acao do dono do projeto. Esta versao nao publica nada.
+
+### O2 - erro do cliente virando erro do servidor
+
+O auditor mediu em producao:
+
+```text
+POST /api/auth/login   corpo "{nao-e-json"   ->   500 INTERNAL_ERROR
+```
+
+Reproduzido nesta versao antes de qualquer correcao, com o mesmo resultado - e
+com duas linhas `[erro interno]` no log do servidor que nao eram internas.
+
+O corpo da resposta ja estava limpo. O defeito era o STATUS: o `express.json()`
+entrega a falha de parse com `statusCode: 400` e `expose: true`, e o handler
+jogava isso fora e respondia 500. Erro do cliente virava alerta de servidor, e o
+cliente nao conseguia distinguir bug dele de bug nosso.
+
+Agora a falha de parse do corpo responde **400 `INVALID_JSON`**, com mensagem
+fixa e sem entrar no log como erro interno.
+
+#### A restricao, que e a parte que importa
+
+O atalho seria "respeitar o status de qualquer erro com `expose: true`". Isso
+entregaria a escolha do status - e, com a mensagem junto, do texto - a qualquer
+biblioteca que lance um erro com esses campos. Nao foi feito.
+
+O handler reconhece UM caso, por dois sinais ao mesmo tempo: o erro e um
+`SyntaxError` e traz `type: "entity.parse.failed"`. Copiar o `type` nao basta. E
+mesmo nesse caso, status e mensagem saem do nosso codigo, fixos; nada do erro
+original chega ao cliente. Todo o resto continua 500.
+
+Os testes O2d provam o outro lado: erros de biblioteca com status 418, 401, 404
+e 400 e `expose: true` - mais um que copia o `type` do body-parser - continuam
+respondendo 500, sem a mensagem deles.
+
+### Entrega A - o codigo e o `render.yaml` concordam, por teste
+
+`backend/tests/renderSync.test.js` le o `render.yaml` e reprova se:
+
+```text
+S1  uma obrigatoria de VARIAVEIS_OBRIGATORIAS_EM_PRODUCAO falta nele
+S2  ele declara variavel que o codigo nao le
+S3  uma credencial tem valor literal, ou nao e sync: false
+5.3 o arquivo mostra qualquer endereco http://
+```
+
+Dois casos conhecidos estao DECLARADOS no teste, com comentario, em vez de
+excecao silenciosa: `ANTHROPIC_API_KEY` (nao e obrigatoria para subir, mas tem
+de estar no arquivo, para producao sem IA ser decisao e nao esquecimento) e
+`NODE_VERSION` (lida pelo proprio Render, nao pelo codigo).
+
+O leitor do `render.yaml` FALHA diante de formato que nao conhece, em vez de
+pular a linha - um leitor tolerante poderia deixar passar justamente a variavel
+que importa.
+
+**O teste achou uma coisa na primeira execucao.** O comentario da
+`FRONTEND_ORIGIN` no `render.yaml` mostrava `http://localhost:5173` - o default
+antigo, citado como historia. Quem copiasse o exemplo mais proximo da variavel
+levaria `http://` para o painel. O comentario foi reescrito sem nenhum endereco
+`http://`.
+
+### O1 - nao ha `SESSION_SECRET`, de proposito
+
+A sessao e um token opaco: 32 bytes aleatorios no cookie, so o hash SHA-256 no
+banco, revogada por `DELETE` no logout. Nao ha cookie assinado, entao nao ha o
+que assinar. A ausencia agora esta explicada no README e no `docs/DEPLOY.md`,
+para que quem configura producao nao a tome por esquecimento. O mecanismo de
+sessao nao foi tocado.
+
+### Dois alertas de seguranca novos, corrigidos
+
+O `npm audit` desta versao apontou dois alertas publicados depois da v0.7.5:
+`proxy-addr` (critico, no backend, via Express) e `source-map-js` (alto, no
+build do frontend). O `proxy-addr` e o que calcula o `req.ip` atras de proxy -
+de onde sai o balde do teto por IP. As versoes corrigidas (2.0.8 e 1.2.2) cabiam
+nas faixas ja declaradas, entao so os lockfiles mudaram. Suite, gate E2E e
+mutacao foram refeitos sobre o codigo final.
+
+### Entrega C - checklist de publicacao
+
+`docs/DEPLOY.md` foi reescrito para quem publica: pre-requisitos, a tabela de
+variaveis com o que preencher no painel, como as migrations entram, o comando de
+verificacao, o que cada subgate D1 a D8 prova e a causa mais provavel quando
+cada um falha. Um teste amarra a tabela ao codigo: variavel nova lida pelo
+backend e ausente do documento reprova.
+
 ## NutriScan v0.7.5 - 2026-10-02
 
 Prontidao de producao, e um comando que prova que o que esta no ar e o que foi

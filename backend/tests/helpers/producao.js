@@ -153,6 +153,85 @@ export async function subirAppDeProducao({ distDir, ambiente = ambienteDeProduca
   };
 }
 
+// ERROS DE BIBLIOTECA FORJADOS (v0.7.6, O2c e O2d)
+//
+// O app de verdade nao tem como ser levado a lancar "um erro de biblioteca com
+// status 418". Para provar que o handler NAO deixa um erro desses escolher o
+// status, este ajudante sobe, em producao, um app minimo com o `errorHandler`
+// REAL e uma rota por caso. Cada erro carrega uma mensagem-isca: se ela aparecer
+// na resposta, o handler ecoou detalhe de biblioteca.
+export const ISCA_DE_BIBLIOTECA = "detalhe-interno-da-biblioteca /srv/app/segredo.js";
+
+export const ERROS_FORJADOS = {
+  // statusCode/status arbitrarios, com expose: true - a forma de http-errors.
+  "lib-418": `Object.assign(new Error(ISCA), { status: 418, statusCode: 418, expose: true })`,
+  "lib-401": `Object.assign(new Error(ISCA), { statusCode: 401, expose: true })`,
+  "lib-404": `Object.assign(new Error(ISCA), { status: 404, expose: true, type: "outra.coisa" })`,
+  // Um 400 "de biblioteca" que nao e falha de parse do corpo.
+  "lib-400": `Object.assign(new Error(ISCA), { status: 400, statusCode: 400, expose: true })`,
+  // Copia o `type` do body-parser, mas nao e SyntaxError: nao pode ganhar 400.
+  "tipo-forjado": `Object.assign(new Error(ISCA), { status: 400, statusCode: 400, expose: true, type: "entity.parse.failed" })`,
+  // Erro interno de verdade, sem status nenhum.
+  "interno": `new Error(ISCA + " SELECT * FROM users")`,
+};
+
+export async function subirAppDeErrosForjados({ ambiente = ambienteDeProducao() } = {}) {
+  const handlerUrl = pathToFileURL(path.join(backendRoot, "src/middleware/errorMiddleware.js")).href;
+  const rotas = Object.entries(ERROS_FORJADOS)
+    .map(([nome, expressao]) => `app.get(${JSON.stringify(`/${nome}`)}, (_req, _res, next) => next(${expressao}));`)
+    .join("\n");
+  const script = `
+    const ISCA = ${JSON.stringify(ISCA_DE_BIBLIOTECA)};
+    const express = (await import("express")).default;
+    const { errorHandler } = await import(${JSON.stringify(handlerUrl)});
+    const app = express();
+    app.use(express.json());
+    ${rotas}
+    app.post("/eco", (req, res) => res.json({ recebido: req.body }));
+    app.use(errorHandler);
+    const servidor = app.listen(0, "127.0.0.1", () => console.log("PORTA:" + servidor.address().port));
+  `;
+
+  const filho = spawn(process.execPath, ["--input-type=module", "-e", script], {
+    cwd: backendRoot,
+    env: ambiente,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  let stderr = "";
+  filho.stderr.on("data", (parte) => {
+    stderr += parte.toString();
+  });
+
+  const porta = await new Promise((resolve, reject) => {
+    let stdout = "";
+    const prazo = setTimeout(() => reject(new Error(`o app de erros nao subiu: ${stderr}`)), 20000);
+    filho.stdout.on("data", (parte) => {
+      stdout += parte.toString();
+      const achado = /PORTA:(\d+)/.exec(stdout);
+      if (achado) {
+        clearTimeout(prazo);
+        resolve(Number(achado[1]));
+      }
+    });
+    filho.on("exit", (codigo) => {
+      clearTimeout(prazo);
+      reject(new Error(`o app de erros saiu com ${codigo}: ${stderr}`));
+    });
+  });
+
+  return {
+    baseUrl: `http://127.0.0.1:${porta}`,
+    lerStderr: () => stderr,
+    encerrar: () =>
+      new Promise((resolve) => {
+        if (filho.exitCode !== null) return resolve();
+        filho.once("exit", () => resolve());
+        filho.kill();
+      }),
+  };
+}
+
 /**
  * Roda `node src/server.js` - o ponto de entrada de verdade - e espera ele sair
  * ou abrir a porta. Devolve o que aconteceu.

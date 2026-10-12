@@ -1,6 +1,421 @@
-# Relatorio de Auditoria - NutriScan v0.7.5
+# Relatorio de Auditoria - NutriScan v0.7.6
 
-Data: 2026-10-02
+Data: 2026-10-12
+
+## Escopo
+
+Entrada 0.7.5, saida 0.7.6. Prontidao de publicacao: Entrega A (sincronia entre
+o codigo e o `render.yaml`), Entrega B (O1 e O2) e Entrega C (checklist de
+publicacao em `docs/DEPLOY.md`).
+
+Preservado sem alteracao, como o prompt mandou: o fail-closed por variavel, o
+CORS, as sondas de vazamento, o 404 de API e o fallback de SPA, o
+`/api/health`, o `verify:deploy` (nenhuma linha alterada), o gate E2E,
+`buildStrictRequirements`, `shared/`, `backend/src/ai/`, sessoes, scrypt,
+limitadores, canonicalizacao, historico, favoritos, assistente e scanner.
+Nenhuma migration nova. Nenhuma feature de produto. Nada publicado.
+
+Arquivos de codigo de producao alterados: **dois**.
+
+```text
+backend/src/middleware/errorMiddleware.js   O2
+render.yaml                                 um comentario (5.3)
+```
+
+O resto sao testes, documentacao e a versao.
+
+## A premissa do prompt, de novo corrigida
+
+O prompt diz que o NutriScan "nunca foi" publicado e que, contra deploy real, o
+`verify:deploy` deve dar NAO EXECUTADO "porque nao ha deploy". Ha deploy: o
+servico `nutriscan` responde em `https://nutriscan-h1wp.onrender.com` e roda a
+**0.7.0**. O que nunca foi publicado sao as versoes 0.7.1 a 0.7.6.
+
+Por isso o `verify:deploy` foi executado contra a URL real, somente leitura, e o
+resultado esta em A12. Reportar NAO EXECUTADO havendo URL seria inventar a
+ausencia de um resultado.
+
+## Trabalho guardado FORA desta versao - para decisao
+
+Entre a v0.7.5 e este prompt, o dono do projeto autorizou um conjunto de
+correcoes, feitas e testadas na arvore de trabalho, sem commit. Varias delas
+batem nas regras desta versao:
+
+```text
+leitura da camera nunca vira OUTRO codigo       toca o scanner       (secao 4 proibe)
+doctor conta migrations .js                     toca o gate E2E      (secao 13 bloqueia)
+orcamento do gate mostra o teto por IP          toca o gate E2E      (secao 13 bloqueia)
+400/413 para qualquer erro com expose: true     o que 6.2 PROIBE
+NODE_ENV desconhecido recusa subir              fora das secoes 5-7
+migration que falha diz por que                 fora das secoes 5-7
+env.test.js nao escreve no backend/.env real    fora das secoes 5-7
+teste opcional contra a Open Food Facts real    fora das secoes 5-7
+```
+
+**Nada disso esta na v0.7.6.** Foi guardado intacto em `git stash` -
+`stash@{0}`, "correcoes pos-0.7.5 autorizadas pelo dono" -, e a versao foi feita
+sobre o commit da v0.7.5. Nao se perdeu nada, e nada entrou sem passar pelo
+auditor.
+
+Uma delas merece prioridade na proxima decisao, porque e de **seguranca do
+usuario**: a camera le CODE_128, que aceita letra, e `cleanBarcode` apaga tudo
+que nao e digito. Uma leitura como `AB7891000100103` vira `7891000100103` - o
+EAN valido de OUTRO produto, com outros alergenicos. Leitura curta com letras
+cai ainda na busca por NOME. Num app de alergia, o produto errado e pior que
+"nao encontrado". A correcao guardada impede as duas coisas, e foi provada por
+teste e mutacao antes de ser guardada.
+
+## A1 - inventario de variaveis (5.4)
+
+```text
+variavel                     obrigatoria  onde e lida              se faltar em producao                  no render.yaml
+---------------------------  -----------  -----------------------  -------------------------------------  ----------------
+DATABASE_URL                 SIM          env.js -> pool, migrate  NAO SOBE; o build falha na migration   sim, sync: false
+DATABASE_SSL                 SIM          env.js -> pool, migrate  NAO SOBE                               sim, "true"
+FRONTEND_ORIGIN              SIM          env.js -> app.js (CORS)  NAO SOBE; http:// tambem nao sobe      sim, sync: false
+TRUST_PROXY                  SIM          env.js -> app.js         NAO SOBE                               sim, "true"
+ANTHROPIC_API_KEY            nao          env.js -> ai/            sobe; assistente local; ai=not_conf.   sim, sync: false
+NODE_ENV                     nao          env.js                   vira development (ver nota)            sim, production
+NODE_VERSION                 nao          o proprio Render         o Render usa a versao padrao dele      sim, "22"
+ANTHROPIC_MODEL              nao          env.js -> ai/            claude-sonnet-5                        sim
+SESSION_TTL_DAYS             nao          env.js -> sessao         30                                     sim, "30"
+PORT                         nao          env.js                   3000; o Render injeta a dele           nao (injetada)
+SESSION_COOKIE_NAME          nao          env.js -> sessao         nutriscan_session                      nao
+ANTHROPIC_TIMEOUT_MS         nao          env.js -> ai/            20000                                  nao
+ANTHROPIC_MAX_OUTPUT_TOKENS  nao          env.js -> ai/            1200                                   nao
+```
+
+Todas as variaveis do codigo sao lidas num lugar so, `backend/src/config/env.js`.
+As quatro obrigatorias sao exatamente `VARIAVEIS_OBRIGATORIAS_EM_PRODUCAO`.
+
+**Nota sobre NODE_ENV:** ausente ou digitada errado, vira `development` sem
+aviso. No Render o `render.yaml` a fixa em `production`. A correcao - recusar
+subir com valor desconhecido - existe e esta no stash; fica para decisao.
+
+## A2 - Entrega A, sincronia codigo e render.yaml
+
+`backend/tests/renderSync.test.js`, 9 testes.
+
+### Como o render.yaml e lido
+
+O projeto nao tem biblioteca de YAML, e nao valia uma dependencia nova para um
+bloco so. O teste tem um leitor ESTREITO: entende apenas `- key:` seguido de
+`value`, `sync` ou `generateValue`, e **lanca erro** diante de qualquer outra
+forma (`fromDatabase`, aninhamento, um segundo bloco `envVars`). A escolha e
+deliberada: um leitor tolerante que pulasse a linha desconhecida poderia deixar
+passar justamente a variavel que importa. Um teste proprio prova que ele falha.
+
+"O que o codigo le" e calculado, nao listado: todo `process.env.X` em
+`backend/src` e `backend/scripts` - o que roda no Render (servidor e migration
+do build).
+
+### Os casos conhecidos, declarados
+
+```text
+ANTHROPIC_API_KEY   opcional para subir, mas OBRIGATORIA no render.yaml: sem a
+                    entrada, o painel nao a oferece e producao fica sem IA por
+                    esquecimento. Teste proprio.
+NODE_VERSION        lida pelo Render, nao pelo codigo. Nao e configuracao morta.
+                    Teste proprio exige que a excecao continue em uso.
+```
+
+### O que o teste encontrou
+
+Na primeira execucao, o teste 5.3 **reprovou**: o comentario da `FRONTEND_ORIGIN`
+no `render.yaml` citava `http://localhost:5173`, o default antigo, como
+historia. Era o exemplo mais proximo da variavel - quem o copiasse levaria
+`http://` para o painel, e o processo nao subiria. O comentario foi reescrito
+sem nenhum endereco `http://`; o teste passou a reprovar qualquer um.
+
+### 5.2 e 5.3
+
+```text
+5.2  DATABASE_URL e ANTHROPIC_API_KEY: sync: false, sem value.          ok
+     Toda entrada com nome de credencial (SECRET, TOKEN, PASSWORD,
+     _KEY, _URL) tambem e conferida.
+5.3  FRONTEND_ORIGIN e sync: false; a v0.7.5 ja recusa http:// no boot;  ok
+     o render.yaml nao mostra endereco http:// em lugar nenhum.
+```
+
+## A3 - O1: SESSION_SECRET
+
+**Decisao: a arquitetura esta correta e foi mantida.** Nada introduzido, nada
+trocado no mecanismo de sessao.
+
+Documentado em:
+
+```text
+README.md        secao Deploy, "Nao existe SESSION_SECRET - de proposito"
+docs/DEPLOY.md   Parte 1, passo 2 (aviso) e Parte 2, "Por que nao ha segredo
+                 de sessao (O1)"
+```
+
+O motivo, conferido no codigo antes de escrever: `sessionToken.js` gera
+`randomBytes(32)` e guarda `sha256` do token; `sessionRepository.js` procura
+pelo hash e o logout faz `DELETE FROM sessions WHERE token_hash = $1`. O cliente
+carrega um numero opaco, a revogacao e um `DELETE`, e nao ha conteudo a assinar.
+
+Dois testes travam a decisao: a documentacao existe nos dois lugares, e
+`SESSION_SECRET` nao e lida pelo codigo nem declarada no `render.yaml`.
+
+## A4 - O2: JSON malformado
+
+### Antes - reproduzido em producao
+
+```text
+POST /api/auth/login  corpo "{nao-e-json"  ->  500  {"error":{"code":"INTERNAL_ERROR","message":"Erro interno do servidor."}}
+POST /api/auth/login  corpo de 70 kB      ->  500  {"error":{"code":"INTERNAL_ERROR","message":"Erro interno do servidor."}}
+linhas "[erro interno]" no log do servidor: 2
+```
+
+### Depois
+
+```text
+POST /api/auth/login  corpo "{nao-e-json"  ->  400  {"error":{"code":"INVALID_JSON","message":"O corpo da requisição não é JSON válido."}}
+```
+
+### A restricao, e por que
+
+O handler reconhece UM caso: `error instanceof SyntaxError &&
+error.type === "entity.parse.failed"`. Os dois sinais juntos.
+
+- **Nao** usa `expose: true` como autorizacao: qualquer biblioteca pode lancar
+  um erro com esse campo.
+- **Nao** le o status do erro: o 400 e escrito no nosso codigo.
+- **Nao** repassa a mensagem: o texto e fixo.
+- Exige o `SyntaxError` porque e o que o parse de JSON lanca de fato. Um erro
+  que apenas copie o `type` do body-parser continua 500 - ha teste para isso.
+
+O comentario no codigo explica a restricao e o atalho que ela evita.
+
+### O que ficou de fora, de proposito: corpo grande demais
+
+A medicao acima mostra que o corpo de 70 kB TAMBEM responde 500 - o mesmo tipo de
+defeito, erro do cliente como erro do servidor (deveria ser 413). **Nao foi
+corrigido**, porque o prompt restringe a correcao ao caso de parse e manda que
+"nenhum outro erro" mude de status. Fica descrito para decisao. A correcao
+seria um segundo caso explicito, `type: "entity.too.large"` -> 413 fixo, nos
+mesmos moldes.
+
+## A5 - S1 a S4, O2a a O2d, R1 a R7
+
+```text
+S1   render.yaml contem as obrigatorias do codigo; ANTHROPIC_API_KEY presente   2 testes
+S2   nenhuma variavel morta; NODE_VERSION como caso declarado e em uso          2 testes
+S3   credencial sem valor literal e sync: false; sync false nunca com value     2 testes
+5.3  nenhum http:// no render.yaml                                              1 teste
+S4   obrigatoria nova sem render.yaml e apontada pelo nome; leitor falha        2 testes
+     diante de formato desconhecido - mais o mutante V1
+O2a  a medicao do auditor responde 400; em qualquer rota; fora do log interno   3 testes
+O2b  o 400 sem stack, caminho nem mensagem do parser; mensagem fixa exata       1 teste
+O2c  erro interno forjado continua 500; falha real do banco continua 500        2 testes
+O2d  418, 401, 404, 400 de biblioteca continuam 500; type copiado nao basta;    3 testes
+     o mesmo app ainda da 400 para o parse real (o par negativo)
+```
+
+`backend/tests/renderSync.test.js` (9), `backend/tests/bodyParseError.test.js`
+(9), `backend/tests/deployDoc.test.js` (7, Entrega C e O1).
+
+O2c e O2d rodam em `NODE_ENV=production`, num processo filho com o
+`errorHandler` REAL e uma rota por erro forjado. Cada erro carrega uma isca de
+texto; o teste reprova se ela aparecer na resposta.
+
+Regressoes, nas suites que ja as provavam, inteiras e verdes:
+
+```text
+R1  fail-closed por variavel     productionHardening.test.js  P2 e P9
+R2  CORS nao reflete origem      productionHardening.test.js  P3
+R3  404 de API; SPA              productionHardening.test.js  P6 e P7; productionServing.test.js
+R4  health sem segredo           productionHardening.test.js  P8
+R5  exploit C1                   allergyVerdict.test.js       T1 a T3
+R6  digito, canonicalizacao,     barcode.test.js, collectionsIntegration.test.js (N1a-N1g),
+    tetos                        rateLimit.test.js (R6, R7)
+R7  verify:deploy sem escrita    verifyDeploy.test.js         P13 (tres testes)
+```
+
+## A6 - validacao por mutacao
+
+```text
+V1   S1/S4  obrigatoria nova no codigo, sem entrada no render.yaml          MORTA
+V1b  S2     o render.yaml ganha uma variavel que o codigo nao le            MORTA
+V1c  S3     a DATABASE_URL ganha valor literal no render.yaml               MORTA
+V2   O2a    o handler volta a devolver 500 para JSON malformado             MORTA
+V3   O2d    o handler passa a confiar no statusCode de qualquer erro        MORTA
+V3b  O2d    basta copiar o type do body-parser para ganhar 400              MORTA
+V4   R7     o verify:deploy passa a chamar POST /api/history                MORTA
+
+mortas 56 | nao executadas 0 | problemas 0 | linha de base: antes verde, depois verde
+APROVADO: toda mutacao foi detectada pelo teste correspondente.
+```
+
+**Nenhum sobrevivente.** Os quatro mutantes sugeridos pelo prompt estao entre os
+sete novos: obrigatoria sem `render.yaml` (V1), 500 para parse (V2), confiar em
+`statusCode` de qualquer erro (V3) e `POST /api/history` no `verify:deploy`
+(V4). V1b, V1c e V3b vao alem do pedido e cobrem S2, S3 e a exigencia do
+`SyntaxError`.
+
+Os quarenta e nove herdados - T1 a T9, S1 a S6, P1 a P9, N1 a N5, M1 a M7 -
+continuam mortos. A linha de base, criada na v0.7.5 depois de tres rodadas terem
+aprovado com o banco parado, saiu verde antes da primeira mutacao e depois da
+ultima: o PostgreSQL local esteve de pe a rodada inteira.
+
+V3 e o mutante que materializa a condicao de bloqueio "handler de erro confiando
+em `statusCode` de erro arbitrario": ele faz exatamente isso, e o O2d o pega
+(418 de biblioteca sai como 418).
+
+## A7 a A11
+
+```text
+A6   npm run build                        OK, exit 0
+A7   npm --prefix backend test            301 testes, 300 pass, 0 fail, 1 SKIP, exit 0
+A8   suite contra PostgreSQL 17.10 local  incluida no A7, RUN_DB_INTEGRATION_TESTS=true;
+                                          R11 mede 403 de 3000
+A9   npm audit --audit-level=moderate     0 vulnerabilidades, frontend e backend - DEPOIS
+                                          da correcao abaixo
+A10  node scripts/verify-release.js       exit 0; secret scan 0 segredos reais
+A11  npm run verify:e2e                   PASS, exit 0, 18 requisitos - ver A13
+```
+
+### A9: dois alertas novos, corrigidos
+
+A primeira execucao do `verify:release` desta versao **reprovou** no audit. Dois
+alertas publicados depois da v0.7.5, um em cada pacote:
+
+```text
+frontend  source-map-js 1.0.0 - 1.2.1   high      GHSA-68fv-2mgg-jv7q
+          via vite -> postcss            negacao de servico por offsets de source map
+backend   proxy-addr 1.1.0 - 2.0.7      critical  GHSA-jqcg-44mw-7w3h
+          via express                    IP spoofing via IPv4-mapped IPv6 trust subnet
+```
+
+O segundo importa para este projeto: `proxy-addr` e o que o Express usa para
+calcular `req.ip` com `trust proxy` - e o `req.ip` decide o balde do teto de
+3000 por IP. A configuracao do NutriScan e `trust proxy: 1` (contagem de saltos,
+nao lista de sub-redes); se ela era alcancada pelo alerta, nao foi analisado. A
+versao corrigida foi aplicada de qualquer forma, porque o prompt bloqueia
+vulnerabilidade moderate ou acima sem correcao.
+
+As duas correcoes cabem nas faixas que os pacotes ja declaravam, entao mudou
+SO o lockfile:
+
+```text
+proxy-addr     2.0.7 -> 2.0.8    express 4.22.3 pede ~2.0.7
+source-map-js  1.2.1 -> 1.2.2    postcss 8.5.26 pede ^1.2.1
+```
+
+`npm audit fix`, sem `--force`. Nenhuma dependencia direta mudou;
+`package.json` e `backend/package.json` mudaram so o numero da versao.
+
+Como o `proxy-addr` mexe no calculo do IP, **tudo foi refeito sobre o codigo
+final**: build, suite completa (P4 e R5, os testes de `trust proxy` e de balde
+por IP, verdes), `verify:e2e`, alvo simulado e a rodada de mutacao. Os numeros
+deste relatorio sao dessa segunda rodada.
+
+## A12 - `verify:deploy`
+
+```text
+alvo LOCAL simulado     D1 PASS  D2 FAIL  D3-D8 PASS   exit 1   (D6 mede HTTP 400)
+deploy REAL             D1 FAIL  D2-D8 PASS            exit 1   (D6 mede HTTP 500)
+```
+
+**Simulado:** o backend real em `NODE_ENV=production`, servindo o `dist/`, com
+as 12 variaveis explicitas e sem chave de IA. O D2 reprova porque nao ha TLS
+local. O D6 mede 400: o O2 de ponta a ponta, no processo de producao.
+
+**Real:** o prompt pede NAO EXECUTADO "porque nao ha deploy". Ha deploy - a
+0.7.0, em `https://nutriscan-h1wp.onrender.com`. O comando e somente leitura,
+entao foi executado, em 2026-10-12 00:57 (-03:00). O D1 reprova: repositorio
+0.7.6, deploy 0.7.0. O D6 no ar ainda mede 500 - codigo antigo.
+
+Os sete PASS do deploy real medem a 0.7.0 e **nao provam nada sobre a 0.7.6**.
+
+A execucao real usou a forma documentada no `docs/DEPLOY.md`, sem `--`
+(`npm run verify:deploy https://...`): o npm repassou a URL, e o comando do
+checklist funciona como escrito. Saida literal das duas no E2E_REPORT.
+
+## A13 - os 18 requisitos strict
+
+`scripts/lib/e2eGate.js`, `scripts/e2e-real.js`, `scripts/verify-e2e.js`,
+`scripts/doctor.js` e `scripts/lib/doctorChecks.js`: `git diff` vazio.
+`buildStrictRequirements` nao foi tocado.
+
+```text
+ 1 backendProcess       7 isolation            13 historySync
+ 2 database             8 logout               14 favoritesSync
+ 3 migrations           9 assistantAuthority   15 verdictFreshness
+ 4 auth                10 deterministicEngine  16 manualCodeLookup
+ 5 sessionSchema       11 fallback             17 anthropicReal
+ 6 multiDevice         12 privacy              18 assistantAuthenticated
+```
+
+Conferido de duas formas: os testes `D2`, `A10` e `A12` de `e2eGate.test.js`
+passaram na suite; e, contra o `E2E_LAST_RUN.json` desta execucao,
+`findMissingRequirements` devolve `[]` e, pondo CADA um dos 18 sozinho em
+`NOT_EXECUTED`, o gate reprova exatamente aquele - 18 de 18.
+
+### O E2E reprovou uma vez, por ambiente
+
+A primeira execucao do `verify:e2e` reprovou: a checagem de saude recebeu 404 por
+30 s. A porta 3000 estava ocupada por outro projeto do dono, em execucao nesta
+maquina (um app Next.js, `127.0.0.1:3000`), que responde 404 em `/api/health`.
+O gate nao aprovou nada: subgates de fluxo em `NOT_EXECUTED`, `ok: false`.
+
+O outro processo nao foi tocado. As execucoes seguintes usaram `PORT=3100`, so
+no comando - o gate le a porta de `env.port`, entao e configuracao, nao
+alteracao do gate. A segunda passou com `proxy-addr` 2.0.7; depois da correcao
+do A9, a terceira passou sobre o codigo final, com as mesmas 41 linhas de status.
+As tres estao no E2E_REPORT.
+
+## A14, A15
+
+```text
+A14  residuo NutriVa     0 em codigo, interface e manifestos. As mencoes restantes
+                         estao na secao historica do CHANGELOG, no historico deste
+                         relatorio e no teste que proibe o nome
+A15  versao 0.7.6        package.json                          0.7.6
+                         backend/package.json                  0.7.6
+                         package-lock.json (raiz e "")         0.7.6
+                         backend/package-lock.json (raiz e "") 0.7.6
+                         /api/health de um processo real       0.7.6
+                         README                                # NutriScan v0.7.6
+                         CHANGELOG                             ## NutriScan v0.7.6 - 2026-10-12
+```
+
+O `/api/health` do processo real devolve exatamente as chaves `ai`, `database`,
+`status` e `version` (R4).
+
+## Observacoes descritas e NAO corrigidas
+
+```text
+corpo grande demais = 500       ver A4. Proposta: caso explicito 413.
+NODE_ENV desconhecido = dev     correcao pronta no stash@{0}.
+camera apaga letras do CODE_128 SEGURANCA. Correcao pronta no stash@{0}.
+docs/API.md, secao de colecoes  ainda diz "300 requisicoes por 10 minutos por
+                                IP". Desde a v0.7.2 sao 300 por USUARIO e 3000
+                                por IP. Documentacao desatualizada; nao
+                                corrigida por estar fora do escopo.
+credenciais expostas na v0.7.2  rotacao ainda PENDENTE, por decisao do dono.
+```
+
+## O que esta versao NAO prova
+
+```text
+v0.7.6 no ar                  NAO PUBLICADA - o deploy real roda a v0.7.0
+endurecimento no deploy real  NAO COMPROVADO - so depois de publicar
+HTTPS da v0.7.6               NAO COMPROVADO - o alvo simulado nao tem TLS
+camera em hardware real       NAO EXECUTADO - exige aparelho com camera
+decodificacao optica          NAO EXECUTADO
+Open Food Facts real          NAO EXECUTADO nesta versao - a busca do gate e injetada
+suite de colecoes no Neon     NAO EXECUTADO - por decisao de risco
+carga simultanea real         NAO EXECUTADO
+```
+
+**A atestacao da camera em hardware continua ABERTA. Nenhum deploy desta versao
+foi feito.**
+
+## Historico de auditorias anteriores
+
+## Auditoria da v0.7.5 - 2026-10-02
 
 ## Escopo
 
@@ -580,8 +995,6 @@ O Render manteria a versao anterior no ar, e o `verify:deploy` continuaria
 reprovando no D1.
 
 Publicar nao foi feito: a secao 17 manda parar depois do ZIP.
-
-## Historico de auditorias anteriores
 
 ## Auditoria da v0.7.4 - 2026-09-20
 

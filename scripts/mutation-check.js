@@ -39,6 +39,7 @@ const ERRO_BACKEND = "backend/src/middleware/errorMiddleware.js";
 const APP_BACKEND = "backend/src/app.js";
 const VERSION_CHECK = "scripts/version-check.js";
 const VERIFY_DEPLOY = "scripts/verify-deploy.js";
+const RENDER_YAML = "render.yaml";
 
 const SUITE_BARCODE = "tests/barcode.test.js";
 const SUITE_LOOKUP = "tests/productLookup.test.js";
@@ -46,6 +47,8 @@ const SUITE_LIMITE = "tests/rateLimit.test.js";
 const SUITE_INTEGRACAO = "tests/collectionsIntegration.test.js";
 const SUITE_PRODUCAO = "tests/productionHardening.test.js";
 const SUITE_DEPLOY = "tests/verifyDeploy.test.js";
+const SUITE_RENDER = "tests/renderSync.test.js";
+const SUITE_CORPO = "tests/bodyParseError.test.js";
 
 const COMPOSICAO = "  return [porUsuario, porIp];";
 
@@ -197,6 +200,86 @@ const MUTACOES = [
     para: "  process.exitCode = 0;",
     suite: SUITE_DEPLOY,
     deveQuebrar: "P11 o comando de verdade sai com codigo 1 quando um subgate falha",
+    banco: false,
+  },
+  // --- v0.7.6 ------------------------------------------------------------------
+  {
+    id: "V1",
+    requisito: "S1/S4",
+    descricao: "obrigatoria nova no codigo, sem entrada no render.yaml",
+    arquivo: ENV_BACKEND,
+    de: '  "TRUST_PROXY",\n];',
+    para: '  "TRUST_PROXY",\n  "SESSION_COOKIE_NAME",\n];',
+    suite: SUITE_RENDER,
+    deveQuebrar: "S1 render.yaml contem todas as obrigatorias de VARIAVEIS_OBRIGATORIAS_EM_PRODUCAO",
+    banco: false,
+  },
+  {
+    id: "V1b",
+    requisito: "S2",
+    descricao: "o render.yaml ganha uma variavel que o codigo nao le",
+    arquivo: RENDER_YAML,
+    de: '      - key: SESSION_TTL_DAYS\n        value: "30"',
+    para: '      - key: SESSION_TTL_DAYS\n        value: "30"\n      - key: VARIAVEL_MORTA\n        value: "x"',
+    suite: SUITE_RENDER,
+    deveQuebrar: "S2 render.yaml nao declara variavel que o codigo nao le",
+    banco: false,
+  },
+  {
+    id: "V1c",
+    requisito: "S3",
+    descricao: "a DATABASE_URL ganha valor literal no render.yaml",
+    arquivo: RENDER_YAML,
+    de: "      - key: DATABASE_URL\n        sync: false",
+    para: '      - key: DATABASE_URL\n        value: "postgresql://usuario:senha@host.exemplo/banco"',
+    suite: SUITE_RENDER,
+    deveQuebrar: "S3 nenhuma credencial com valor literal no render.yaml",
+    banco: false,
+  },
+  {
+    id: "V2",
+    requisito: "O2a",
+    descricao: "o handler volta a devolver 500 para JSON malformado",
+    arquivo: ERRO_BACKEND,
+    de: "  if (ehFalhaDeParseDoCorpo(error)) {",
+    para: "  if (false) {",
+    suite: SUITE_CORPO,
+    deveQuebrar: "O2a JSON malformado responde 400, nao 500 - a medicao do auditor",
+    banco: false,
+  },
+  {
+    id: "V3",
+    requisito: "O2d",
+    descricao: "o handler passa a confiar no statusCode de qualquer erro",
+    arquivo: ERRO_BACKEND,
+    de: "  if (ehFalhaDeParseDoCorpo(error)) {\n    return res.status(400).json({",
+    para:
+      "  if (error.expose === true && (error.status || error.statusCode)) {\n" +
+      "    return res.status(error.status || error.statusCode).json({",
+    suite: SUITE_CORPO,
+    deveQuebrar: "O2d erro de biblioteca com statusCode arbitrario nao escolhe o status",
+    banco: false,
+  },
+  {
+    id: "V3b",
+    requisito: "O2d",
+    descricao: "basta copiar o type do body-parser para ganhar 400",
+    arquivo: ERRO_BACKEND,
+    de: '  return error instanceof SyntaxError && error.type === "entity.parse.failed";',
+    para: '  return error.type === "entity.parse.failed";',
+    suite: SUITE_CORPO,
+    deveQuebrar: "O2d copiar o type do body-parser nao basta para ganhar 400",
+    banco: false,
+  },
+  {
+    id: "V4",
+    requisito: "R7",
+    descricao: "o verify:deploy passa a chamar POST /api/history",
+    arquivo: VERIFY_DEPLOY,
+    de: "  const { resposta, texto } = await cliente.requisitar(SONDA_INEXISTENTE, {",
+    para: '  const { resposta, texto } = await cliente.requisitar("/api/history", {',
+    suite: SUITE_DEPLOY,
+    deveQuebrar: "P13 o registro de requisicoes do verify:deploy nao tem escrita",
     banco: false,
   },
   {

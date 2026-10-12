@@ -1,4 +1,4 @@
-# API NutriScan v0.7.5
+# API NutriScan v0.7.6
 
 Base local: `http://localhost:3000/api`
 
@@ -18,7 +18,7 @@ Exemplo:
   "status": "ok",
   "database": "not_configured",
   "ai": "not_configured",
-  "version": "0.7.5"
+  "version": "0.7.6"
 }
 ```
 
@@ -398,3 +398,17 @@ Formato padrao:
   }
 }
 ```
+
+### Corpo que nao e JSON (v0.7.6)
+
+```json
+{ "error": { "code": "INVALID_JSON", "message": "O corpo da requisição não é JSON válido." } }
+```
+
+Status **400**. Ate a v0.7.5 esse caso respondia `500 INTERNAL_ERROR`: erro do
+cliente aparecendo como erro do servidor. A mensagem e fixa - nada do erro do
+leitor de JSON chega ao cliente.
+
+O 400 vale SO para falha de parse do corpo. Qualquer outro erro inesperado
+continua `500 INTERNAL_ERROR`, mesmo que a biblioteca que o lancou traga um
+status proprio: uma biblioteca nao escolhe o status nem o texto da resposta.

@@ -3,6 +3,34 @@ import { ZodError } from "zod";
 import { AppError } from "../utils/AppError.js";
 import { isProduction } from "../config/env.js";
 
+// JSON MALFORMADO NO CORPO (v0.7.6, achado O2)
+//
+// `express.json()` recusa corpo que nao e JSON com um erro que traz
+// `statusCode: 400`, `type: "entity.parse.failed"` e `expose: true`. Ate a
+// v0.7.5 o handler descartava isso e respondia 500: erro do CLIENTE virando
+// alerta de SERVIDOR, com "[erro interno]" no log - medido pelo auditor em
+// producao e reproduzido nesta versao.
+//
+// A RESTRICAO, e por que ela e estreita assim
+//
+// O caminho facil seria "respeitar o status de qualquer erro com
+// `expose: true`". Isso entregaria a escolha do status - e, se a mensagem viesse
+// junto, do texto - a qualquer biblioteca que lance um erro com esses campos. Um
+// erro interno de terceiro poderia sair como 401, 404 ou 418, com detalhe dele.
+// `expose: true` do body-parser nao e autorizacao geral.
+//
+// Por isso so UM caso e reconhecido, por dois sinais ao mesmo tempo: o `type`
+// que o body-parser grava na falha de parse, e o erro ser um `SyntaxError` - que
+// e o que o parse do JSON lanca. Um erro de outra biblioteca que apenas copie o
+// `type` nao passa. E mesmo no caso reconhecido, o status e a mensagem saem
+// DAQUI, fixos: nada do erro chega ao cliente.
+//
+// Qualquer outro erro, com o status que trouxer, continua caindo no ramo de erro
+// interno: 500, frase generica.
+function ehFalhaDeParseDoCorpo(error) {
+  return error instanceof SyntaxError && error.type === "entity.parse.failed";
+}
+
 export function notFoundHandler(_req, _res, next) {
   next(new AppError("NOT_FOUND", "Rota não encontrada.", 404));
 }
@@ -24,6 +52,15 @@ export function errorHandler(error, _req, res, _next) {
         code: error.code,
         message: error.message,
         ...(error.details ? { details: error.details } : {}),
+      },
+    });
+  }
+
+  if (ehFalhaDeParseDoCorpo(error)) {
+    return res.status(400).json({
+      error: {
+        code: "INVALID_JSON",
+        message: "O corpo da requisição não é JSON válido.",
       },
     });
   }

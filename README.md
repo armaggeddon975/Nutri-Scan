@@ -1,4 +1,4 @@
-# NutriScan v0.7.5
+# NutriScan v0.7.6
 
 NutriScan e um app web para consultar alimentos por nome ou codigo de barras,
 ver tabela nutricional, identificar ingredientes sensiveis e conversar com um
@@ -349,8 +349,13 @@ Sem isso o build morre com "vite: not found".
 O PostgreSQL fica no **Neon**, nao no Render: o plano gratuito do Render expira
 em 90 dias e apaga os dados.
 
-O passo a passo completo, com as decisoes de HTTPS, cookie e migrations, esta
-em [docs/DEPLOY.md](docs/DEPLOY.md).
+**Para publicar, siga o checklist em [docs/DEPLOY.md](docs/DEPLOY.md).** Ele foi
+escrito para quem publica: o que preencher no painel, como as migrations
+entram, como verificar o resultado e o que fazer quando um subgate falha. As
+decisoes de HTTPS, cookie e migrations tambem estao la.
+
+As versoes 0.7.1 a 0.7.6 ainda nao foram publicadas; o servico no ar roda a
+0.7.0.
 
 ### Variaveis obrigatorias em producao
 
@@ -369,8 +374,10 @@ Ate a v0.7.4, `FRONTEND_ORIGIN` ausente caia em `http://localhost:5173` em
 producao, sem aviso. `FRONTEND_ORIGIN` precisa ser `https://` e so a origem,
 sem caminho nem barra no fim.
 
-**Antes de publicar a v0.7.5, defina `FRONTEND_ORIGIN` no painel do Render.**
-Sem ela, a versao nova nao sobe.
+**Antes de publicar, defina `FRONTEND_ORIGIN` no painel do Render.** Sem ela, a
+versao nova nao sobe. Desde a v0.7.6 um teste confere que toda obrigatoria do
+codigo esta declarada no `render.yaml`, e que nenhuma credencial tem valor no
+arquivo.
 
 Opcionais, com default:
 
@@ -384,8 +391,22 @@ SESSION_COOKIE_NAME          nutriscan_session
 PORT                         3000 - o Render injeta a sua
 ```
 
-Nao existe `SESSION_SECRET`: a sessao e um token aleatorio guardado no banco so
-como hash, sem assinatura de cookie.
+### Nao existe `SESSION_SECRET` - de proposito
+
+Quem configura producao costuma procurar essa variavel. Ela nao existe neste
+projeto, e nao deve ser criada.
+
+A sessao e um **token opaco**: 32 bytes aleatorios no cookie, e no banco so o
+hash SHA-256 dele. Nao ha cookie assinado, entao nao ha o que assinar:
+
+- o cliente nao carrega dado nenhum que o servidor precise confiar - so um
+  numero aleatorio sem significado;
+- revogar uma sessao e apagar a linha dela no banco (`DELETE`), e o logout faz
+  exatamente isso;
+- quem ler o banco ve o hash, nao o token.
+
+Um segredo de sessao aqui seria uma credencial a mais para guardar, rotacionar
+e vazar, sem proteger nada. Detalhe em [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ### Migrations
 
@@ -403,7 +424,7 @@ npm run db:migrate
 ### Verificar o deploy
 
 ```bash
-npm run verify:deploy -- https://nutriscan-h1wp.onrender.com
+npm run verify:deploy https://nutriscan-h1wp.onrender.com
 ```
 
 Prova, contra a URL publicada, que o que esta no ar e o que foi auditado. Sao
