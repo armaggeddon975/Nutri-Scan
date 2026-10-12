@@ -95,8 +95,20 @@ function backendModuleUrl(...segments) {
 // nessa suite todos os clientes saem do mesmo IP. Entao a suite conta o que
 // gasta e recusa passar se chegar perto do teto. Perto, e nao no teto: a
 // margem existe para que um teste novo nao descubra o limite do jeito ruim.
-const TETOS = { auth: 40, assistente: 20, colecoes: 300 };
+const TETOS = { auth: 40, assistente: 20, colecoes: 300, exportacao: 5 };
 const MARGEM = 0.5; // nenhum balde pode passar de metade do seu teto
+
+// Colecoes tem DOIS tetos desde a v0.7.2: 300 por usuario e 3000 por IP. `teto`
+// acima e o por usuario, que e o que a margem vigia. Ate a v0.7.6 o relatorio
+// nao mostrava o por IP, e quem lia "teto 300" podia achar que era o unico.
+// Toda a suite sai do mesmo IP, entao o gasto por IP e o mesmo numero.
+// A exportacao (v0.8.0) tem o mesmo desenho: 5 por usuario e 20 por IP, por dia.
+const TETOS_POR_IP = { colecoes: 3000, exportacao: 20 };
+
+function tetoPorIpDe(balde, usado) {
+  const tetoPorIp = TETOS_POR_IP[balde];
+  return tetoPorIp ? { tetoPorIp, folgaPorIp: tetoPorIp - usado } : {};
+}
 
 const gastos = new Map();
 
@@ -107,7 +119,10 @@ function baldeDa(pathname, method, cliente) {
   // Auth conta por IP, e so em register e login - `me` e `logout` nao passam
   // pelo limitador. Todos os clientes da suite dividem o mesmo balde.
   if (metodo === "POST" && (rota === "/auth/register" || rota === "/auth/login")) return "auth";
+  // Excluir a conta confere uma senha: passa pelo MESMO limitador do login.
+  if (metodo === "DELETE" && rota === "/account") return "auth";
   if (metodo === "POST" && rota === "/assistant/chat") return "assistente";
+  if (metodo === "GET" && rota === "/account/export") return "exportacao";
 
   // Colecoes conta por usuario. Separar por cliente pareceria mais preciso e
   // seria errado: `clientB` faz login com o e-mail de A, entao dois clientes
@@ -137,6 +152,7 @@ function orcamentoDeLimite() {
       teto,
       margemMaxima: permitido,
       folga: teto - usado,
+      ...tetoPorIpDe(balde, usado),
       dentroDaMargem: usado <= permitido,
     });
   }
@@ -151,6 +167,7 @@ function orcamentoDeLimite() {
         teto,
         margemMaxima: Math.floor(teto * MARGEM),
         folga: teto,
+        ...tetoPorIpDe(familia, 0),
         dentroDaMargem: true,
       });
     }
@@ -367,6 +384,8 @@ async function main() {
     favoritesSync: "NOT_EXECUTED",
     verdictFreshness: "NOT_EXECUTED",
     manualCodeLookup: "NOT_EXECUTED",
+    accountExport: "NOT_EXECUTED",
+    accountDeletion: "NOT_EXECUTED",
     logout: "NOT_EXECUTED",
     deterministicEngine: "NOT_EXECUTED",
     assistantGuest: "NOT_EXECUTED",
@@ -545,13 +564,17 @@ async function main() {
       const stamp = Date.now();
       const emailA = `nutriscan-e2e-${stamp}@example.test`;
       const emailB = `nutriscan-e2e-b-${stamp}@example.test`;
+      // Conta D (v0.8.0): criada so para ser apagada pelo subgate de exclusao.
+      // Identificador unico desta execucao, e na lista de limpeza mesmo assim -
+      // se o subgate falhar antes de apagar, a limpeza apaga.
+      const emailD = `nutriscan-e2e-d-${stamp}@example.test`;
       const password = `E2E-${stamp}-senha`;
       const clientA = new CookieClient("A", baseUrl);
       const clientB = new CookieClient("B", baseUrl);
       const clientIso = new CookieClient("ISO", baseUrl);
 
       try {
-        await cleanupUsers(db, [emailA, emailB]);
+        await cleanupUsers(db, [emailA, emailB, emailD]);
 
         const register = await clientA.request("/auth/register", {
           method: "POST",
@@ -960,6 +983,122 @@ async function main() {
           );
         }
 
+        // ------------------------------------------------------------------
+        // v0.8.0 - direitos do titular: exportar e excluir.
+        //
+        // Dois subgates, e nao um: exportar e excluir sao promessas
+        // diferentes, e o auditor precisa saber qual das duas quebrou.
+        // ------------------------------------------------------------------
+
+        // accountExport: A exporta. Vem tudo de A; nada do vizinho (a conta
+        // de isolamento, que ganha historico proprio aqui) e nada de senha,
+        // sessao ou credencial - conferido pelo VALOR lido no banco.
+        const produtoVizinho = {
+          productCode: `e2e-viz-${stamp}`,
+          productName: "Produto do vizinho E2E",
+          productBrand: null,
+          imageUrl: null,
+        };
+        const gravouVizinho = await clientIso.request("/history", { method: "POST", body: produtoVizinho });
+        assert(gravouVizinho.response.status === 201, "o vizinho nao conseguiu gravar historico");
+
+        const exportacao = await clientA.request("/account/export");
+        assert(exportacao.response.status === 200, `exportacao deve retornar 200 (${exportacao.response.status})`);
+        const dados = exportacao.data;
+        const textoExportado = JSON.stringify(dados);
+        assert(dados.formato === "nutriscan-dados-do-titular" && dados.versaoDoFormato === 1, "formato da exportacao");
+        assert(dados.conta?.email === emailA, "a exportacao nao e da conta A");
+        assert(Array.isArray(dados.alergias) && dados.alergias.length > 0, "as alergias de A nao vieram");
+        assert(
+          (dados.historico || []).some((item) => item.codigo === produtoTeste.productCode),
+          "o historico de A nao veio",
+        );
+        assert(Array.isArray(dados.favoritos), "a exportacao nao traz a lista de favoritos");
+
+        for (const valor of [emailB, produtoVizinho.productCode, produtoVizinho.productName]) {
+          assert(!textoExportado.includes(valor), "a exportacao de A carrega dado do vizinho");
+        }
+
+        const segredosA = await db.query(
+          `SELECT u.password_hash, u.password_salt, s.token_hash
+             FROM users u LEFT JOIN sessions s ON s.user_id = u.id
+            WHERE u.email = $1`,
+          [emailA],
+        );
+        assert(segredosA.rowCount > 0, "nao foi possivel ler o material de senha de A para conferir");
+        const valoresSensiveis = [
+          ...new Set(segredosA.rows.flatMap((linha) => [linha.password_hash, linha.password_salt, linha.token_hash])),
+          ...clientA.cookies.values(),
+        ].filter(Boolean);
+        for (const valor of valoresSensiveis) {
+          assert(!textoExportado.includes(valor), "a exportacao carrega senha, hash ou sessao");
+        }
+        assert(!/"(password|password_hash|password_salt|token|token_hash|cookie)"/i.test(textoExportado), "campo sensivel na exportacao");
+
+        assert(exportacao.response.headers.get("cache-control") === "no-store", "a exportacao pode ir para cache");
+        const disposicao = exportacao.response.headers.get("content-disposition") || "";
+        assert(/filename="nutriscan-meus-dados-\d{4}-\d{2}-\d{2}\.json"/.test(disposicao), "nome de arquivo fora do formato");
+        assert(!disposicao.includes(emailA.split("@")[0]), "o nome do arquivo carrega o e-mail");
+        report.accountExport = "PASSED";
+        log("OK", "account export", "tudo de A, nada do vizinho, nada de senha nem de sessao");
+
+        // accountDeletion: a conta D, com dados e dois aparelhos, e apagada.
+        // Senha errada nao apaga nada; senha certa apaga tudo; as duas sessoes
+        // caem; nenhuma tabela que referencia `users` guarda linha de D; e A,
+        // a vizinha, segue intacta.
+        const clientD = new CookieClient("D", baseUrl);
+        const clientD2 = new CookieClient("D2", baseUrl);
+        const registerD = await clientD.request("/auth/register", {
+          method: "POST",
+          body: { name: `e2e-d-${stamp}`, email: emailD, password, allergies: ["milk"] },
+        });
+        assert(registerD.response.status === 201, "register da conta D deve retornar 201");
+        const idD = registerD.data.user.id;
+
+        const produtoD = { ...produtoTeste, productCode: `e2e-d-${stamp}` };
+        assert((await clientD.request("/history", { method: "POST", body: produtoD })).response.status === 201, "D nao gravou historico");
+        assert((await clientD.request("/favorites", { method: "POST", body: produtoD })).response.status === 201, "D nao favoritou");
+        const loginD2 = await clientD2.request("/auth/login", { method: "POST", body: { identifier: emailD, password } });
+        assert(loginD2.response.status === 200, "o segundo aparelho de D nao entrou");
+
+        const historicoAAntes = (await clientA.request("/history")).data.items?.length ?? -1;
+
+        const errada = await clientD.request("/account", { method: "DELETE", body: { password: `${password}-errada` } });
+        assert(errada.response.status === 403, `exclusao com senha errada deve ser recusada (${errada.response.status})`);
+        const dSobreviveu = await db.query("SELECT 1 FROM users WHERE id = $1", [idD]);
+        assert(dSobreviveu.rowCount === 1, "a senha errada apagou a conta");
+
+        const cookiesAntigosD = new Map(clientD.cookies);
+        const excluida = await clientD.request("/account", { method: "DELETE", body: { password } });
+        assert(excluida.response.status === 200, `exclusao com a senha certa deve retornar 200 (${excluida.response.status})`);
+
+        const clientDVelho = new CookieClient("D-velho", baseUrl);
+        for (const [chave, valor] of cookiesAntigosD) clientDVelho.cookies.set(chave, valor);
+        for (const [aparelho, cliente] of [["cookie antigo de D", clientDVelho], ["segundo aparelho de D", clientD2]]) {
+          const me = await cliente.request("/auth/me");
+          assert(me.response.status === 401, `${aparelho} ainda autentica depois da exclusao (${me.response.status})`);
+        }
+
+        const chavesParaUsers = await db.query(
+          `SELECT con.conrelid::regclass::text AS tabela, a.attname AS coluna
+             FROM pg_constraint con
+             JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = ANY (con.conkey)
+            WHERE con.contype = 'f' AND con.confrelid = 'users'::regclass`,
+        );
+        assert(chavesParaUsers.rowCount >= 4, "o catalogo nao listou as tabelas que referenciam users");
+        for (const { tabela, coluna } of chavesParaUsers.rows) {
+          const sobra = await db.query(`SELECT count(*)::int AS n FROM ${tabela} WHERE "${coluna}" = $1`, [idD]);
+          assert(sobra.rows[0].n === 0, `sobrou linha de D em ${tabela}`);
+        }
+        const dAindaExiste = await db.query("SELECT 1 FROM users WHERE id = $1", [idD]);
+        assert(dAindaExiste.rowCount === 0, "a conta D continua em users");
+
+        assert((await clientA.request("/auth/me")).response.status === 200, "a exclusao de D derrubou a sessao de A");
+        const historicoADepois = (await clientA.request("/history")).data.items?.length ?? -2;
+        assert(historicoADepois === historicoAAntes, "a exclusao de D mexeu no historico de A");
+        report.accountDeletion = "PASSED";
+        log("OK", "account deletion", "senha errada nao apaga; senha certa apaga tudo; sessoes caem; vizinha intacta");
+
         const logout = await clientA.request("/auth/logout", { method: "POST" });
         assert(logout.response.status === 200, "logout deve retornar 200");
         const meAfterLogout = await clientA.request("/auth/me");
@@ -971,7 +1110,7 @@ async function main() {
         log("OK", "auth", "register, me, allergies, login, logout idempotente");
       } finally {
         // Cleanup roda mesmo em falha de login, assistente, Anthropic ou logout.
-        await cleanupUsers(db, [emailA, emailB]).catch((error) => {
+        await cleanupUsers(db, [emailA, emailB, emailD]).catch((error) => {
           console.error(statusLine("WARN", "cleanup", error.message));
         });
         await db?.end().catch(() => {});

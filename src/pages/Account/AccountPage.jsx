@@ -1,9 +1,95 @@
-import { Bot, Lock, LogIn, LogOut, Mail, ShieldAlert, User, UserPlus } from "lucide-react";
+import { useState } from "react";
+import { Bot, Download, Lock, LogIn, LogOut, Mail, ShieldAlert, Trash2, User, UserPlus } from "lucide-react";
 
 import { ALLERGY_OPTIONS } from "../../data/allergens";
 import { AllergyPicker } from "../../components/allergies/AllergyPicker";
 import { PageHeader } from "../../components/common/PageHeader";
 import { StatusLine } from "../../components/common/StatusLine";
+
+// SEUS DADOS (v0.8.0): baixar uma copia e excluir a conta.
+//
+// A exclusao nao tem desfazer, entao nao e um botao de um clique. O primeiro
+// botao so ABRE a confirmacao; para excluir de fato a pessoa digita a senha E
+// marca que entende que nao da para voltar atras. So entao o botao final
+// funciona.
+function SeusDados({ dataStatus, onExportData, onDeleteAccount }) {
+  const [confirmando, setConfirmando] = useState(false);
+  const [senha, setSenha] = useState("");
+  const [entendi, setEntendi] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+
+  const fechar = () => {
+    setConfirmando(false);
+    setSenha("");
+    setEntendi(false);
+  };
+
+  const excluir = async (event) => {
+    event.preventDefault();
+    if (!senha || !entendi || enviando) return;
+    setEnviando(true);
+    const excluiu = await onDeleteAccount(senha);
+    setEnviando(false);
+    // A senha nunca fica guardada no campo depois da tentativa.
+    setSenha("");
+    if (excluiu) fechar();
+  };
+
+  return (
+    <article className="account-card account-data">
+      <div className="panel-heading">
+        <Download size={18} aria-hidden="true" />
+        <h4>Seus dados</h4>
+      </div>
+
+      <p>Baixe um arquivo com sua conta, suas alergias, seu histórico e seus favoritos.</p>
+      <button className="secondary-button" type="button" onClick={onExportData}>
+        <Download size={18} aria-hidden="true" />
+        Baixar meus dados
+      </button>
+
+      {!confirmando ? (
+        <button className="account-delete-open" type="button" onClick={() => setConfirmando(true)}>
+          <Trash2 size={18} aria-hidden="true" />
+          Excluir minha conta
+        </button>
+      ) : (
+        <form className="account-delete-confirm" onSubmit={excluir}>
+          <p className="account-delete-warning">
+            Isso apaga sua conta, suas alergias, seu histórico e seus favoritos. Não dá para desfazer.
+          </p>
+          <label>
+            <span>Sua senha</span>
+            <div className="field-with-icon">
+              <Lock size={18} aria-hidden="true" />
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={senha}
+                onChange={(event) => setSenha(event.target.value)}
+              />
+            </div>
+          </label>
+          <label className="account-delete-check">
+            <input type="checkbox" checked={entendi} onChange={(event) => setEntendi(event.target.checked)} />
+            <span>Entendo que não dá para desfazer.</span>
+          </label>
+          <div className="account-delete-actions">
+            <button className="account-delete-final" type="submit" disabled={!senha || !entendi || enviando}>
+              <Trash2 size={18} aria-hidden="true" />
+              Excluir para sempre
+            </button>
+            <button className="secondary-button" type="button" onClick={fechar}>
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
+
+      {dataStatus && <StatusLine status={dataStatus} />}
+    </article>
+  );
+}
 
 export function AccountPage({
   currentUser,
@@ -11,11 +97,14 @@ export function AccountPage({
   authMode,
   authForm,
   authStatus,
+  dataStatus,
   onAuthModeChange,
   onAuthFormChange,
   onSubmitAuth,
   onLogout,
   onToggleAllergy,
+  onExportData,
+  onDeleteAccount,
 }) {
   return (
     <>
@@ -61,6 +150,8 @@ export function AccountPage({
             </div>
             <AllergyPicker selectedAllergies={selectedAllergies} onToggleAllergy={onToggleAllergy} />
           </article>
+
+          <SeusDados dataStatus={dataStatus} onExportData={onExportData} onDeleteAccount={onDeleteAccount} />
         </section>
       ) : (
         <section className="auth-layout">

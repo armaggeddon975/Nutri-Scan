@@ -183,9 +183,26 @@ export function verificarAmbienteDeProducao(fonte = process.env) {
   return problemas;
 }
 
-export function descreverProblemasDeAmbiente(problemas) {
+// NODE_ENV RECONHECIDO
+//
+// `parseNodeEnv` trata um valor desconhecido como "development" - o que e um
+// default seguro para LER o ambiente, mas um desastre para SUBIR com ele. Um
+// `NODE_ENV=producao` digitado no painel desligaria, de uma vez e em silencio: o
+// cookie `Secure`, a conferencia das variaveis obrigatorias acima e a omissao de
+// detalhe nos erros. Tudo continuaria "funcionando".
+//
+// Por isso o servidor confere o modo antes de qualquer outra coisa. Ausente
+// continua sendo desenvolvimento, de proposito: e o caso de quem roda local.
+export function verificarModo(fonte = process.env) {
+  const bruto = fonte.NODE_ENV;
+  if (!presente(bruto)) return [];
+  if (VALID_NODE_ENVS.has(bruto.trim().toLowerCase())) return [];
+  return [{ variavel: "NODE_ENV", motivo: "valor nao reconhecido; use development, test ou production" }];
+}
+
+export function descreverProblemasDeAmbiente(problemas, titulo = "configuracao de producao incompleta.") {
   return [
-    "NutriScan NAO subiu: configuracao de producao incompleta.",
+    `NutriScan NAO subiu: ${titulo}`,
     ...problemas.map(({ variavel, motivo }) => `  - ${variavel}: ${motivo}`),
     "Defina as variaveis no painel da hospedagem. Nenhum valor e impresso aqui.",
   ].join("\n");

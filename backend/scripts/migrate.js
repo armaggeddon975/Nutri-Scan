@@ -14,10 +14,10 @@ if (!env.databaseUrl) {
   process.exit(1);
 }
 
-const client = new Client({
-  connectionString: env.databaseUrl,
-  ssl: env.databaseSsl ? { rejectUnauthorized: false } : false,
-});
+// Criado dentro de `run()`, e nao no topo do modulo: uma DATABASE_URL malformada
+// faz o construtor lancar, e no topo isso escapava do tratamento abaixo como
+// excecao crua, com stack.
+let client;
 
 async function ensureMigrationsTable() {
   await client.query(`
@@ -37,6 +37,10 @@ async function hasMigration(filename) {
 }
 
 async function run() {
+  client = new Client({
+    connectionString: env.databaseUrl,
+    ssl: env.databaseSsl ? { rejectUnauthorized: false } : false,
+  });
   await client.connect();
   try {
     await ensureMigrationsTable();
@@ -92,7 +96,28 @@ async function run() {
   }
 }
 
+// O QUE A FALHA DIZ
+//
+// Ate a v0.7.6 a falha imprimia so `error.message`. Uma conexao recusada a um
+// host com IPv4 e IPv6 - `localhost`, ou um banco remoto com os dois - vira
+// `AggregateError`, cuja `message` e VAZIA: o build do Render falharia com o log
+// em branco, sem dizer que o banco nao respondeu.
+//
+// Agora sai a mensagem, o codigo (`ECONNREFUSED`, `28P01`...) e cada erro
+// interno. Nunca a string de conexao: o `pg` nao a coloca nas mensagens, e o
+// `input` de um erro de URL invalida - que a contem inteira, com senha - nao e
+// impresso.
+function descreverFalha(error) {
+  const linhas = [];
+  if (error?.message) linhas.push(error.message);
+  if (error?.code) linhas.push(`codigo ${error.code}`);
+  for (const interno of error?.errors ?? []) {
+    linhas.push(`  - ${interno?.message || interno?.code || "erro sem descricao"}`);
+  }
+  return linhas.length ? linhas.join("\n") : `${error?.name || "Erro"} sem descricao`;
+}
+
 run().catch((error) => {
-  console.error(error.message);
+  console.error(`Migration falhou:\n${descreverFalha(error)}`);
   process.exit(1);
 });

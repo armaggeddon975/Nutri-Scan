@@ -30,6 +30,7 @@ import { decideAssistantFallback, resolveAssistantSuccess } from "./services/ass
 import { buildAllergyVerdict } from "../shared/allergyVerdict.js";
 import { buildAssistantAnswer } from "./services/assistantService";
 import { getMe, loginAccount, logoutAccount, registerAccount } from "./services/authService";
+import { baixarMeusDados, excluirMinhaConta } from "./services/accountService";
 import { findLocalFoods } from "./services/foodService";
 import { searchProductsByName } from "./services/openFoodFactsService";
 import { updateProfileAllergies } from "./services/profileService";
@@ -76,7 +77,7 @@ import {
   NAO_ENCONTRADO,
   consultarProdutoPorCodigo,
 } from "./services/productLookup";
-import { cleanBarcode, isBarcodeQuery, normalizeText } from "./utils/text";
+import { codigoLidoPelaCamera, isBarcodeQuery, normalizeText } from "./utils/text";
 import { hashPassword, hasSecureCrypto, legacyHashPassword } from "./utils/security";
 
 const VALID_PAGES = ["home", "consulta", "scan", "alergias", "chat", "guia", "meus", "conta"];
@@ -173,6 +174,8 @@ function App() {
     type: "ready",
     message: "Entre na conta para salvar suas alergias.",
   });
+  // Mensagem da secao "Seus dados" (baixar e excluir). Vazia ate a primeira acao.
+  const [dataStatus, setDataStatus] = useState(null);
   const [assistantLoading, setAssistantLoading] = useState(false);
   const [assistantConnection, setAssistantConnection] = useState({
     type: "ready",
@@ -503,7 +506,10 @@ function App() {
       setProduct(null);
       setLocalMatches([]);
 
-      if (!isBarcodeQuery(nextQuery)) {
+      // O que a camera leu e sempre codigo, nunca nome. Sem esta guarda, uma
+      // leitura curta ou com letras caia na busca por TEXTO e podia abrir um
+      // produto qualquer que tivesse aquele trecho no nome.
+      if (origem !== "camera" && !isBarcodeQuery(nextQuery)) {
         const matches = findLocalFoods(nextQuery);
         if (matches.length) {
           if (token !== searchTokenRef.current) return;
@@ -630,7 +636,10 @@ function App() {
         videoRef.current,
         (result, error, currentControls) => {
           if (result) {
-            const detectedBarcode = cleanBarcode(result.getText());
+            // `codigoLidoPelaCamera` nunca transforma um codigo em outro. Uma
+            // leitura que nao e codigo de produto volta vazia e e ignorada: a
+            // camera segue tentando.
+            const detectedBarcode = codigoLidoPelaCamera(result.getText());
             if (!detectedBarcode) return;
 
             // Exige a mesma leitura duas vezes seguidas antes de aceitar.
@@ -897,6 +906,42 @@ function App() {
     restoreGuestSession("Você saiu da conta.");
   };
 
+  // Direitos do titular (v0.8.0). A identidade vem da sessao no servidor: o app
+  // nao manda id de usuario em nenhuma das duas chamadas.
+  const exportarDados = async () => {
+    setDataStatus({ type: "loading", message: "Preparando o arquivo..." });
+    try {
+      await baixarMeusDados();
+      setDataStatus({ type: "success", message: "Arquivo baixado." });
+    } catch (error) {
+      if (error.status === 401) {
+        setDataStatus(null);
+        restoreGuestSession("Sua sessão acabou. Entre de novo.");
+        return;
+      }
+      setDataStatus({ type: "warning", message: error.message });
+    }
+  };
+
+  // Devolve se excluiu, para a tela fechar a confirmacao so quando deu certo.
+  const excluirConta = async (senha) => {
+    setDataStatus({ type: "loading", message: "Excluindo sua conta..." });
+    try {
+      await excluirMinhaConta(senha);
+      setDataStatus(null);
+      restoreGuestSession("Sua conta foi excluída.", "success");
+      return true;
+    } catch (error) {
+      if (error.status === 401) {
+        setDataStatus(null);
+        restoreGuestSession("Sua sessão acabou. Entre de novo.");
+        return false;
+      }
+      setDataStatus({ type: "warning", message: error.message });
+      return false;
+    }
+  };
+
   const submitAssistant = async (event) => {
     event.preventDefault();
     const question = assistantQuestion.trim();
@@ -1086,11 +1131,14 @@ function App() {
           authMode={authMode}
           authForm={authForm}
           authStatus={authStatus}
+          dataStatus={dataStatus}
           onAuthModeChange={setAuthMode}
           onAuthFormChange={updateAuthForm}
           onSubmitAuth={submitAuth}
           onLogout={logout}
           onToggleAllergy={toggleAllergy}
+          onExportData={exportarDados}
+          onDeleteAccount={excluirConta}
         />
       );
     }

@@ -1,4 +1,4 @@
-# Arquitetura NutriScan v0.7.6
+# Arquitetura NutriScan v0.8.0
 
 ## Visao geral
 
@@ -169,14 +169,21 @@ atual nao grava token em `localStorage`.
 
 ## Limite de requisicoes
 
-Tres limitadores, com finalidades diferentes:
+Quatro limitadores, com finalidades diferentes:
 
 ```text
 auth          40 / 15 min   por IP      protege senha contra forca bruta
 assistente    20 / 10 min   por IP      cada chamada custa dinheiro
 colecoes     300 / 10 min   por USUARIO controle primario de escrita
 colecoes    3000 / 10 min   por IP      contencao de abuso multiconta
+exportacao     5 / 24 h     por USUARIO uso legitimo e raro (v0.8.0)
+exportacao    20 / 24 h     por IP      contencao de abuso multiconta
 ```
+
+A exportacao usa a mesma fabrica das colecoes, com baldes proprios. A exclusao
+de conta (`DELETE /api/account`) confere senha e por isso passa pelo de auth.
+O raciocinio dos numeros da exportacao esta em `rateLimit.js` e em
+`docs/DADOS_DO_TITULAR.md`.
 
 As rotas de colecoes - `/api/history` e `/api/favorites` - passam pelos DOIS
 ultimos. Passar exige caber nos dois; qualquer um recusando termina em 429.
@@ -264,6 +271,18 @@ Logout e idempotente e tenta limpar o cookie mesmo quando a sessao esta ausente,
 expirada ou desconhecida. Quando uma rota autenticada retorna
 `401 UNAUTHENTICATED`, o frontend volta ao modo visitante.
 
+## Dados do titular (v0.8.0)
+
+```text
+GET    /api/account/export -> requireAuth -> limitador de exportacao -> 4 leituras por user_id
+DELETE /api/account        -> limitador de auth -> requireAuth -> senha -> transacao
+```
+
+A identidade vem so de `req.user`. A exclusao apaga as sessoes e a linha de
+`users` na mesma transacao; alergias, historico e favoritos saem pela cascata das
+FKs (`ON DELETE CASCADE` nas quatro tabelas que referenciam `users`). Exclusao
+fisica, sem `deleted_at`. Decisoes em `docs/DADOS_DO_TITULAR.md`.
+
 ## Alergias por perfil
 
 Visitante:
@@ -315,6 +334,24 @@ com codigo 1 e diz qual variavel falta, sem imprimir valor.
 A regra comum as quatro: a falta seria silenciosa. O app subiria, pareceria
 funcionar, e o defeito so apareceria depois - CORS confiando em localhost,
 conexao sem TLS, ou o teto por IP virando teto global.
+
+Antes dessas quatro, o servidor confere o proprio `NODE_ENV`. Um valor
+desconhecido - `producao`, `prod`, `staging` - recusa subir. Sem essa
+conferencia, um erro de digitacao viraria `development` e desligaria em silencio
+justamente a checagem acima, junto com o cookie `Secure`. Ausente continua sendo
+desenvolvimento.
+
+### Leitura da camera
+
+O que a camera le nunca vira OUTRO codigo (`codigoLidoPelaCamera`, em
+`src/utils/text.js`). So digitos, com espaco ou hifen, seguem como antes. Letras
+e digitos passam intactos e, na Open Food Facts, viram "nao encontrado". Qualquer
+outro caractere descarta a leitura, e nada e cortado.
+
+Ate a v0.7.6 a leitura passava por `cleanBarcode`, que apaga tudo que nao e
+digito: um CODE_128 com letras virava o EAN de outro produto, com outros
+alergenicos. Uma leitura curta com letras caia ainda na busca por NOME. Agora
+uma leitura de camera sempre segue para a consulta por codigo.
 
 ### Versao
 

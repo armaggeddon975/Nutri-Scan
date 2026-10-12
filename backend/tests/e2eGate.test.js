@@ -188,6 +188,8 @@ const reportCompleto = {
   favoritesSync: "PASSED",
   verdictFreshness: "PASSED",
   manualCodeLookup: "PASSED",
+  accountExport: "PASSED",
+  accountDeletion: "PASSED",
   anthropicReal: "EXECUTED_GENERIC_AND_PRODUCT",
   assistantAuthenticated: "PASSED",
 };
@@ -260,6 +262,8 @@ test("D2: o conjunto de requisitos do modo strict e exatamente este", () => {
     "favoritesSync",
     "verdictFreshness",
     "manualCodeLookup",
+    "accountExport",
+    "accountDeletion",
   ]);
 
   const chavesComFlag = buildStrictRequirements(reportCompleto, { anthropicFlagEnabled: true }).map(
@@ -431,8 +435,9 @@ test("A12: os 14 requisitos anteriores a v0.7.0 continuam exigidos, um a um", ()
 
   assert.equal(REQUISITOS_ANTES_DA_V070.length, 14);
 
-  // A v0.7.0 acrescentou tres (historico, favoritos, frescor do veredito) e a
-  // v0.7.3 acrescentou um (`manualCodeLookup`).
+  // A v0.7.0 acrescentou tres (historico, favoritos, frescor do veredito), a
+  // v0.7.3 acrescentou um (`manualCodeLookup`) e a v0.8.0, dois (exportar e
+  // excluir a conta).
   //
   // A assercao aqui e sobre o que este teste realmente guarda: que nenhum dos
   // 14 antigos sumiu e que nada foi acrescentado sem ser nomeado. Travar um
@@ -442,7 +447,7 @@ test("A12: os 14 requisitos anteriores a v0.7.0 continuam exigidos, um a um", ()
   const acrescentados = atuais.filter((chave) => !REQUISITOS_ANTES_DA_V070.includes(chave));
   assert.deepEqual(
     acrescentados,
-    ["historySync", "favoritesSync", "verdictFreshness", "manualCodeLookup"],
+    ["historySync", "favoritesSync", "verdictFreshness", "manualCodeLookup", "accountExport", "accountDeletion"],
     `requisitos acrescentados desde a v0.6.9 fora do esperado: ${acrescentados.join(", ")}`,
   );
 });
@@ -513,15 +518,68 @@ test("A10: os 17 requisitos da v0.7.2 continuam exigidos, um a um", () => {
   }
 });
 
-test("A10: o modo strict tem exatamente 18 requisitos, 17 antigos mais o novo", () => {
+test("A10: desde a v0.7.2 entraram so manualCodeLookup e os dois da v0.8.0, nomeados", () => {
+  // Ate a v0.7.6 este teste travava o total em 18. O total exato agora e do
+  // teste A11, abaixo; aqui fica o que este sempre guardou: nada entrou desde a
+  // v0.7.2 sem ser nomeado.
+  const atuais = buildStrictRequirements(reportCompleto, { anthropicFlagEnabled: true }).map(
+    ([chave]) => chave,
+  );
+  const novos = atuais.filter((chave) => !REQUISITOS_DA_V072.includes(chave));
+  assert.deepEqual(
+    novos,
+    ["manualCodeLookup", "accountExport", "accountDeletion"],
+    `requisitos novos inesperados: ${novos.join(", ")}`,
+  );
+});
+
+// A11 da v0.8.0: os dois subgates novos nao podem custar nenhum requisito antigo.
+//
+// A v0.7.6 saiu com 18 requisitos em modo strict, aprovada por auditoria
+// externa. A v0.8.0 acrescenta `accountExport` e `accountDeletion` e passa a 20.
+// Este teste lista os 18 pelo nome e exige que cada um, sozinho, continue
+// capaz de reprovar a execucao.
+const REQUISITOS_DA_V076 = [...REQUISITOS_DA_V072, "manualCodeLookup"];
+
+test("A11: os 18 requisitos da v0.7.6 continuam exigidos, um a um", () => {
+  assert.equal(REQUISITOS_DA_V076.length, 18, "a lista de referencia mudou de tamanho");
+
   const atuais = buildStrictRequirements(reportCompleto, { anthropicFlagEnabled: true }).map(
     ([chave]) => chave,
   );
 
-  assert.equal(atuais.length, 18, `o modo strict tem ${atuais.length} requisitos`);
+  for (const chave of REQUISITOS_DA_V076) {
+    assert.ok(atuais.includes(chave), `o requisito ${chave} da v0.7.6 sumiu do modo strict`);
+    assert.deepEqual(
+      findMissingRequirements({ ...reportCompleto, [chave]: "NOT_EXECUTED" }, { anthropicFlagEnabled: true }),
+      [chave],
+      `o requisito ${chave} da v0.7.6 deixou de reprovar quando nao executado`,
+    );
+  }
+});
 
-  const novos = atuais.filter((chave) => !REQUISITOS_DA_V072.includes(chave));
-  assert.deepEqual(novos, ["manualCodeLookup"], `requisitos novos inesperados: ${novos.join(", ")}`);
+test("A11: o modo strict tem exatamente 20 requisitos, 18 antigos mais os dois novos", () => {
+  const atuais = buildStrictRequirements(reportCompleto, { anthropicFlagEnabled: true }).map(
+    ([chave]) => chave,
+  );
+
+  assert.equal(atuais.length, 20, `o modo strict tem ${atuais.length} requisitos`);
+
+  const novos = atuais.filter((chave) => !REQUISITOS_DA_V076.includes(chave));
+  assert.deepEqual(novos, ["accountExport", "accountDeletion"], `requisitos novos inesperados: ${novos.join(", ")}`);
+});
+
+test("A11: accountExport e accountDeletion sao requisitos BASE e reprovam sozinhos", () => {
+  // Dependem de PostgreSQL, nao de IA: sem a flag da Anthropic continuam exigidos.
+  for (const flag of [true, false]) {
+    for (const chave of ["accountExport", "accountDeletion"]) {
+      assert.deepEqual(
+        findMissingRequirements({ ...reportCompleto, [chave]: "NOT_EXECUTED" }, { anthropicFlagEnabled: flag }),
+        [chave],
+        `${chave} deixou de reprovar (flag da IA ${flag})`,
+      );
+    }
+  }
 });
 
 test("A10: manualCodeLookup e requisito BASE, nao condicional a flag da IA", () => {
@@ -540,4 +598,32 @@ test("A10: manualCodeLookup e requisito BASE, nao condicional a flag da IA", () 
     ),
     ["manualCodeLookup"],
   );
+});
+
+test("o orcamento do gate usa os mesmos tetos do limitador, inclusive o por IP", async () => {
+  // O relatorio do gate escreve os tetos a mao. Se um limitador mudar e o
+  // relatorio nao, ele passa a medir margem contra um numero que nao existe.
+  const {
+    TETO_COLECOES_POR_IP,
+    TETO_COLECOES_POR_USUARIO,
+    TETO_EXPORTACAO_POR_IP,
+    TETO_EXPORTACAO_POR_USUARIO,
+  } = await import("../src/middleware/rateLimit.js");
+  const runner = await readFile(path.join(rootDir, "scripts/e2e-real.js"), "utf8");
+
+  const tetos = /const TETOS = \{ auth: (\d+), assistente: (\d+), colecoes: (\d+), exportacao: (\d+) \};/.exec(runner);
+  const porIp = /const TETOS_POR_IP = \{ colecoes: (\d+), exportacao: (\d+) \};/.exec(runner);
+  assert.ok(tetos, "TETOS sumiu do e2e-real.js, ou perdeu um balde");
+  assert.ok(porIp, "o orcamento deixou de mostrar o teto por IP das colecoes ou da exportacao");
+  assert.equal(Number(tetos[3]), TETO_COLECOES_POR_USUARIO);
+  assert.equal(Number(porIp[1]), TETO_COLECOES_POR_IP);
+  // v0.8.0: o balde novo da exportacao segue as constantes do limitador.
+  assert.equal(Number(tetos[4]), TETO_EXPORTACAO_POR_USUARIO);
+  assert.equal(Number(porIp[2]), TETO_EXPORTACAO_POR_IP);
+});
+
+test("o orcamento do gate conta a exclusao de conta no balde de autenticacao", async () => {
+  const runner = await readFile(path.join(rootDir, "scripts/e2e-real.js"), "utf8");
+  assert.match(runner, /metodo === "DELETE" && rota === "\/account"\) return "auth"/);
+  assert.match(runner, /metodo === "GET" && rota === "\/account\/export"\) return "exportacao"/);
 });

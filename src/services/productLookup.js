@@ -1,6 +1,6 @@
 import { mensagemDeRecusa, validarCodigoDeBarras } from "../../shared/barcode.js";
 import { fetchProductByBarcode } from "./openFoodFactsService.js";
-import { cleanBarcode } from "../utils/text.js";
+import { codigoLidoPelaCamera } from "../utils/text.js";
 
 // Consulta de produto por codigo.
 //
@@ -81,12 +81,23 @@ export async function consultarProdutoPorCodigo(
     // nao e mais a que garante a unicidade no banco.
     codigo = validacao.codigo;
   } else {
-    codigo = cleanBarcode(entrada);
-    if (!codigo) {
+    // A camera nunca transforma um codigo em outro: ver `codigoLidoPelaCamera`.
+    // Ate a v0.7.6 este ramo apagava as letras de um CODE_128, e o que sobrava
+    // podia ser o EAN de outro produto.
+    if (!String(entrada ?? "").trim()) {
       return {
         estado: CODIGO_INVALIDO,
         motivo: "vazio",
         mensagem: mensagemDeRecusa({ motivo: "vazio" }),
+        codigoDigitado: "",
+      };
+    }
+    codigo = codigoLidoPelaCamera(entrada);
+    if (!codigo) {
+      return {
+        estado: CODIGO_INVALIDO,
+        motivo: "nao_e_produto",
+        mensagem: "Esse código não é de produto. Digite o número embaixo das barras.",
         codigoDigitado: "",
       };
     }

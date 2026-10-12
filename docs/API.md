@@ -1,4 +1,4 @@
-# API NutriScan v0.7.6
+# API NutriScan v0.8.0
 
 Base local: `http://localhost:3000/api`
 
@@ -18,7 +18,7 @@ Exemplo:
   "status": "ok",
   "database": "not_configured",
   "ai": "not_configured",
-  "version": "0.7.6"
+  "version": "0.8.0"
 }
 ```
 
@@ -380,10 +380,130 @@ Remove um favorito. Mesma regra de `404` do historico.
 
 ### Limite de requisicoes
 
-As rotas desta secao compartilham um limite de **300 requisicoes por 10
-minutos** por IP. E mais folgado que o de autenticacao, que protege senha, e que
-o do assistente, que custa por chamada - cada produto aberto gera um `POST` de
-historico.
+As rotas desta secao passam por dois limites ao mesmo tempo, desde a v0.7.2:
+**300 requisicoes por 10 minutos por usuario** e **3000 por 10 minutos por IP**.
+Passar exige caber nos dois; qualquer um recusando devolve 429. Sao mais
+folgados que o de autenticacao, que protege senha, e que o do assistente, que
+custa por chamada - cada produto aberto gera um `POST` de historico.
+
+(Ate a v0.7.6 este paragrafo dizia "300 por IP", texto anterior a v0.7.2 que
+nao foi atualizado quando os limites mudaram.)
+
+## Conta: dados do titular (v0.8.0)
+
+Duas rotas, as duas com sessao obrigatoria. **O titular e sempre o dono da
+sessao**: `userId` no corpo, na query ou em cabecalho e ignorado. Nao existe
+rota para ler ou apagar os dados de outra pessoa. Nenhuma das duas chama a IA.
+
+As decisoes de formato, de cabecalho e de exclusao fisica estao em
+[DADOS_DO_TITULAR.md](DADOS_DO_TITULAR.md).
+
+### `GET /api/account/export`
+
+Exporta tudo o que o sistema guarda sobre o titular. Sem corpo.
+
+Resposta `200`, com o JSON no corpo e estes cabecalhos:
+
+```text
+Content-Type: application/json; charset=utf-8
+Content-Disposition: attachment; filename="nutriscan-meus-dados-2026-10-12.json"
+Cache-Control: no-store
+Pragma: no-cache
+```
+
+O nome do arquivo e so o produto e o dia - nunca o e-mail nem o nome.
+
+```json
+{
+  "formato": "nutriscan-dados-do-titular",
+  "versaoDoFormato": 1,
+  "geradoEm": "2026-10-12T14:03:22.511Z",
+  "conta": {
+    "nome": "Maria",
+    "email": "maria@example.com",
+    "criadaEm": "2026-09-30T11:20:05.000Z"
+  },
+  "alergias": [
+    { "id": "milk", "nome": "Leite/lactose", "marcadaEm": "2026-09-30T11:20:05.000Z" }
+  ],
+  "historico": [
+    {
+      "codigo": "7891000100103",
+      "nome": "Leite condensado",
+      "marca": "Exemplo",
+      "imagem": "https://images.openfoodfacts.org/...",
+      "consultadoEm": "2026-10-11T19:42:10.000Z"
+    }
+  ],
+  "favoritos": [
+    {
+      "codigo": "7891000100103",
+      "nome": "Leite condensado",
+      "marca": "Exemplo",
+      "imagem": null,
+      "favoritadoEm": "2026-10-11T19:43:00.000Z"
+    }
+  ]
+}
+```
+
+`historico` vem do mais recente para o mais antigo (`consultadoEm`), e
+`favoritos` tambem (`favoritadoEm`). Listas vazias saem como `[]`. `marca` e
+`imagem` podem ser `null`.
+
+**Nunca aparecem:** hash ou salt da senha, sessoes, token, cookie, id interno de
+linha, `user_id`, dado de outra conta, chave de API, string de conexao.
+
+Limite proprio: **5 por 24 horas por usuario** e **20 por 24 horas por IP** -
+passar exige caber nos dois. Acima disso, `429`. Exportar nao gasta a cota de
+historico e favoritos.
+
+```text
+200                  o arquivo
+401 UNAUTHENTICATED  sem sessao, sessao expirada, ou conta excluida
+429 (limitador)      passou do limite do dia
+```
+
+### `DELETE /api/account`
+
+Exclui a conta do titular e tudo o que esta ligado a ela: alergias, historico,
+favoritos e **todas** as sessoes, em todos os aparelhos. Exclusao fisica, numa
+transacao so - ou sai tudo, ou nada.
+
+Corpo, obrigatorio - a senha ATUAL, conferida de novo contra o hash:
+
+```json
+{ "password": "a-senha-atual" }
+```
+
+O parser de JSON aceita corpo em `DELETE`. Corpo que nao e JSON cai no
+`400 INVALID_JSON` geral, antes da rota.
+
+Resposta `200`, com o cookie de sessao limpo (`Set-Cookie` expirando o cookie) e
+`Cache-Control: no-store`:
+
+```json
+{ "ok": true }
+```
+
+Depois disso, o cookie antigo - e o de qualquer outro aparelho da conta -
+responde `401`. O e-mail e o nome ficam livres para um cadastro novo.
+
+```text
+200                       conta excluida
+400 VALIDATION_ERROR      sem `password`, ou vazia: "Digite sua senha para confirmar."
+400 INVALID_JSON          o corpo nao e JSON
+401 UNAUTHENTICATED       sem sessao, ou sessao expirada
+403 INVALID_CREDENTIALS   "Senha incorreta. Nada foi apagado."
+429 (limitador)           tentativas demais
+```
+
+**403, e nao 401, para senha errada:** a sessao continua valida, so a
+confirmacao falhou. Nada e apagado.
+
+**Limite: o de autenticacao** - 40 por 15 minutos por IP, o mesmo balde do
+login. Cada tentativa confere uma senha, entao conta como tentativa de senha; o
+limitador roda antes da autenticacao, e toda tentativa conta.
 
 ## Erros
 
@@ -409,6 +529,30 @@ Status **400**. Ate a v0.7.5 esse caso respondia `500 INTERNAL_ERROR`: erro do
 cliente aparecendo como erro do servidor. A mensagem e fixa - nada do erro do
 leitor de JSON chega ao cliente.
 
-O 400 vale SO para falha de parse do corpo. Qualquer outro erro inesperado
-continua `500 INTERNAL_ERROR`, mesmo que a biblioteca que o lancou traga um
-status proprio: uma biblioteca nao escolhe o status nem o texto da resposta.
+### Corpo grande demais
+
+```json
+{ "error": { "code": "PAYLOAD_TOO_LARGE", "message": "O corpo da requisição é grande demais." } }
+```
+
+Status **413**, para corpo acima de 64 kB. Ate a v0.7.6 respondia
+`500 INTERNAL_ERROR`, o mesmo defeito do JSON malformado no caso vizinho.
+
+Os dois - 400 e 413 - valem SO para os erros do leitor de corpo, reconhecidos
+pela classe e pelo tipo do erro. Qualquer outro erro inesperado continua
+`500 INTERNAL_ERROR`, mesmo que a biblioteca que o lancou traga um status
+proprio: uma biblioteca nao escolhe o status nem o texto da resposta.
+
+### Codigos gerais
+
+```text
+400  VALIDATION_ERROR    campo invalido; `details` diz qual
+400  INVALID_JSON        o corpo nao e JSON valido
+413  PAYLOAD_TOO_LARGE   o corpo passa de 64 kB
+404  NOT_FOUND           rota inexistente - inclusive qualquer /api/* sem rota
+401  UNAUTHENTICATED     rota que exige sessao, chamada sem ela
+403  INVALID_CREDENTIALS DELETE /api/account com a senha errada; nada e apagado
+429  (limitador)         passou do limite da rota
+503  DATABASE_NOT_CONFIGURED
+500  INTERNAL_ERROR      erro do servidor; em producao, sem `details`
+```

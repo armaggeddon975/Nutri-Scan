@@ -1,9 +1,9 @@
-# Publicar o NutriScan - v0.7.6
+# Publicar o NutriScan - v0.8.0
 
 Este documento e para **quem vai publicar**, nao para quem escreveu o codigo.
 Siga na ordem. Nenhum passo pede para adivinhar.
 
-**Situacao hoje:** as versoes 0.7.1 a 0.7.6 nunca foram publicadas. O servico
+**Situacao hoje:** as versoes 0.7.1 a 0.8.0 nunca foram publicadas. O servico
 `nutriscan` no Render ainda roda a 0.7.0.
 
 Nenhum valor real de credencial aparece aqui. Onde houver `<...>`, troque pelo
@@ -40,8 +40,8 @@ FRONTEND_ORIGIN              SIM          env.js -> CORS       o processo NAO SO
 TRUST_PROXY                  SIM          env.js -> app.js     o processo NAO SOBE                       sim, "true"        nada - ja vem do arquivo
 ANTHROPIC_API_KEY            nao          env.js -> ai/        sobe; assistente local; health diz        sim, sync: false   a chave, se quiser IA
                                                                ai: not_configured
-NODE_ENV                     nao (*)      env.js               vira development: sem cookie Secure e     sim, production    nada - ja vem do arquivo
-                                                               sem a checagem das obrigatorias
+NODE_ENV                     nao (*)      env.js, server.js    ausente: development. Valor desconhecido  sim, production    nada - ja vem do arquivo
+                                                               (producao, prod): o processo NAO SOBE
 NODE_VERSION                 nao          o proprio Render     o Render usa a versao padrao dele         sim, "22"          nada - ja vem do arquivo
 ANTHROPIC_MODEL              nao          env.js -> ai/        claude-sonnet-5                           sim                nada - ja vem do arquivo
 SESSION_TTL_DAYS             nao          env.js -> sessao     30 dias                                   sim, "30"          nada - ja vem do arquivo
@@ -51,10 +51,19 @@ ANTHROPIC_TIMEOUT_MS         nao          env.js -> ai/        20000            
 ANTHROPIC_MAX_OUTPUT_TOKENS  nao          env.js -> ai/        1200                                      nao                nada
 ```
 
-(*) `NODE_ENV` nao e conferida no boot: ausente, o app roda como
-desenvolvimento. O `render.yaml` a fixa em `production`, entao no Render ela ja
-vem certa. Um valor digitado errado no painel - `producao`, `prod` - tambem vira
-desenvolvimento, em silencio. Ver "Pontos de atencao" no fim.
+(*) `NODE_ENV` ausente faz o app rodar como desenvolvimento - e o caso de quem
+roda local. O `render.yaml` a fixa em `production`, entao no Render ela ja vem
+certa. Um valor digitado errado no painel - `producao`, `prod`, `staging` -
+**impede o processo de subir**, a partir da v0.8.0:
+
+```text
+NutriScan NAO subiu: NODE_ENV nao reconhecido.
+  - NODE_ENV: valor nao reconhecido; use development, test ou production
+Defina as variaveis no painel da hospedagem. Nenhum valor e impresso aqui.
+```
+
+Ate a v0.7.6 esse erro virava desenvolvimento em silencio, desligando de uma vez
+o cookie `Secure` e a checagem das obrigatorias.
 
 **So tres coisas sao preenchidas a mao:** `DATABASE_URL`, `FRONTEND_ORIGIN` e,
 se quiser IA, `ANTHROPIC_API_KEY`. Todas sao `sync: false` no `render.yaml`: o
@@ -94,6 +103,21 @@ contra o banco da `DATABASE_URL` do seu ambiente:
 ```bash
 npm run db:migrate
 ```
+
+**Se a migration falhar, o log do build diz por que.** Saida real, medida com a
+`DATABASE_URL` apontando para uma porta fechada em `localhost`:
+
+```text
+Migration falhou:
+codigo ECONNREFUSED
+  - connect ECONNREFUSED ::1:1
+  - connect ECONNREFUSED 127.0.0.1:1
+```
+
+Ate a v0.7.6 essa falha saia com o log EM BRANCO: uma conexao recusada a um host
+com IPv4 e IPv6 vira `AggregateError`, cuja mensagem e vazia, e o script
+imprimia so a mensagem. A string de conexao nunca aparece - nem numa
+`DATABASE_URL` malformada.
 
 ### 4. Publicar
 
@@ -175,8 +199,9 @@ D5  Se a rota respondeu 500: o banco esta inacessivel - confira DATABASE_URL e
     DATABASE_SSL. Se respondeu 200: a autenticacao esta quebrada - GRAVE, nao
     publique por cima e investigue.
 
-D6  NODE_ENV nao esta como production no painel, e o erro esta saindo com
-    detalhe. Confira a variavel; o render.yaml a fixa em production.
+D6  NODE_ENV esta como development no painel, e o erro esta saindo com
+    detalhe. Confira a variavel; o render.yaml a fixa em production. (Um
+    valor desconhecido nem chega aqui: o processo nao sobe.)
 
 D7  O build do frontend nao rodou: alguem tirou o --include=dev do
     buildCommand, ou o build falhou antes do vite. Sem o dist/, a raiz responde
@@ -299,12 +324,37 @@ Nao ha migration automatica no start. Isso e decisao de operacao.
 o teste exige que ela esteja no `render.yaml`, para que producao sem IA seja
 decisao, e nao esquecimento.
 
+### Rotas de conta (v0.8.0)
+
+A v0.8.0 acrescenta `GET /api/account/export` e `DELETE /api/account`. Para
+publicar, **nada muda**: nenhuma variavel nova, nenhuma migration nova. A cascata
+que a exclusao usa ja existe no banco desde as migrations 001 e 002.
+
+O `verify:deploy` **nao** testa essas rotas, de proposito: ele so le, e as duas
+leem ou apagam dado de uma conta. Se quiser conferir depois de publicar, faca a
+mao, com uma conta descartavel criada so para isso - nunca com a sua:
+
+1. Crie uma conta de teste no app publicado e marque uma alergia.
+2. Em **Conta > Seus dados**, "Baixar meus dados": o arquivo deve chamar
+   `nutriscan-meus-dados-AAAA-MM-DD.json` e trazer a alergia.
+3. "Excluir minha conta" com a senha ERRADA: deve aparecer "Senha incorreta.
+   Nada foi apagado." e a conta continua.
+4. De novo, com a senha certa: o app volta para a tela de entrada com "Sua conta
+   foi excluida.", e o login com aquela conta passa a falhar.
+5. Apague o arquivo baixado no passo 2.
+
+A exclusao remove as linhas do banco em uso. O provedor do PostgreSQL pode
+manter historico para restauracao por um prazo que depende do plano - o codigo
+nao alcanca esse historico. Ver [DADOS_DO_TITULAR.md](DADOS_DO_TITULAR.md).
+
 ### Pontos de atencao conhecidos
 
-- **`NODE_ENV` digitado errado vira desenvolvimento, em silencio.** O
-  `render.yaml` a fixa em `production`, entao o risco e alguem sobrescreve-la no
-  painel. Corrigir - recusar subir com valor desconhecido - esta descrito para
-  decisao no AUDIT_REPORT da v0.7.6.
-- **Corpo grande demais (mais de 64 kB) ainda responde 500.** Desde a v0.7.6, o
-  JSON malformado responde 400 `INVALID_JSON`; o corpo grande, nao. Fica
-  descrito para decisao no AUDIT_REPORT.
+- **`NODE_ENV` digitado errado:** ate a v0.7.6 virava desenvolvimento, em
+  silencio. A partir da v0.8.0 o processo recusa subir - ver a nota (*) do
+  passo 2.
+- **Corpo grande demais (mais de 64 kB):** ate a v0.7.6 respondia 500. A partir
+  da v0.8.0 responde 413 `PAYLOAD_TOO_LARGE`, reconhecido pela classe e pelo
+  tipo do erro, como o 400 do JSON malformado.
+- **Limite da exportacao:** 5 por dia por usuario e 20 por dia por IP. Quem
+  testar a exportacao mais de cinco vezes no mesmo dia, com a mesma conta,
+  recebe 429 ate a janela de 24 horas passar - e esperado.

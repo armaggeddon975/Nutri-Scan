@@ -31,6 +31,21 @@ function ehFalhaDeParseDoCorpo(error) {
   return error instanceof SyntaxError && error.type === "entity.parse.failed";
 }
 
+// CORPO GRANDE DEMAIS (para a v0.8.0, por decisao do dono do projeto)
+//
+// O mesmo defeito do O2, no caso vizinho: corpo acima do limite do
+// `express.json()` (64 kB) respondia 500. A v0.7.6 deixou de fora de proposito,
+// porque o prompt dela restringia a correcao ao parse.
+//
+// Mesma regra de la: um caso so, reconhecido por dois sinais medidos no erro
+// real - a classe `PayloadTooLargeError`, que o body-parser cria, e o `type`
+// `entity.too.large`. Copiar so o `type` nao basta. O 413 e a mensagem saem
+// DAQUI; nem o status nem o texto do erro ("request entity too large") chegam
+// ao cliente.
+function ehCorpoGrandeDemais(error) {
+  return error?.constructor?.name === "PayloadTooLargeError" && error.type === "entity.too.large";
+}
+
 export function notFoundHandler(_req, _res, next) {
   next(new AppError("NOT_FOUND", "Rota não encontrada.", 404));
 }
@@ -61,6 +76,15 @@ export function errorHandler(error, _req, res, _next) {
       error: {
         code: "INVALID_JSON",
         message: "O corpo da requisição não é JSON válido.",
+      },
+    });
+  }
+
+  if (ehCorpoGrandeDemais(error)) {
+    return res.status(413).json({
+      error: {
+        code: "PAYLOAD_TOO_LARGE",
+        message: "O corpo da requisição é grande demais.",
       },
     });
   }

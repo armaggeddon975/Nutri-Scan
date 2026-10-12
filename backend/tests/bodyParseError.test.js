@@ -164,6 +164,38 @@ test("O2d copiar o type do body-parser nao basta para ganhar 400", async () => {
   assert.equal(texto.includes(ISCA_DE_BIBLIOTECA), false);
 });
 
+// ---------------------------------------------------------------------------
+// O2e - corpo grande demais responde 413 (para a v0.8.0)
+// ---------------------------------------------------------------------------
+
+test("O2e corpo grande demais responde 413 fixo, sem a mensagem do leitor", async () => {
+  // O limite do express.json() e 64 kB. Ate a v0.7.6 isto respondia 500.
+  const contar = () => (app.lerStderr().match(/\[erro interno\]/g) || []).length;
+  const antes = contar();
+
+  const { resposta, texto } = await postarCorpo(
+    app.baseUrl,
+    "/api/auth/login",
+    JSON.stringify({ identifier: "x".repeat(70 * 1024) }),
+  );
+  assert.equal(resposta.status, 413, `corpo grande respondeu ${resposta.status}`);
+  const corpo = JSON.parse(texto);
+  assert.deepEqual(corpo.error, { code: "PAYLOAD_TOO_LARGE", message: "O corpo da requisição é grande demais." });
+  assert.doesNotMatch(texto, /request entity too large|limit/i);
+  assert.deepEqual(vazamentos(texto), []);
+
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.equal(contar(), antes, "corpo grande foi registrado como erro interno");
+});
+
+test("O2e copiar name, type e status do corpo grande nao basta para ganhar 413", async () => {
+  // Erro de classe Error que imita o PayloadTooLargeError campo a campo.
+  const resposta = await fetch(`${erros.baseUrl}/tipo-413-forjado`);
+  const texto = await resposta.text();
+  assert.equal(resposta.status, 500, `o erro forjado escolheu o status ${resposta.status}`);
+  assert.equal(texto.includes(ISCA_DE_BIBLIOTECA), false);
+});
+
 test("O2d o app de erros forjados e o handler real, e o parse de verdade continua 400", async () => {
   // O par negativo dos testes acima: o mesmo app, com o mesmo handler, ainda
   // reconhece a falha de parse real. Sem isto, um handler que devolvesse 500
@@ -171,5 +203,5 @@ test("O2d o app de erros forjados e o handler real, e o parse de verdade continu
   const { resposta, texto } = await postarCorpo(erros.baseUrl, "/eco", "{nao-e-json");
   assert.equal(resposta.status, 400);
   assert.equal(JSON.parse(texto).error.code, "INVALID_JSON");
-  assert.ok(Object.keys(ERROS_FORJADOS).length >= 6, "os casos forjados sumiram do ajudante");
+  assert.ok(Object.keys(ERROS_FORJADOS).length >= 7, "os casos forjados sumiram do ajudante");
 });

@@ -1,4 +1,4 @@
-# NutriScan Backend v0.7.6
+# NutriScan Backend v0.8.0
 
 API Express responsavel por contas, sessoes e alergias sincronizadas.
 
@@ -109,15 +109,15 @@ curl http://localhost:3000/api/health
 Respostas possiveis:
 
 ```json
-{ "status": "ok", "database": "not_configured", "ai": "not_configured", "version": "0.7.6" }
+{ "status": "ok", "database": "not_configured", "ai": "not_configured", "version": "0.8.0" }
 ```
 
 ```json
-{ "status": "ok", "database": "connected", "ai": "configured", "version": "0.7.6" }
+{ "status": "ok", "database": "connected", "ai": "configured", "version": "0.8.0" }
 ```
 
 ```json
-{ "status": "degraded", "database": "error", "ai": "not_configured", "version": "0.7.6" }
+{ "status": "degraded", "database": "error", "ai": "not_configured", "version": "0.8.0" }
 ```
 
 ## Testes
@@ -136,3 +136,17 @@ ANTHROPIC_API_KEY=sua-chave-no-ambiente
 ```
 
 Nao coloque a chave no codigo.
+
+O contrato real da Open Food Facts tambem tem teste proprio, desligado por
+padrao porque depende de rede de terceiro. Ele so le, e nao custa nada:
+
+```env
+RUN_OFF_INTEGRATION_TESTS=true
+```
+
+Ele consulta um produto de referencia e leva o dado real ate o veredito de
+alergia. No gate E2E a busca e injetada; este e o unico teste que confere o
+formato que a Open Food Facts devolve de verdade.
+
+Os testes de ambiente (`tests/env.test.js`) montam um backend minimo numa pasta
+temporaria e nunca escrevem no seu `backend/.env`.

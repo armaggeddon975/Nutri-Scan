@@ -1,4 +1,4 @@
-# NutriScan v0.7.6
+# NutriScan v0.8.0
 
 NutriScan e um app web para consultar alimentos por nome ou codigo de barras,
 ver tabela nutricional, identificar ingredientes sensiveis e conversar com um
@@ -31,6 +31,7 @@ Com isso, `{ traces: "milk" }` e tratado como traco, enquanto
 - Fallback local baseado em regras quando a IA nao esta disponivel.
 - Modo visitante independente.
 - Conta online com alergias sincronizadas via backend e PostgreSQL.
+- Exportar os proprios dados e excluir a propria conta, pela tela Conta (v0.8.0).
 
 ## Requisitos
 
@@ -328,6 +329,31 @@ informacao de seguranca errada em abril, quando a pessoa marca uma alergia nova.
 O veredito e sempre recalculado pelo motor deterministico na hora de exibir, com
 o perfil atual.
 
+## Seus dados: exportar e excluir a conta (v0.8.0)
+
+Quem tem conta pode, sozinho e pela interface:
+
+- **Baixar os proprios dados.** Em **Conta**, no cartao **Seus dados**, o botao
+  "Baixar meus dados" salva um arquivo JSON com a conta (nome, e-mail, data de
+  criacao), as alergias, o historico e os favoritos. O arquivo se chama
+  `nutriscan-meus-dados-AAAA-MM-DD.json` - sem e-mail nem nome. Ele nunca leva
+  senha, hash, sessao, cookie, id interno nem dado de outra pessoa.
+- **Excluir a conta.** No mesmo cartao, "Excluir minha conta" abre uma
+  confirmacao: e preciso digitar a senha atual **e** marcar "Entendo que nao da
+  para desfazer." antes de o botao "Excluir para sempre" funcionar. A conta, as
+  alergias, o historico, os favoritos e as sessoes de todos os aparelhos saem
+  do banco, numa transacao so. O e-mail e o nome ficam livres para um cadastro
+  novo.
+
+A exclusao e **fisica**: as linhas saem do banco, sem `deleted_at` e sem
+copia. Senha errada nao apaga nada. Exportar tem limite proprio - 5 por dia por
+usuario e 20 por dia por IP.
+
+Isto descreve o que o software faz; nao e parecer juridico. As decisoes, e o
+que este codigo nao alcanca (como copias de seguranca do provedor do banco),
+estao em [docs/DADOS_DO_TITULAR.md](docs/DADOS_DO_TITULAR.md). As rotas estao em
+[docs/API.md](docs/API.md).
+
 ## Deploy
 
 O deploy e descrito por `render.yaml`, um blueprint do Render versionado no
@@ -354,7 +380,7 @@ escrito para quem publica: o que preencher no painel, como as migrations
 entram, como verificar o resultado e o que fazer quando um subgate falha. As
 decisoes de HTTPS, cookie e migrations tambem estao la.
 
-As versoes 0.7.1 a 0.7.6 ainda nao foram publicadas; o servico no ar roda a
+As versoes 0.7.1 a 0.8.0 ainda nao foram publicadas; o servico no ar roda a
 0.7.0.
 
 ### Variaveis obrigatorias em producao
@@ -481,9 +507,10 @@ Desde a v0.7.5, a mesma comparacao e o subgate D1 do `verify:deploy`.
 ### Limite de requisicoes
 
 ```text
-auth          40 / 15 min   por IP
+auth          40 / 15 min   por IP          login, cadastro e exclusao de conta
 assistente    20 / 10 min   por IP
 colecoes     300 / 10 min   por USUARIO   e   3000 / 10 min por IP
+exportacao     5 / 24 h     por USUARIO   e     20 / 24 h   por IP
 ```
 
 As rotas de historico e favoritos passam pelos dois ultimos ao mesmo tempo:
@@ -519,6 +546,7 @@ como `sem proteinas do leite`. Se o rotulo tambem trouxer `leite`, `whey`,
 - [API](docs/API.md)
 - [Arquitetura](docs/ARCHITECTURE.md)
 - [Deploy](docs/DEPLOY.md)
+- [Dados do titular: exportacao e exclusao](docs/DADOS_DO_TITULAR.md)
 - [Nutri Assistente IA](docs/AI_ASSISTANT.md)
 - [Relatorio de auditoria](AUDIT_REPORT.md)
 - [Relatorio E2E](E2E_REPORT.md)

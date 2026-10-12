@@ -8,6 +8,7 @@ import {
   BACKEND_REQUIRED_MODULES,
   FRONTEND_REQUIRED_MODULES,
   compareMigrations,
+  isMigrationFile,
   describeDependencies,
   evaluateStrict,
   summarizeDependencies,
@@ -67,7 +68,7 @@ async function loadBackendEnv(backendReady) {
 async function readMigrationFiles() {
   try {
     const files = await readdir(migrationsDir);
-    return files.filter((file) => file.endsWith(".sql")).sort();
+    return files.filter(isMigrationFile).sort();
   } catch {
     return [];
   }

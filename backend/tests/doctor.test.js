@@ -9,6 +9,7 @@ import {
   FRONTEND_REQUIRED_MODULES,
   STRICT_REQUIRED_KEYS,
   compareMigrations,
+  isMigrationFile,
   describeDependencies,
   evaluateStrict,
   summarizeDependencies,
@@ -166,12 +167,29 @@ test("migrations comparam arquivos do disco com schema_migrations", () => {
 
 test("migrations reais do repositorio sao detectadas pelo doctor", async () => {
   const files = (await readdir(path.join(rootDir, "backend", "migrations")))
-    .filter((file) => file.endsWith(".sql"))
+    .filter(isMigrationFile)
     .sort();
 
   assert.ok(files.includes("001_initial_schema.sql"));
   assert.equal(compareMigrations(files, files).status, "OK");
   assert.equal(compareMigrations(files, []).status, "WARN");
+});
+
+test("o doctor conta as mesmas migrations que o runner aplica, .sql e .js", async () => {
+  // Ate a v0.7.6 o doctor so contava `.sql`. Com a `003` em JavaScript, um banco
+  // sem ela aparecia como "2/2 applied" - migration pendente dada como aplicada.
+  const files = (await readdir(path.join(rootDir, "backend", "migrations"))).filter(isMigrationFile).sort();
+  assert.ok(files.includes("003_canonicaliza_upca.js"), "o doctor nao ve a migration em JavaScript");
+
+  const semA003 = files.filter((file) => file !== "003_canonicaliza_upca.js");
+  const resultado = compareMigrations(files, semA003);
+  assert.equal(resultado.status, "WARN", "banco sem a 003 foi dado como em dia");
+  assert.deepEqual(resultado.pending, ["003_canonicaliza_upca.js"]);
+
+  // E o runner aplica exatamente as duas extensoes.
+  const runner = await readFile(path.join(rootDir, "backend/scripts/migrate.js"), "utf8");
+  assert.match(runner, /file\.endsWith\("\.sql"\) \|\| file\.endsWith\("\.js"\)/, "o runner mudou de regra");
+  assert.equal(isMigrationFile("README.md"), false);
 });
 
 test("probe de env le presenca sem depender de dotenv e sem expor valores", () => {

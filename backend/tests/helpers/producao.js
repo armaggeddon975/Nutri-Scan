@@ -171,6 +171,9 @@ export const ERROS_FORJADOS = {
   "lib-400": `Object.assign(new Error(ISCA), { status: 400, statusCode: 400, expose: true })`,
   // Copia o `type` do body-parser, mas nao e SyntaxError: nao pode ganhar 400.
   "tipo-forjado": `Object.assign(new Error(ISCA), { status: 400, statusCode: 400, expose: true, type: "entity.parse.failed" })`,
+  // Copia `name`, `type` e status do corpo grande demais, mas a classe e Error:
+  // nao pode ganhar 413.
+  "tipo-413-forjado": `Object.assign(new Error(ISCA), { name: "PayloadTooLargeError", status: 413, statusCode: 413, expose: true, type: "entity.too.large" })`,
   // Erro interno de verdade, sem status nenhum.
   "interno": `new Error(ISCA + " SELECT * FROM users")`,
 };

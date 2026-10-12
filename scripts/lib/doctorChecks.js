@@ -39,6 +39,15 @@ export function describeDependencies(summary, installCommand) {
   };
 }
 
+// O que e arquivo de migration. Precisa ser a MESMA regra do runner
+// (`backend/scripts/migrate.js`), que aplica `.sql` e `.js` desde a v0.7.4. Ate
+// a v0.7.6 o doctor so contava `.sql`: a `003`, em JavaScript, aparecia como
+// "1 unknown in database" depois de aplicada - e, num banco onde ela faltasse,
+// o doctor diria "2/2 applied" com uma migration pendente.
+export function isMigrationFile(fileName) {
+  return fileName.endsWith(".sql") || fileName.endsWith(".js");
+}
+
 export function compareMigrations(expectedFiles, appliedFiles) {
   const expected = [...expectedFiles].sort();
   const applied = [...appliedFiles].sort();

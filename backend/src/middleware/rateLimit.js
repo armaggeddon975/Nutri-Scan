@@ -188,3 +188,52 @@ export function criarLimitadoresDeColecoes({
 }
 
 export const collectionsRateLimit = criarLimitadoresDeColecoes();
+
+// ---------------------------------------------------------------------------
+// EXPORTACAO DOS DADOS DO TITULAR (v0.8.0)
+// ---------------------------------------------------------------------------
+//
+// `GET /api/account/export` le a conta inteira de uma vez: alergias, ate 100
+// itens de historico e ate 200 favoritos. O volume e pequeno, mas a rota nao
+// pode ser barata de repetir - e ela nao serve a nenhum uso continuo do app.
+//
+// QUANTAS VEZES POR DIA UMA PESSOA EXPORTA OS PROPRIOS DADOS?
+//
+// O uso legitimo e raro: guardar uma copia, conferir o que o app tem, levar
+// para outro servico. Quase sempre uma vez. O que justifica mais de uma e o
+// imprevisto: o download que nao terminou, o arquivo salvo no aparelho errado,
+// a pessoa que exporta, apaga um favorito e quer ver a diferenca.
+//
+//   por usuario   5 por 24 horas   a exportacao de verdade e mais quatro
+//                                  tentativas de imprevisto. Ninguem precisa de
+//                                  uma sexta copia identica no mesmo dia.
+//   por IP        20 por 24 horas  quatro pessoas atras do mesmo endereco
+//                                  (familia, escritorio, CGNAT de celular)
+//                                  esgotando a propria cota no mesmo dia - o
+//                                  que ja e improvavel. Contem quem cria contas
+//                                  para exportar em serie.
+//
+// A janela e de 24 horas porque a pergunta e "por dia". Uma janela curta
+// recarregaria a cota varias vezes ao dia sem que nada no uso real pedisse isso.
+//
+// Mesmo desenho dos tetos de colecoes (v0.7.2): usuario E IP, os dois
+// conferidos, o mais restritivo vence, usuario primeiro. Sao baldes PROPRIOS -
+// exportar nao gasta a cota de historico e favoritos, e vice-versa.
+export const TETO_EXPORTACAO_POR_USUARIO = 5;
+export const TETO_EXPORTACAO_POR_IP = 20;
+export const JANELA_EXPORTACAO_MS = 24 * 60 * 60 * 1000;
+
+// A composicao e a MESMA das colecoes - mesma fabrica, mesmas chaves, mesma
+// ordem -, so com outros numeros. Copiar o codigo criaria duas composicoes para
+// manter iguais na mao; reaproveitar faz a prova da v0.7.2 valer aqui tambem.
+// Cada chamada da fabrica cria baldes novos: exportar nao divide contador com
+// historico e favoritos.
+export function criarLimitadoresDeExportacao({
+  tetoPorUsuario = TETO_EXPORTACAO_POR_USUARIO,
+  tetoPorIp = TETO_EXPORTACAO_POR_IP,
+  janelaMs = JANELA_EXPORTACAO_MS,
+} = {}) {
+  return criarLimitadoresDeColecoes({ tetoPorUsuario, tetoPorIp, janelaMs });
+}
+
+export const exportRateLimit = criarLimitadoresDeExportacao();

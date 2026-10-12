@@ -1,5 +1,157 @@
 # Changelog
 
+## NutriScan v0.8.0 - 2026-10-12
+
+Direitos do titular: exportar os proprios dados e excluir a propria conta.
+Minor, e nao patch: e capacidade nova de produto, nao correcao de defeito.
+
+Isto descreve o que o software faz. Nao e parecer juridico, e esta versao nao
+declara o NutriScan em conformidade com a LGPD - conformidade envolve base
+legal, politica de privacidade e encarregado, que estao fora do codigo.
+
+### O projeto segue NAO PUBLICADO
+
+As versoes 0.7.1 a 0.8.0 nunca foram ao ar. O servico `nutriscan` no Render
+continua rodando a **0.7.0**. Esta versao nao publica nada.
+
+### A cascata existia; ninguem conseguia aciona-la
+
+Toda tabela que referencia `users` ja tinha `ON DELETE CASCADE`:
+
+```text
+sessions            desde a v0.6.6   migration 001
+user_allergies      desde a v0.6.6   migration 001
+product_history     desde a v0.7.0   migration 002
+product_favorites   desde a v0.7.0   migration 002
+```
+
+Mas nao havia rota nem tela que apagasse um usuario. O direito de eliminacao
+existia no schema e nao existia no produto: a pessoa so conseguia sair da conta,
+nunca apaga-la. Nem exportar o que o app guardava sobre ela - inclusive o perfil
+de alergias, que e dado de saude.
+
+(O prompt desta versao diz "desde a v0.7.0". Para historico e favoritos, sim;
+para sessoes e alergias, a cascata e da v0.6.6 - conferido no `git log` das
+migrations.)
+
+### Entrega A - exportar meus dados
+
+`GET /api/account/export`, com sessao. Devolve um JSON com `formato`,
+`versaoDoFormato` e `geradoEm`, mais a conta (nome, e-mail, criacao), as
+alergias, o historico e os favoritos.
+
+- **Nunca** leva hash ou salt de senha, sessao, token, cookie, id interno de
+  linha, `user_id`, dado de outra conta ou credencial. As consultas nomeiam
+  coluna por coluna; um teste reprova `SELECT *` e qualquer citacao de
+  `password` ou `token_hash` no repositorio.
+- O titular e o dono da SESSAO. `userId` no corpo, na query ou em cabecalho e
+  ignorado.
+- Download direto: `Content-Disposition: attachment`, arquivo
+  `nutriscan-meus-dados-AAAA-MM-DD.json` - sem e-mail nem nome.
+- `Cache-Control: no-store` e `Pragma: no-cache`: nenhum cache guarda a
+  resposta.
+- Limitador proprio: **5 por 24 h por usuario e 20 por 24 h por IP**, mesmo
+  desenho da v0.7.2 (usuario E IP, o mais restritivo vence), pela mesma fabrica,
+  com baldes proprios. Raciocinio no codigo e em `docs/DADOS_DO_TITULAR.md`.
+
+### Entrega B - excluir minha conta
+
+`DELETE /api/account`, com sessao **e** a senha atual no corpo.
+
+- A senha e conferida de novo contra o hash: sessao valida nao basta.
+- Senha errada: 403 `INVALID_CREDENTIALS`, "Senha incorreta. Nada foi
+  apagado." - e nada e apagado.
+- A tentativa passa pelo limitador de AUTENTICACAO, o mesmo balde do login.
+- Sessoes e usuario saem na MESMA transacao; alergias, historico e favoritos,
+  pela cascata. Qualquer falha desfaz tudo.
+- Exclusao FISICA: sem `deleted_at`, sem copia em outra tabela, sem conteudo no
+  log. O log registra so "[conta] uma conta foi excluida pelo titular".
+- Depois: cookie limpo, toda sessao da conta em 401 (nao 500), e-mail e nome
+  livres para novo cadastro, vizinhos intactos.
+- Nenhuma das duas rotas fala com a Anthropic.
+
+### Interface
+
+Na tela **Conta**, cartao **Seus dados**: "Baixar meus dados" e "Excluir minha
+conta". A exclusao nao e um clique: abre um aviso, pede a senha e uma caixa
+"Entendo que nao da para desfazer."; o botao "Excluir para sempre" so habilita
+com as duas. O campo de senha e limpo depois de cada tentativa. Depois de
+excluir, o app volta ao modo visitante com "Sua conta foi excluida.".
+
+### Gate E2E: 18 -> 20 requisitos
+
+`scripts/e2e-real.js` ganhou `accountExport` e `accountDeletion`, e
+`buildStrictRequirements` os exige. Um teste novo confere os 18 requisitos da
+v0.7.6 um a um - presentes e reprovando quando nao executados -, outro confere
+que o total e exatamente 20. O subgate de exclusao usa uma conta propria
+(`nutriscan-e2e-d-<carimbo>@example.test`), incluida na limpeza do gate. O
+orcamento de requisicoes do gate ganhou o balde da exportacao.
+
+`verify:deploy` continua somente leitura e NAO testa as rotas novas. O teste que
+grava cada requisicao dele agora tambem trata `DELETE /api/account` como rota de
+escrita proibida.
+
+### Testes e mutacao
+
+E1-E8 e D1-D9 em `backend/tests/accountIntegration.test.js` (PostgreSQL real) e
+`backend/tests/account.test.js` (sem banco). O D4 varre TODA coluna uuid e de
+texto de TODA tabela publica atras do id e do e-mail apagados, e confere a
+cascata duas vezes: no banco em uso e num schema montado so pelas migrations. O
+D8 provoca uma falha real no meio da cascata, com um gatilho.
+
+`scripts/mutation-check.js` ganhou 16 mutantes para E2, E4, E5, D2, D4, D8 e
+para os demais pontos da entrega. Rodada completa, com banco: **82 mutantes, 81
+mortos, 1 sobrevivente**. O sobrevivente, W1, e equivalente: ele faz o
+repositorio devolver a linha inteira de `users`, mas o servico monta o arquivo
+campo a campo, e a exportacao nao muda. O mutante que poe o registro bruto no
+arquivo (W1b) morre no E2, e a mudanca no repositorio e pega pela suite estatica
+(`nunca usa SELECT *`). Detalhes em `AUDIT_REPORT.md`; o `mutation-check.js` nao
+foi alterado depois do resultado.
+
+### Correcoes autorizadas pelo dono do projeto, fora das secoes 6 e 7
+
+O prompt desta versao fecha o escopo nas secoes 6 e 7. Estas correcoes foram
+feitas e testadas entre a v0.7.5 e a v0.7.6, guardadas fora da v0.7.6 porque
+batiam nas regras daquela versao, e o dono do projeto mandou incluir na
+seguinte. Entram aqui por decisao dele, declaradas:
+
+- **Leitura da camera nunca vira OUTRO codigo.** A camera le CODE_128, que
+  aceita letra, e `cleanBarcode` apagava tudo que nao e digito: uma leitura como
+  `AB7891000100103` virava `7891000100103`, o EAN valido de outro produto, com
+  outros alergenicos. Leitura curta com letra caia ainda na busca por NOME.
+  Agora a leitura da camera passa por `codigoLidoPelaCamera` (`src/utils/text.js`):
+  so digitos, espaco e hifen perdem os separadores; letra, digito, `.`, `_` e
+  `-` passam INTACTOS - na Open Food Facts viram "nao encontrado", nunca outro
+  produto; qualquer outro caractere descarta a leitura; nada e cortado. E a
+  camera nunca cai na busca por nome. Testes C2 em
+  `backend/tests/productLookup.test.js`.
+- **`NODE_ENV` desconhecido recusa subir.** `producao`, `prod`, `staging`
+  viravam desenvolvimento em silencio - sem cookie `Secure`, com detalhe de
+  erro. Agora o processo para e diz qual variavel, sem valor.
+- **Migration que falha diz por que.** O log saia em branco numa conexao
+  recusada (o erro agregado do Node nao tem mensagem propria); agora sai a
+  mensagem, o codigo e cada erro interno - um por endereco tentado.
+- **Corpo grande demais responde 413 `PAYLOAD_TOO_LARGE`**, e nao 500.
+  Reconhecido pela classe e pelo tipo do erro, como o 400 da v0.7.6 - a versao
+  guardada generalizava para "qualquer erro com `expose: true`", o que a v0.7.6
+  proibiu; foi refeita restrita.
+- **O doctor conta migrations `.js`**, e o `2/2 applied, 1 unknown` some.
+- **O orcamento do gate mostra o teto por IP** ao lado do teto por usuario.
+- **`env.test.js` nao escreve mais no `backend/.env` real**: cada teste monta um
+  backend minimo numa pasta temporaria, com a mesma `env.js` copiada e um `.env`
+  proprio. Antes, um processo morto no meio deixava o `.env` real trocado.
+- **Teste opcional contra a Open Food Facts real**
+  (`backend/tests/openFoodFacts.integration.test.js`), desligado por padrao.
+- Documentacao: a linha "300 por IP" da `docs/API.md`, anterior a v0.7.2,
+  corrigida; `NODE_ENV` e leitura da camera em `docs/ARCHITECTURE.md`; um
+  comentario do `scripts/verify-deploy.js` corrigido (nenhuma linha de
+  comportamento).
+
+### O que esta versao NAO prova
+
+- A leitura da camera em aparelho real: **NAO EXECUTADO**.
+- O deploy real da 0.8.0: **NAO EXECUTADO** - nada foi publicado.
+
 ## NutriScan v0.7.6 - 2026-10-12
 
 Prontidao de publicacao: que o primeiro deploy nao quebre por configuracao.

@@ -64,6 +64,22 @@ export function validateAllergiesUpdate(input) {
   return allergiesUpdateSchema.parse(input);
 }
 
+// Exclusao de conta (v0.8.0): so a senha atual, para revalidar contra o hash.
+//
+// `min(1)` e nao `passwordSchema` (que exige 6): aqui a senha nao esta sendo
+// CRIADA, esta sendo CONFERIDA. Recusar uma senha curta com "use pelo menos 6
+// caracteres" diria algo sobre a senha certa que ninguem perguntou.
+//
+// `.strict()` nao e usado de proposito: um `userId` a mais no corpo e
+// simplesmente ignorado - a identidade vem da sessao, nunca do corpo.
+export const deleteAccountSchema = z.object({
+  password: z.string({ required_error: "Digite sua senha para confirmar." }).min(1, "Digite sua senha para confirmar.").max(200),
+});
+
+export function validateDeleteAccount(input) {
+  return deleteAccountSchema.parse(input ?? {});
+}
+
 // -----------------------------------------------------------------------
 // Historico e favoritos
 // -----------------------------------------------------------------------

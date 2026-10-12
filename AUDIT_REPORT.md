@@ -1,6 +1,775 @@
-# Relatorio de Auditoria - NutriScan v0.7.6
+# Relatorio de Auditoria - NutriScan v0.8.0
 
 Data: 2026-10-12
+
+## Escopo
+
+Entrada 0.7.6, saida 0.8.0. Direitos do titular: exportar os proprios dados
+(`GET /api/account/export`) e excluir a propria conta (`DELETE /api/account`),
+com a tela correspondente. Minor, e nao patch: capacidade nova de produto.
+
+**Isto nao e parecer juridico.** O relatorio descreve o que o software faz. Ele
+nao declara o NutriScan em conformidade com a LGPD: conformidade envolve base
+legal, politica de privacidade e encarregado, que estao fora do codigo e fora
+desta versao.
+
+Preservado sem refatoracao, como a secao 3 do prompt mandou: o handler de erro
+(400 `INVALID_JSON` e as tentativas de sequestro negadas), a sincronia com o
+`render.yaml`, o fail-closed por variavel obrigatoria, o CORS, o `verify:deploy`
+(nenhuma linha de comportamento; ver A13), o C1, o digito verificador, a
+canonicalizacao UPC-A, os tetos 300/3000, o IPv6 /64, o isolamento entre contas
+e a cascata. Nenhuma migration nova.
+
+Codigo de producao da entrega (secoes 6 e 7):
+
+```text
+NOVO  backend/src/routes/accountRoutes.js           as duas rotas e seus limitadores
+NOVO  backend/src/controllers/accountController.js  cabecalhos, cookie
+NOVO  backend/src/services/accountService.js        arquivo, senha, transacao
+NOVO  backend/src/repositories/accountRepository.js consultas coluna a coluna
+NOVO  src/services/accountService.js                download e exclusao no navegador
+      backend/src/app.js                            monta /api/account
+      backend/src/middleware/rateLimit.js           tetos da exportacao (so acrescimo)
+      backend/src/utils/validation.js               esquema da senha da exclusao
+      src/App.jsx                                   estado e chamadas da tela
+      src/pages/Account/AccountPage.jsx             cartao "Seus dados"
+      src/styles-v070.css                           estilos do cartao (so acrescimo)
+```
+
+Gate e testes: `scripts/e2e-real.js` e `scripts/lib/e2eGate.js` (dois subgates),
+`scripts/mutation-check.js` (16 mutantes novos), `backend/tests/account.test.js`
+e `backend/tests/accountIntegration.test.js` (novos), `backend/tests/e2eGate.test.js`
+e `backend/tests/verifyDeploy.test.js` (acrescimos).
+
+O resto do diff e a secao "Correcoes autorizadas pelo dono" (abaixo), a
+documentacao e a versao.
+
+## A premissa do prompt, corrigida em dois pontos
+
+**Ha deploy.** O servico `nutriscan` responde em
+`https://nutriscan-h1wp.onrender.com` e roda a **0.7.0**. Nunca foram publicadas
+as versoes 0.7.1 a 0.8.0. Por isso o `verify:deploy` foi executado contra a URL
+real, somente leitura (A13).
+
+**A cascata e mais antiga do que o prompt diz.** O prompt fala em cascata
+"desde a v0.7.0". Para historico e favoritos, sim (migration 002, commit
+`694c6c2`, 2026-09-18). Para sessoes e alergias, a cascata e da **v0.6.6**
+(migration 001, commit `1664159`, 2026-08-15). Em nenhuma das duas havia rota ou
+tela que apagasse um usuario.
+
+## Correcoes autorizadas pelo dono, fora das secoes 6 e 7
+
+A secao 17 do prompt fecha o escopo nas secoes 6 e 7 e manda descrever, nao
+entregar, o que estiver fora. Estas correcoes estao fora - e entraram assim
+mesmo, **por decisao explicita do dono do projeto**, que mandou incluir na
+proxima versao "a correcao da camera" e "as outras correcoes do stash". Elas
+foram feitas entre a v0.7.5 e a v0.7.6, guardadas em `stash@{0}` porque batiam
+nas regras da v0.7.6 (o AUDIT_REPORT da v0.7.6 as lista, na secao historica), e
+aplicadas agora.
+
+```text
+correcao                                      onde                                    prova
+leitura da camera nunca vira OUTRO codigo     src/utils/text.js, productLookup.js,    C2 + mutantes U1-U3
+                                              src/App.jsx
+NODE_ENV desconhecido recusa subir            backend/src/config/env.js, server.js    MODO + mutantes U5, U5b
+migration que falha diz por que               backend/scripts/migrate.js              MIG + mutante U6
+corpo grande demais: 413, nao 500             backend/src/middleware/errorMiddleware  O2e + mutantes U4, U4b
+doctor conta migrations .js                   scripts/lib/doctorChecks.js, doctor.js  doctor + mutante U7
+orcamento do gate mostra o teto por IP        scripts/e2e-real.js                     orcamento + mutante U8
+env.test.js nao escreve no backend/.env real  so teste                                -
+teste opcional contra a Open Food Facts real  so teste, desligado por padrao          -
+comentario corrigido no verify-deploy.js      scripts/verify-deploy.js (comentario)   -
+```
+
+Duas delas tocam pontos que a secao 3 manda nao refatorar, e por isso merecem
+nota:
+
+- **O 413 nao e generalizacao.** A versao guardada respondia o status de
+  qualquer erro com `expose: true` - exatamente o que a v0.7.6 proibiu. Foi
+  refeita no molde do 400: reconhece UM caso, pela classe `PayloadTooLargeError`
+  E pelo `type: "entity.too.large"`, com status e mensagem fixos. Os testes O2e
+  provam que copiar `name`, `type` e `status` nao basta; as tentativas de
+  sequestro da v0.7.6 continuam negadas (O2d, verdes).
+- **O `NODE_ENV` reforca o fail-closed**, nao o afrouxa: um valor desconhecido
+  passa a impedir a subida, em vez de virar desenvolvimento em silencio.
+
+A camera continua **NAO ATESTADA em hardware real**: a correcao e provada por
+teste e mutacao sobre a funcao, nao por leitura de um aparelho.
+
+## A1 - E1 a E8, D1 a D9, R1 a R6
+
+Todos presentes e verdes na suite completa contra PostgreSQL real (A7).
+
+```text
+E1  E1 a exportacao traz conta, alergias, historico e favoritos do titular
+E2  E2 a exportacao nao contem o password_hash nem o salt reais - pelo valor
+E3  E3 a exportacao nao contem token de sessao, cookie, credencial nem id interno
+E4  E4 a exportacao de A nao contem nada de B, com B populado
+E5  E5 userId no corpo, na query ou em cabecalho nao muda quem e exportado
+E6  E6 sem sessao, exportar e excluir respondem 401
+    E6 cookie inventado nao vira sessao
+E7  E7 o nome do arquivo e so produto e dia - sem e-mail, sem nome
+    E7 o arquivo nao leva e-mail nem nome, e a resposta nao pode ir para cache
+E8  E8 os tetos da exportacao estao nos valores declarados
+    E8 o limitador de PRODUCAO recusa a sexta exportacao do mesmo usuario no dia
+    E8 usuario dentro da cota mas IP esgotado recebe 429 - o mais restritivo vence
+    E8 as rotas estao ligadas aos limitadores certos
+    E8 a rota real recusa a exportacao acima do teto do usuario
+D1  D1 exclusao com a senha correta remove a conta e limpa o cookie
+D2  D2 exclusao com senha errada nao remove nada
+D3  D3 exclusao sem senha, com corpo vazio ou com JSON quebrado nao remove nada
+D4  D4 apos a exclusao, nenhuma linha em nenhuma tabela referencia o usuario
+    D4 no banco real, toda tabela que referencia users tem ON DELETE CASCADE
+    D4 o schema montado SO pelas migrations tem ON DELETE CASCADE em toda FK para users
+D5  D5 apos a exclusao, todas as sessoes do usuario deixam de autenticar - 401, nao 500
+D6  D6 a exclusao de A deixa B intacto: historico, favoritos, alergias e login
+D7  D7 e-mail e nome voltam a ficar disponiveis para novo cadastro
+D8  D8 falha simulada no meio da exclusao deixa o estado anterior intacto
+D9  D9 a tentativa com senha errada gasta o mesmo balde do login
+```
+
+Mais quatro, sem rotulo do prompt: `DELETE com corpo quebrado responde 400
+INVALID_JSON, antes de qualquer rota` (secao 9), `as rotas de conta nao importam
+nada da Anthropic` (7.5), `a exportacao lista as colunas da conta e nunca usa
+SELECT *` e `exclusao e fisica: nada de deleted_at, nada de copia` (7.5).
+
+Como os mais delicados provam o que dizem:
+
+- **E2** cria a conta, LE do banco o `password_hash` e o `password_salt` reais e
+  procura os dois VALORES dentro do JSON serializado. O E3 faz o mesmo com o
+  `token_hash` e o cookie.
+- **E4** popula B com alergia, historico e favorito e procura, na exportacao de
+  A, cada valor de B: e-mail, nome, id, token, hash, salt, codigos e nomes de
+  produto. E confere que A traz exatamente o seu historico, o seu favorito e a
+  sua alergia.
+- **E5** pede a exportacao de A tres vezes: com o id e o e-mail de B no corpo
+  (`userId`, `user_id`, `email`), na query (`userId`, `user_id`) e em dois
+  cabecalhos (`X-User-Id`, `User-Id`). Nas tres, o arquivo e de A e nao tem o
+  e-mail de B.
+- **D4** varre TODA coluna uuid e de texto de TODA tabela do schema `public`
+  atras do id e do e-mail apagados - nao so as tabelas conhecidas. Depois confere
+  a cascata no catalogo do banco em uso e num schema temporario montado SO pelas
+  migrations: assim um banco consertado a mao nao esconde migration sem cascata.
+- **D8** instala um gatilho `BEFORE DELETE` em `product_favorites` que lanca
+  excecao: a falha acontece DENTRO da cascata, depois que as sessoes ja foram
+  apagadas. Confere que a resposta e 500 sem limpar o cookie, que a sessao volta
+  com o ROLLBACK e autentica, e que as contagens de usuario, sessoes, alergias,
+  historico e favoritos sao as mesmas de antes. Nenhum gancho no codigo de
+  producao.
+- **D9** confere que a exclusao com senha errada responde com
+  `ratelimit-limit: 40` - o limitador do login - e que o login seguinte ve o
+  `ratelimit-remaining` um a menos: e o mesmo balde.
+
+R1 a R6 sao a regressao, verdes na mesma execucao:
+
+```text
+R1  isolamento      I1 usuario A nao le historico nem favorito de B
+                    I2 usuario B nao remove item de A
+                    I3 userId no corpo da requisicao e ignorado; vale a sessao
+                    (e os I1/I2/I3 estaticos: todo SQL filtra por usuario)
+R2  C1              T1 exploit C1: modelo negando conflito nao entrega falso seguro
+R3  digito          M1 (5 testes), M3 (3), M9 (2)
+    canonicalizacao N1 a N1g (14 testes, schema e banco)
+    tetos           R1, R2, R5 (5), R6 e R7 do limitador; R11 (403 de 3000 por IP)
+R4  handler         O2a a O2e (11 testes): 400 no parse, 413 no corpo grande,
+                    500 no interno, nenhum sequestro de status; P5 (4)
+R5  fail-closed     P9 (6 testes), MODO (2)
+R6  verify:deploy   P13 o registro de requisicoes do verify:deploy nao tem escrita
+                    P13 contra o roteador REAL, nenhuma rota de escrita e alcancada
+                    P13 a sonda do D6 nao corresponde a nenhuma rota registrada
+```
+
+O P13 ganhou `DELETE /api/account` na lista de rotas de escrita proibidas: se o
+`verify:deploy` um dia chamar a exclusao, ele reprova.
+
+## A2 - validacao por mutacao
+
+Rodada completa, com banco, sobre o codigo entregue:
+
+```text
+RUN_DB_INTEGRATION_TESTS=true DATABASE_URL=<PostgreSQL LOCAL> DATABASE_SSL=false   node scripts/mutation-check.js --com-banco
+```
+
+```text
+mortas 81 | nao executadas 0 | problemas 1 | linha de base: antes verde, depois verde
+REPROVADO: ha teste que nao detecta o defeito que deveria detectar.
+=== EXIT: 1 ===
+```
+
+**82 mutantes: 81 mortos, 1 sobrevivente (W1), 0 nao executados, 0
+inaplicaveis.** A linha de base - as 12 suites sem mutacao - estava verde antes
+e depois. O script sai com codigo 1 por causa do W1, e isso fica registrado
+como esta: o W1 e reportado e justificado abaixo, e o script nao foi alterado
+depois do resultado.
+
+### Os seis mutantes pedidos pelo prompt
+
+```text
+pedido pelo prompt                                  mutante  teste que o pegou                         resultado
+exportacao inclui o registro bruto, com hash  (E2)  W1       - (repositorio; ver abaixo)               SOBREVIVEU
+                                                    W1b      E2 ... pelo valor                          MORTA
+consulta da exportacao perde o filtro (E4)          W2       E4 (historico sem filtro)                  MORTA
+                                                    W2b      E4 (favoritos sem filtro)                  MORTA
+exportacao le req.body.userId (E5)                  W3       E5 (corpo)                                 MORTA
+                                                    W3b      E5 (query)                                 MORTA
+exclusao deixa de revalidar a senha (D2)            W4       D2                                         MORTA
+cascata removida de uma tabela (D4)                 W5       D4 schema das migrations (favoritos, 002)  MORTA
+                                                    W5b      D4 schema das migrations (sessions, 001)   MORTA
+exclusao deixa de ser transacional (D8)             W6       D8                                         MORTA
+```
+
+Alem desses: W7 (rota sem o limitador proprio, E8), W8 (exclusao fora do
+limitador de autenticacao, D9), W9 (exclusao sem limpar o cookie, D1), W10 e
+W10b (nome do arquivo com e-mail; resposta cacheavel, E7) e W11 (o gate perde
+`accountDeletion`, A11) - todos mortos.
+
+### O sobrevivente: W1, e por que ele e equivalente
+
+O W1 troca a consulta do REPOSITORIO por `SELECT * FROM users` e espalha a
+linha inteira - com `password_hash` e `password_salt` - no objeto que ele
+devolve. Mas o SERVICO monta o arquivo campo a campo:
+
+```js
+conta: { nome: conta.nome, email: conta.email, criadaEm: data(conta.criadaEm) },
+```
+
+Os campos a mais nunca chegam ao JSON. Com o W1 aplicado, a exportacao e a
+mesma, byte a byte - e o E2, que confere o ARQUIVO, esta certo em passar. E um
+mutante equivalente para o comportamento: as duas camadas filtram, e ele so
+derruba uma.
+
+O mutante que de fato poe o registro bruto no arquivo e o **W1b**: o servico
+passa a espalhar `findUserById` - a linha com hash - dentro de `conta`. O E2 o
+mata.
+
+A mudanca no repositorio nao fica sem teste. Ela e pega pela suite ESTATICA
+`account.test.js`, que nao e a suite que o W1 roda. Demonstracao, feita a
+parte - o mesmo `de`/`para` do W1, lido do proprio `mutation-check.js`, com o
+arquivo restaurado no fim:
+
+```text
+W1: a exportacao passa a incluir o registro bruto do usuario, com hash
+arquivo backend/src/repositories/accountRepository.js, sha256 antes 085a4fd00b83d4b5
+
+[com o W1 aplicado] tests/accountIntegration.test.js (a suite do mutante)
+  exit 0 | ℹ tests 19 | ℹ pass 19 | ℹ fail 0
+
+[com o W1 aplicado] tests/account.test.js (a suite estatica)
+  exit 1 | ℹ tests 11 | ℹ pass 10 | ℹ fail 1
+  ✖ a exportacao lista as colunas da conta e nunca usa SELECT *
+  ✖ failing tests:
+  ✖ a exportacao lista as colunas da conta e nunca usa SELECT *
+
+restaurado: sha256 depois 085a4fd00b83d4b5 (identico)
+```
+
+**O `mutation-check.js` nao foi alterado** para apontar o W1 para a suite
+estatica: mudar a ferramenta de prova depois de ver o resultado e exatamente o
+que a secao 17 proibe. Fica descrito para decisao - apontar o W1 para
+`tests/account.test.js` o mataria pelo motivo certo.
+
+### Nao ha mutante para "deixar de apagar as sessoes"
+
+A cascata de `sessions` apagaria as sessoes do mesmo jeito, entao esse mutante
+nao mudaria comportamento nenhum e sobreviveria sem dizer nada sobre os testes.
+O D5 e o W5b (cascata de `sessions` removida da migration 001) cobrem o que
+importa. A nota esta no proprio `mutation-check.js`.
+
+### A rodada inteira
+
+Linha de base:
+
+```text
+[linha de base - antes] 12 suite(s), sem mutacao
+  VERDE    tests/productionHardening.test.js
+  VERDE    tests/verifyDeploy.test.js
+  VERDE    tests/renderSync.test.js
+  VERDE    tests/bodyParseError.test.js
+  VERDE    tests/productLookup.test.js
+  VERDE    tests/migrate.test.js
+  VERDE    tests/doctor.test.js
+  VERDE    tests/e2eGate.test.js
+  VERDE    tests/accountIntegration.test.js
+  VERDE    tests/barcode.test.js
+  VERDE    tests/collectionsIntegration.test.js
+  VERDE    tests/rateLimit.test.js
+```
+
+```text
+T1  P2   MORTA                  "P2 producao sem FRONTEND_ORIGIN nao sobe, e diz qual falta" falhou, como deveria
+T1b  P2   MORTA                  "P2 sem FRONTEND_ORIGIN, nem o createApp direto cai no default de localhost" falhou, como deveria
+T2  P5   MORTA                  "P5 erro do driver do banco nao chega ao cliente" falhou, como deveria
+T2b  P5   MORTA                  "P5 o detalhe do erro vai para o log do servidor" falhou, como deveria
+T3  P9   MORTA                  "P9 cada variavel obrigatoria ausente impede a subida, e a mensagem diz qual" falhou, como deveria
+T3b  P9   MORTA                  "P9 valor booleano nao reconhecido nao cai em default silencioso" falhou, como deveria
+T4  P12  MORTA                  "P12 versao no ar diferente da do repositorio reprova o D1" falhou, como deveria
+T5  P13  MORTA                  "P13 o registro de requisicoes do verify:deploy nao tem escrita" falhou, como deveria
+T5b  P13  MORTA                  "P13 contra o roteador REAL, nenhuma rota de escrita e alcancada" falhou, como deveria
+T6  P3   MORTA                  "P3 CORS devolve a origem configurada, nunca a do request" falhou, como deveria
+T7  P4   MORTA                  "P4 com trust proxy, req.ip segue o X-Forwarded-For e o balde acompanha" falhou, como deveria
+T8  P11  MORTA                  "P11 NOT_EXECUTED nao conta como PASS no agregado" falhou, como deveria
+T9  P11  MORTA                  "P11 o comando de verdade sai com codigo 1 quando um subgate falha" falhou, como deveria
+V1  S1/S4 MORTA                  "S1 render.yaml contem todas as obrigatorias de VARIAVEIS_OBRIGATORIAS_EM_PRODUCAO" falhou, como deveria
+V1b  S2   MORTA                  "S2 render.yaml nao declara variavel que o codigo nao le" falhou, como deveria
+V1c  S3   MORTA                  "S3 nenhuma credencial com valor literal no render.yaml" falhou, como deveria
+V2  O2a  MORTA                  "O2a JSON malformado responde 400, nao 500 - a medicao do auditor" falhou, como deveria
+V3  O2d  MORTA                  "O2d erro de biblioteca com statusCode arbitrario nao escolhe o status" falhou, como deveria
+V3b  O2d  MORTA                  "O2d copiar o type do body-parser nao basta para ganhar 400" falhou, como deveria
+V4  R7   MORTA                  "P13 o registro de requisicoes do verify:deploy nao tem escrita" falhou, como deveria
+U1  C2   MORTA                  "C2 a camera nunca transforma um codigo em outro" falhou, como deveria
+U2  C2   MORTA                  "C2 o App usa a leitura segura e nunca manda leitura da camera para a busca por nome" falhou, como deveria
+U3  C2   MORTA                  "C2 o App usa a leitura segura e nunca manda leitura da camera para a busca por nome" falhou, como deveria
+U4  O2e  MORTA                  "O2e corpo grande demais responde 413 fixo, sem a mensagem do leitor" falhou, como deveria
+U4b  O2e  MORTA                  "O2e copiar name, type e status do corpo grande nao basta para ganhar 413" falhou, como deveria
+U5  MODO MORTA                  "MODO NODE_ENV digitado errado nao sobe, e diz qual variavel" falhou, como deveria
+U5b  MODO MORTA                  "MODO NODE_ENV digitado errado nao sobe, e diz qual variavel" falhou, como deveria
+U6  MIG  MORTA                  "MIG migration que nao alcanca o banco falha dizendo por que" falhou, como deveria
+U7  MIG  MORTA                  "o doctor conta as mesmas migrations que o runner aplica, .sql e .js" falhou, como deveria
+U8  ORC  MORTA                  "o orcamento do gate usa os mesmos tetos do limitador, inclusive o por IP" falhou, como deveria
+W1  E2   MUTACAO SOBREVIVEU     a suite passou com o defeito aplicado
+W1b  E2   MORTA                  "E2 a exportacao nao contem o password_hash nem o salt reais - pelo valor" falhou, como deveria
+W2  E4   MORTA                  "E4 a exportacao de A nao contem nada de B, com B populado" falhou, como deveria
+W2b  E4   MORTA                  "E4 a exportacao de A nao contem nada de B, com B populado" falhou, como deveria
+W3  E5   MORTA                  "E5 userId no corpo, na query ou em cabecalho nao muda quem e exportado" falhou, como deveria
+W3b  E5   MORTA                  "E5 userId no corpo, na query ou em cabecalho nao muda quem e exportado" falhou, como deveria
+W4  D2   MORTA                  "D2 exclusao com senha errada nao remove nada" falhou, como deveria
+W5  D4   MORTA                  "D4 o schema montado SO pelas migrations tem ON DELETE CASCADE em toda FK para users" falhou, como deveria
+W5b  D4   MORTA                  "D4 o schema montado SO pelas migrations tem ON DELETE CASCADE em toda FK para users" falhou, como deveria
+W6  D8   MORTA                  "D8 falha simulada no meio da exclusao deixa o estado anterior intacto" falhou, como deveria
+W7  E8   MORTA                  "E8 a rota real recusa a exportacao acima do teto do usuario" falhou, como deveria
+W8  D9   MORTA                  "D9 a tentativa com senha errada gasta o mesmo balde do login" falhou, como deveria
+W9  D1   MORTA                  "D1 exclusao com a senha correta remove a conta e limpa o cookie" falhou, como deveria
+W10  E7   MORTA                  "E7 o arquivo nao leva e-mail nem nome, e a resposta nao pode ir para cache" falhou, como deveria
+W10b  E7   MORTA                  "E7 o arquivo nao leva e-mail nem nome, e a resposta nao pode ir para cache" falhou, como deveria
+W11  A11  MORTA                  "A11: o modo strict tem exatamente 20 requisitos, 18 antigos mais os dois novos" falhou, como deveria
+S1  N1a  MORTA                  "N1 o schema canonicaliza UPC-A para EAN-13" falhou, como deveria
+S1b  N1a  MORTA                  "N1a o mesmo produto em UPC-A e EAN-13 vira UMA linha canonica" falhou, como deveria
+S1c  N1c  MORTA                  "N1c requisicao DIRETA ao backend grava a forma canonica" falhou, como deveria
+S2  N1e  MORTA                  "N1e o schema nao altera EAN-13 nem EAN-8" falhou, como deveria
+S2b  N1d  MORTA                  "N1d codigo nao-EAN passa intacto pela canonicalizacao" falhou, como deveria
+S3  N1g  MORTA                  "N1g a migration funde as duas formas pela regra declarada" falhou, como deveria
+S4  N1g  MORTA                  "N1g a migration e idempotente e nao toca codigo nao-EAN" falhou, como deveria
+S5  R2   MORTA                  "N1 a canonicalizacao nao afrouxa a conferencia do digito" falhou, como deveria
+S6  N1   MORTA                  "N1 a canonicalizacao usa shared/barcode.js, sem copia local" falhou, como deveria
+P1  M1   MORTA                  "M1 codigos com digito verificador errado sao recusados pelo motivo certo" falhou, como deveria
+P1b  M1   MORTA                  "M1 codigos validos de EAN-13, EAN-8 e UPC-A sao aceitos" falhou, como deveria
+P2  M3   MORTA                  "M3 o backend recusa productCode com digito verificador invalido" falhou, como deveria
+P2b  M3   MORTA                  "M3 a regra do backend e estreita e nao quebra cadastro legitimo" falhou, como deveria
+P3  M4   MORTA                  "o caminho manual nao monta o resultado por conta propria" falhou, como deveria
+P3b  M4   MORTA                  "M2 codigo invalido nao chega a rede" falhou, como deveria
+P4  M5   MORTA                  "M5 o piso de risco vale no caminho manual" falhou, como deveria
+P5  M9   MORTA                  "M9 nao existe segunda implementacao do digito verificador" falhou, como deveria
+P5b  M9   MORTA                  "M9 backend e frontend usam a MESMA implementacao de shared/" falhou, como deveria
+P6  M7   MORTA                  "M7 UPC-A vira EAN-13 com zero a esquerda, e o produto e o mesmo" falhou, como deveria
+P7  M6   MORTA                  "M6 cada motivo de recusa tem mensagem propria" falhou, como deveria
+P8  M8   MORTA                  "M8 nenhum outro caractere e removido em silencio" falhou, como deveria
+P9  M10  MORTA                  "M10 o backend recusa gravar codigo com digito verificador invalido" falhou, como deveria
+N1  R1/R3 MORTA                  "R1 usuario dentro do teto mas IP estourado recebe 429" falhou, como deveria
+N1b  R3   MORTA                  "R3 multiplas contas do mesmo IP nao ultrapassam o teto por IP" falhou, como deveria
+N2  R2   MORTA                  "R2 IP dentro do teto mas usuario estourado recebe 429" falhou, como deveria
+N2b  R4   MORTA                  "R4 dois usuarios atras do MESMO IP mantem cotas separadas" falhou, como deveria
+N3  R4   MORTA                  "R4 a requisicao recusada pelo teto de usuario nao consome orcamento do IP" falhou, como deveria
+N4  R5   MORTA                  "R5 dados forjados no request nao conseguem balde de IP novo" falhou, como deveria
+N5  R5   MORTA                  "R5 um bloco IPv6 /64 nao vira infinitos baldes" falhou, como deveria
+M1  R6   MORTA                  "R6 os tres tetos por rota seguem nos valores declarados" falhou, como deveria
+M2  R7   MORTA                  "R7 o teto por IP esta no valor medido" falhou, como deveria
+M3  Q3   MORTA                  "Q3 nenhuma variavel de ambiente desliga os limitadores" falhou, como deveria
+M3b  Q4   MORTA                  "Q4 nenhum dos limitadores tem opcao de pular requisicao" falhou, como deveria
+M4  Q2   MORTA                  "Q2 em producao o teto por usuario recusa na requisicao seguinte ao teto" falhou, como deveria
+M6  R9   MORTA                  "I1 usuario A nao le historico nem favorito de B" falhou, como deveria
+M7  R9   MORTA                  "I2 usuario B nao remove item de A" falhou, como deveria
+mortas 81 | nao executadas 0 | problemas 1 | linha de base: antes verde, depois verde
+```
+
+## A3 - tabelas que referenciam `users`, e a cascata em cada uma
+
+Lido do catalogo (`pg_constraint`), nos dois bancos, nesta data:
+
+```text
+### banco de PRODUCAO (somente leitura do catalogo)
+product_favorites    user_id    ON DELETE CASCADE   (product_favorites_user_id_fkey)
+product_history      user_id    ON DELETE CASCADE   (product_history_user_id_fkey)
+sessions             user_id    ON DELETE CASCADE   (sessions_user_id_fkey)
+user_allergies       user_id    ON DELETE CASCADE   (user_allergies_user_id_fkey)
+total: 4 chave(s) estrangeira(s) para users
+
+### banco LOCAL (PostgreSQL 17, porta 5433)
+product_favorites    user_id    ON DELETE CASCADE   (product_favorites_user_id_fkey)
+product_history      user_id    ON DELETE CASCADE   (product_history_user_id_fkey)
+sessions             user_id    ON DELETE CASCADE   (sessions_user_id_fkey)
+user_allergies       user_id    ON DELETE CASCADE   (user_allergies_user_id_fkey)
+total: 4 chave(s) estrangeira(s) para users
+```
+
+E todas as tabelas do schema `public`, para mostrar que nao ha outra:
+
+```text
+product_favorites    referencia users
+product_history      referencia users
+schema_migrations    nao referencia users
+sessions             referencia users
+user_allergies       referencia users
+users                nao referencia users
+```
+
+Igual nos dois bancos. **Nenhuma tabela sem cascata** - nenhuma migration foi
+necessaria. O D4 refaz essa conferencia a cada execucao da suite, no banco e no
+schema montado pelas migrations, e o subgate `accountDeletion` a refaz no banco
+do gate.
+
+## Exportacao: o que entra e o que nao entra, campo a campo
+
+```text
+ENTRA                         origem
+formato                       constante "nutriscan-dados-do-titular"
+versaoDoFormato               constante 1
+geradoEm                      relogio do servidor, ISO 8601 UTC
+conta.nome                    users.name
+conta.email                   users.email
+conta.criadaEm                users.created_at
+alergias[].id                 user_allergies.allergy_id (codigo do catalogo)
+alergias[].nome               rotulo do catalogo
+alergias[].marcadaEm          user_allergies.created_at
+historico[].codigo            product_history.product_code
+historico[].nome              product_history.product_name
+historico[].marca             product_history.product_brand
+historico[].imagem            product_history.image_url
+historico[].consultadoEm      product_history.viewed_at
+favoritos[].codigo            product_favorites.product_code
+favoritos[].nome              product_favorites.product_name
+favoritos[].marca             product_favorites.product_brand
+favoritos[].imagem            product_favorites.image_url
+favoritos[].favoritadoEm      product_favorites.created_at
+
+NAO ENTRA                     por que
+users.password_hash           material de senha
+users.password_salt           material de senha
+users.id                      id interno; nao ajuda o titular
+users.name_key                chave de unicidade derivada do nome; so serve ao banco
+sessions (tabela inteira)     token_hash, id e validade de sessao
+cookie de sessao              credencial
+id das linhas filhas          id interno
+user_id das linhas filhas     id interno
+dado de outro usuario         toda consulta filtra pelo user_id da sessao
+chave de API, DATABASE_URL    nao sao lidas por estas rotas
+```
+
+As quatro consultas nomeiam coluna por coluna (`accountRepository.js`); um teste
+reprova `SELECT *` e qualquer citacao de `password` ou `token_hash` no
+repositorio. **As sessoes ficam de fora de proposito**: o que o banco guarda
+delas - hash do token, id, validade - nao ajuda o titular a saber o que o app
+sabe dele, e o hash e exatamente o que o arquivo nao pode levar.
+
+## Formato e cabecalhos - a decisao
+
+**JSON**, com `formato`, `versaoDoFormato` e `geradoEm`. A versao do formato
+anuncia mudanca de estrutura no proprio arquivo.
+
+**Download direto**, com `Content-Disposition: attachment`, e nao "JSON comum que
+o frontend transforma em arquivo". A rota se comporta igual para o app, para um
+link e para a linha de comando, e o nome do arquivo tem UMA regra, no backend,
+coberta por teste. O app le esse nome do cabecalho. O corpo continua JSON,
+legivel por maquina.
+
+**Nome:** `nutriscan-meus-dados-AAAA-MM-DD.json`. Sem e-mail e sem nome: o nome do
+arquivo aparece em listagem de pasta e no historico de downloads.
+
+**Cabecalhos:**
+
+```text
+Cache-Control: no-store   o unico valor que proibe QUALQUER cache de guardar a
+                          resposta - proxy, CDN, cache do navegador. `no-cache`
+                          e `private` ainda permitem guardar.
+Pragma: no-cache          intermediario antigo, HTTP/1.0
+```
+
+A exclusao tambem responde `Cache-Control: no-store`.
+
+## A4 - limitador da exportacao: 5 por usuario e 20 por IP, por 24 horas
+
+Quantas vezes por dia uma pessoa exporta os proprios dados? Quase sempre uma. O
+que justifica mais e o imprevisto: download interrompido, arquivo salvo no
+aparelho errado, exportar de novo depois de mudar algo para comparar.
+
+```text
+por usuario   5 / 24 h    a exportacao de verdade + quatro imprevistos
+por IP       20 / 24 h    quatro pessoas atras do mesmo endereco (casa,
+                          escritorio, CGNAT de celular) esgotando a cota no
+                          mesmo dia - ja improvavel; contem quem cria contas
+                          para exportar em serie
+```
+
+Mais restritivo que o de colecoes (300 e 3000 por 10 minutos). Composicao da
+v0.7.2 - usuario E IP, o mais restritivo vence, usuario conferido primeiro -
+pela MESMA fabrica (`criarLimitadoresDeColecoes`), com baldes proprios. Nenhum
+limitador existente mudou; nao ha bypass. A exclusao usa o limitador de
+autenticacao (40 por 15 minutos por IP), o do login, montado ANTES do
+`requireAuth`.
+
+## Atomicidade da exclusao
+
+```text
+1  valida o corpo (senha presente)          falha: 400, nada tocado
+2  le o usuario da sessao                   sumiu: 401
+3  confere a senha contra o hash            errada: 403, nada tocado
+4  BEGIN
+5    DELETE FROM sessions WHERE user_id     todas as sessoes, todos os aparelhos
+6    DELETE FROM users WHERE id RETURNING   cascata: alergias, historico, favoritos
+7    se nao removeu exatamente 1 linha      erro -> ROLLBACK
+8  COMMIT                                   qualquer erro antes -> ROLLBACK de tudo
+9  limpa o cookie, responde 200
+```
+
+`withTransaction` pega UM cliente do pool: BEGIN, as duas remocoes e o COMMIT
+acontecem na mesma conexao, e qualquer excecao - inclusive dentro da cascata -
+faz ROLLBACK. O D8 prova isso com uma falha real no meio da cascata, e o mutante
+W6 (a exclusao deixa de ser transacional) prova que o D8 enxerga a diferenca.
+
+Exclusao FISICA: sem `deleted_at`, sem copia, sem conteudo no log. O log diz so
+`[conta] uma conta foi excluida pelo titular`.
+
+## A5 a A9
+
+```text
+A5  npm run build                          sucesso
+A6  npm --prefix backend test              354 testes, 295 pass, 0 fail, 59 skipped
+                                           (56 exigem PostgreSQL, 1 a IA real,
+                                           2 a Open Food Facts real - todos
+                                           declarados NAO EXECUTADO, nenhum PASS)
+A7  suite contra PostgreSQL real (local)   354 testes, 351 pass, 0 fail, 3 skipped
+                                           (1 IA real, 2 Open Food Facts real)
+A8  npm audit --audit-level=moderate       frontend: found 0 vulnerabilities
+    npm --prefix backend audit (moderate)  backend:  found 0 vulnerabilities
+A9  npm run verify:release                 exit 0 - build, testes, os dois
+                                           audits e "secret scan - 0 real secrets"
+```
+
+O A7 rodou com `RUN_DB_INTEGRATION_TESTS=true` contra o PostgreSQL LOCAL (17,
+porta 5433), com `DATABASE_URL` definida no comando - nunca contra o banco de
+producao.
+
+Gastos da suite contra os tetos por IP, medidos na propria execucao:
+
+```text
+[R11] gasto de colecoes desta suite: 403 de 3000 (folga 7.44x)
+[exportacao] desta suite: 17 de 20 por IP
+```
+
+O segundo e uma contagem conservadora: inclui pedidos que terminaram em 401 e
+nunca chegaram ao limitador. Um teste reprova se passar de 20.
+
+## A10 - `verify:e2e`
+
+**PASS, exit code 0**, com PostgreSQL real e Claude real - 2 chamadas pagas. Os
+20 requisitos em `PASSED`, `ok: true`. A saida literal, a tabela de subgates, a
+contagem por balde e o `E2E_LAST_RUN.json` integral estao no `E2E_REPORT.md`.
+
+```text
+[OK] account export - tudo de A, nada do vizinho, nada de senha nem de sessao
+[OK] account deletion - senha errada nao apaga; senha certa apaga tudo; sessoes caem; vizinha intacta
+[PASS] verify:e2e - PostgreSQL real e Claude real comprovados
+=== EXIT CODE: 0 ===
+```
+
+## A11 - os 18 requisitos antigos continuam exigidos; agora sao 20
+
+Prova por execucao, sobre o `E2E_LAST_RUN.json` desta versao: para cada
+requisito do modo strict, um relatorio com SO aquele requisito em
+`NOT_EXECUTED` tem de reprovar, e reprovar so por ele.
+
+```text
+requisitos no modo strict (flag da IA ligada): 20
+faltando no E2E_LAST_RUN.json desta versao: []
+
+requisito                origem   presente   NOT_EXECUTED sozinho reprova
+backendProcess           v0.7.6   sim        sim, e so ele
+database                 v0.7.6   sim        sim, e so ele
+migrations               v0.7.6   sim        sim, e so ele
+auth                     v0.7.6   sim        sim, e so ele
+sessionSchema            v0.7.6   sim        sim, e so ele
+multiDevice              v0.7.6   sim        sim, e so ele
+isolation                v0.7.6   sim        sim, e so ele
+logout                   v0.7.6   sim        sim, e so ele
+assistantAuthority       v0.7.6   sim        sim, e so ele
+deterministicEngine      v0.7.6   sim        sim, e so ele
+fallback                 v0.7.6   sim        sim, e so ele
+privacy                  v0.7.6   sim        sim, e so ele
+historySync              v0.7.6   sim        sim, e so ele
+favoritesSync            v0.7.6   sim        sim, e so ele
+verdictFreshness         v0.7.6   sim        sim, e so ele
+manualCodeLookup         v0.7.6   sim        sim, e so ele
+accountExport            v0.8.0   sim        sim, e so ele
+accountDeletion          v0.8.0   sim        sim, e so ele
+anthropicReal            v0.7.6   sim        sim, e so ele
+assistantAuthenticated   v0.7.6   sim        sim, e so ele
+
+os 18 da v0.7.6 presentes: 18 de 18
+novos: ["accountExport","accountDeletion"]
+```
+
+Os testes que travam isso na suite, verdes:
+
+```text
+A11: os 18 requisitos da v0.7.6 continuam exigidos, um a um
+A11: o modo strict tem exatamente 20 requisitos, 18 antigos mais os dois novos
+A11: accountExport e accountDeletion sao requisitos BASE e reprovam sozinhos
+A10: os 17 requisitos da v0.7.2 continuam exigidos, um a um
+A10: desde a v0.7.2 entraram so manualCodeLookup e os dois da v0.8.0, nomeados
+D2: o conjunto de requisitos do modo strict e exatamente este
+```
+
+O teste da v0.7.6 que travava o total em "exatamente 18" foi substituido pelo de
+"exatamente 20" - nao removido sem troca. O mutante W11 (o gate perde
+`accountDeletion`) prova que o teste novo pega a perda.
+
+`accountExport` e `accountDeletion` sao BASE: dependem so de PostgreSQL real,
+e nao da flag da IA. Sem a flag, o modo strict exige 18 (os 16 base antigos e os
+2 novos); com a flag, os 20.
+
+## A12 - limpeza do banco depois do gate
+
+Residuo **0** em todos os padroes de teste, inclusive o da conta D
+(`nutriscan-e2e-d-*`, coberta por `nutriscan-e2e-%` e `%@example.test`), e
+nenhuma linha orfa. Saida completa no `E2E_REPORT.md`.
+
+## A13 - `verify:deploy` inalterado e somente leitura
+
+Nenhuma linha de comportamento mudou. O diff do arquivo e um comentario - a
+correcao autorizada pelo dono, que atualiza o texto sobre o D6 (que desde a
+v0.7.6 mede 400, e nao 500):
+
+```text
+-// qualquer rota - e nao ha rota ali para chegar. E a forma de provocar um erro
+-// interno sem tocar em nada que persista.
++// qualquer rota - e nao ha rota ali para chegar. E a forma de provocar um erro,
++// e conferir que a resposta dele nao vaza nada, sem tocar em nada que persista.
++// Ate a v0.7.5 esse erro saia como 500; desde a v0.7.6, ele e 400
++// `INVALID_JSON`. O D6 aceita os dois, porque o que ele vigia e o vazamento.
+```
+
+As rotas novas NAO foram acrescentadas a ele. O P13 continua verde, agora com
+`DELETE /api/account` entre as rotas de escrita proibidas.
+
+```text
+verify:deploy simulado (local, http)   FAIL, exit 1 - 7 PASS, D2 FAIL (sem TLS local)
+verify:deploy REAL (somente leitura)   FAIL, exit 1 - 7 PASS, D1 FAIL
+                                       "repositorio declara 0.8.0 e o deploy anuncia 0.7.0"
+```
+
+Os dois FAIL sao os esperados. Os sete PASS do real medem a 0.7.0 e nao provam
+nada sobre a 0.8.0.
+
+## A14 - varredura do nome antigo
+
+Fora de `node_modules`, `dist`, `.git`, `releases` e dos tres relatorios
+historicos, o nome antigo aparece em um arquivo so:
+`backend/tests/productName.test.js`, que e o teste que o procura. Os testes P1t
+estao verdes.
+
+## A15 - versao nos sete pontos
+
+```text
+package.json                             0.8.0
+backend/package.json                     0.8.0
+package-lock.json (raiz e "")            0.8.0 / 0.8.0
+backend/package-lock.json (raiz e "")    0.8.0 / 0.8.0
+/api/health de um processo real          0.8.0   D1 do alvo simulado: "ambos declaram 0.8.0";
+                                                 E2E_LAST_RUN.json: "version": "0.8.0"
+README                                   # NutriScan v0.8.0
+CHANGELOG                                ## NutriScan v0.8.0 - 2026-10-12
+```
+
+## Pacote: validacao e varredura de segredo
+
+O ZIP (`nutriscan-v0.8.0-auditoria.zip`, gerado por `scripts/pack-release.ps1`)
+passou pelo validador de regras - nada de `node_modules`, `dist`, `.git`,
+`.env`, `releases`, `E2E_LAST_RUN.json`; os documentos exigidos presentes; CRC
+integro - e, nesta versao, por duas regras novas: nenhum arquivo
+`nutriscan-meus-dados*` e nenhum `.json` com o formato
+`nutriscan-dados-do-titular`. **Nenhuma exportacao de teste esta no pacote**: os
+testes leem a exportacao na memoria, e nenhum arquivo de exportacao foi gravado
+em disco no projeto.
+
+A varredura de segredo do projeto (`verify:release`) deu "0 real secrets" do
+comeco ao fim. A varredura ESTRITA, que roda sobre o conteudo do ZIP e classifica
+toda string de conexao com senha por valor exato, **reprovou na primeira
+execucao**, com 2 achados:
+
+```text
+usuario_falso:<senha de 19>@[host-quebrado   NAO RECONHECIDA      backend/tests/migrate.test.js
+usuario_falso:<senha de 19>@localhost        NAO RECONHECIDA      backend/tests/migrate.test.js
+```
+
+Sao iscas do teste novo da migration (correcao autorizada pelo dono): a senha e
+uma isca que o teste procura no log, para provar que ela NUNCA aparece; o host e
+`localhost:1` (recusa imediata) ou propositalmente quebrado. Foram acrescentadas
+a lista de ficticias da varredura estrita pelo valor exato - nao por padrao - e a
+segunda execucao deu 0 achados. A lista ja tinha casos assim (o mutante V1c, as
+fixtures do doctor e dos testes de producao).
+
+## A interface, verificada no navegador
+
+Contra o backend local (porta 3200, PostgreSQL local, sem chave de IA), servindo
+o `dist/` compilado:
+
+- "Baixar meus dados" devolveu o arquivo `nutriscan-meus-dados-2026-10-12.json`,
+  com as sete chaves de topo, `conta` com `nome`, `email` e `criadaEm`, e
+  `Cache-Control: no-store`.
+- "Excluir minha conta" so abre a confirmacao. "Excluir para sempre" ficou
+  desabilitado sem nada, desabilitado so com a senha, e habilitado com a senha E
+  a caixa marcada.
+- Senha errada: "Senha incorreta. Nada foi apagado.", a pessoa continua logada,
+  e o campo de senha volta vazio.
+- Senha certa: volta a tela de entrada com "Sua conta foi excluida.", `/me`
+  responde 401, e a conta nao existe mais no banco local.
+- No console, so os status de rede esperados (401, 403, 401).
+- Em 320 px, o cartao "Seus dados", com a confirmacao aberta, cabe na coluna;
+  menor fonte 17 px; botoes de 48 a 56 px de altura.
+
+As contas criadas para essa verificacao foram apagadas do banco local.
+
+## Observacoes descritas e NAO corrigidas
+
+Fora das secoes 6 e 7. Descritas para decisao, como manda a secao 17.
+
+1. **Rolagem lateral em 320 px na tela Conta - anterior a esta versao.** Em
+   320 px a pagina rola de lado (largura de 403 px). A causa e a grade
+   `.account-grid` do `src/styles.css`, que abaixo de 900 px nao define colunas:
+   a coluna implicita assume a largura minima do cartao de ALERGIAS (387 px).
+   Medido: escondendo so o cartao de alergias, a coluna cai para 288 px; o cartao
+   novo, sozinho e com a confirmacao aberta, cabe em 288 px. O `styles.css` e o
+   arquivo de design copiado e nao foi tocado. Correcao provavel, para decisao:
+   `grid-template-columns: minmax(0, 1fr)` abaixo de 900 px.
+2. **O log de erro interno leva o objeto de erro inteiro.**
+   `console.error("[erro interno]", error)` no `errorMiddleware.js`. Para erro do
+   `pg`, o objeto inclui o campo `detail`, que numa violacao de unicidade cita o
+   valor - por exemplo o e-mail. O cadastro confere a duplicidade antes de
+   inserir, entao isso so aconteceria numa corrida. Nao afeta as rotas novas: a
+   exclusao so registra a frase fixa.
+3. **Copias de seguranca do provedor do banco.** A exclusao remove as linhas do
+   banco em uso. O historico de restauracao que o provedor mantenha nao e
+   alcancado pelo codigo; o prazo depende do plano e **nao foi verificado**.
+   Descrito em `docs/DADOS_DO_TITULAR.md`.
+4. **Dados do modo visitante** ficam no navegador, nunca foram para o servidor e
+   nao sao apagados pela exclusao da conta. Descrito no mesmo documento.
+
+Nenhuma delas pede exclusao logica, e nenhuma foi implementada.
+
+## O que esta versao NAO prova
+
+- **A camera em hardware real: NAO EXECUTADO.** A correcao da leitura e provada
+  por teste e mutacao, nao por aparelho.
+- **O deploy real da 0.8.0: NAO EXECUTADO.** Nada foi publicado; no ar esta a
+  0.7.0.
+- **HTTPS da 0.8.0: NAO COMPROVADO** - o alvo simulado nao tem TLS.
+- **A tela em aparelho real: NAO EXECUTADO.** A verificacao da interface foi no
+  navegador embutido do ambiente de desenvolvimento; a largura de 320 px foi
+  emulada.
+- **Conformidade juridica: nao declarada**, e nao e algo que teste prove.
+
+## Historico de auditorias anteriores
+
+## Auditoria da v0.7.6 - 2026-10-12
 
 ## Escopo
 
@@ -412,8 +1181,6 @@ carga simultanea real         NAO EXECUTADO
 
 **A atestacao da camera em hardware continua ABERTA. Nenhum deploy desta versao
 foi feito.**
-
-## Historico de auditorias anteriores
 
 ## Auditoria da v0.7.5 - 2026-10-02
 

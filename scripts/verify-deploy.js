@@ -18,8 +18,10 @@
 // escreve no banco. Toda requisicao e GET, com UMA excecao, declarada: o D6
 // manda um POST com JSON quebrado para um caminho que NAO EXISTE
 // (`SONDA_INEXISTENTE`). O corpo e recusado pelo parser antes de chegar a
-// qualquer rota - e nao ha rota ali para chegar. E a forma de provocar um erro
-// interno sem tocar em nada que persista.
+// qualquer rota - e nao ha rota ali para chegar. E a forma de provocar um erro,
+// e conferir que a resposta dele nao vaza nada, sem tocar em nada que persista.
+// Ate a v0.7.5 esse erro saia como 500; desde a v0.7.6, ele e 400
+// `INVALID_JSON`. O D6 aceita os dois, porque o que ele vigia e o vazamento.
 //
 // O teste `P13` grava cada requisicao que este comando faz e exige que nenhuma
 // seja de escrita.

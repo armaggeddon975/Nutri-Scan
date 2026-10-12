@@ -240,6 +240,8 @@ const ROTAS_DE_ESCRITA = [
   ["POST", /^\/api\/favorites/],
   ["DELETE", /^\/api\/favorites/],
   ["POST", /^\/api\/assistant/],
+  // v0.8.0: excluir a conta. O verify:deploy nunca pode chegar perto.
+  ["DELETE", /^\/api\/account/],
 ];
 
 function eEscrita(metodo, caminho) {

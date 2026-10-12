@@ -222,6 +222,69 @@ test("M4 a camera continua lendo simbologia sem digito verificador de EAN", asyn
 });
 
 // ---------------------------------------------------------------------------
+// C2 - a camera nunca transforma um codigo em OUTRO codigo
+// ---------------------------------------------------------------------------
+//
+// Ate a v0.7.6 a leitura da camera passava por `cleanBarcode`, que apaga tudo o
+// que nao e digito. Um CODE_128 com letras virava o EAN de outro produto - com
+// outros alergenicos. Num app de alergia, isso e pior que "nao encontrado".
+
+test("C2 a camera nunca transforma um codigo em outro", async () => {
+  // Cada leitura tem letra misturada. Apagar as letras daria um EAN valido que
+  // EXISTE na base falsa - e o teste exige que esse produto nunca seja buscado.
+  const base = { [CODIGO_VALIDO]: PRODUTO_EM_CONFLITO };
+  for (const lido of [`AB${CODIGO_VALIDO}`, `${CODIGO_VALIDO}X`, `78910A00100103`]) {
+    const { buscar, chamadas } = criarBuscaFalsa(base);
+    const resultado = await consultarProdutoPorCodigo(lido, { origem: ORIGEM_CAMERA, buscar });
+
+    assert.equal(chamadas.includes(CODIGO_VALIDO), false, `"${lido}" virou ${CODIGO_VALIDO} e buscou outro produto`);
+    assert.notEqual(resultado.estado, ENCONTRADO, `"${lido}" abriu um produto que nao e o dele`);
+    // Passa intacto: a busca recebe exatamente o que a camera leu.
+    assert.deepEqual(chamadas, [lido]);
+  }
+});
+
+test("C2 a camera nao encurta codigo longo para um que talvez exista", async () => {
+  const longo = `${CODIGO_VALIDO}12345678`; // 21 digitos
+  const { buscar, chamadas } = criarBuscaFalsa();
+  await consultarProdutoPorCodigo(longo, { origem: ORIGEM_CAMERA, buscar });
+  assert.deepEqual(chamadas, [longo], "a leitura longa foi cortada antes da busca");
+});
+
+test("C2 leitura com caractere estranho e recusada, sem rede", async () => {
+  // Separador de grupo GS1, parenteses, espaco no meio de texto: nada disso e
+  // codigo de produto que a Open Food Facts conheca.
+  for (const lido of ["\u001d0107891000100103", "(01)07891000100103", "AB 123", "a".repeat(65)]) {
+    const { buscar, chamadas } = criarBuscaFalsa();
+    const resultado = await consultarProdutoPorCodigo(lido, { origem: ORIGEM_CAMERA, buscar });
+    assert.equal(resultado.estado, CODIGO_INVALIDO, `"${lido}" deveria ser recusado`);
+    assert.equal(resultado.motivo, "nao_e_produto");
+    assert.deepEqual(chamadas, [], `"${lido}" chegou a rede`);
+  }
+});
+
+test("C2 EAN lido pela camera continua igual, com ou sem separador", async () => {
+  for (const lido of [CODIGO_VALIDO, "789-1000-100103", " 7891000100103 "]) {
+    const { buscar, chamadas } = criarBuscaFalsa();
+    const resultado = await consultarProdutoPorCodigo(lido, { origem: ORIGEM_CAMERA, buscar });
+    assert.equal(resultado.estado, ENCONTRADO, `"${lido}" deixou de ser lido`);
+    assert.deepEqual(chamadas, [CODIGO_VALIDO]);
+  }
+});
+
+test("C2 o App usa a leitura segura e nunca manda leitura da camera para a busca por nome", async () => {
+  // O App nao tem renderizador nos testes; a prova aqui e pelo codigo-fonte.
+  const fonte = await readFile(path.join(rootDir, "src/App.jsx"), "utf8");
+  assert.match(fonte, /const detectedBarcode = codigoLidoPelaCamera\(result\.getText\(\)\)/);
+  assert.doesNotMatch(fonte, /cleanBarcode\(result\.getText\(\)\)/, "a camera voltou a apagar letras");
+  assert.match(
+    fonte,
+    /if \(origem !== "camera" && !isBarcodeQuery\(nextQuery\)\)/,
+    "leitura da camera pode cair na busca por nome",
+  );
+});
+
+// ---------------------------------------------------------------------------
 // M5 - produto em conflito, consultado por codigo digitado
 // ---------------------------------------------------------------------------
 

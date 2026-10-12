@@ -141,6 +141,18 @@ export function buildStrictRequirements(report, { anthropicFlagEnabled = false }
     // um componente React. Este subgate e a primeira vez que esse caminho e
     // exercitado de ponta a ponta.
     ["manualCodeLookup", report.manualCodeLookup === "PASSED"],
+
+    // v0.8.0 - direitos do titular.
+    //
+    // Requisitos BASE, nao condicionais a flag da Anthropic: as duas rotas
+    // dependem so de PostgreSQL real, e nenhuma fala com a IA. Amarra-los a
+    // flag deixaria o gate aprovar uma execucao sem IA que nunca exportou nem
+    // excluiu nada.
+    //
+    // Sao dois, e nao um "conta": exportar e excluir sao promessas
+    // diferentes. Um so esconderia qual das duas quebrou.
+    ["accountExport", report.accountExport === "PASSED"],
+    ["accountDeletion", report.accountDeletion === "PASSED"],
   ];
 
   if (anthropicFlagEnabled) {

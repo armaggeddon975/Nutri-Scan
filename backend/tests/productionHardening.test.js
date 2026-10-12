@@ -205,6 +205,30 @@ test("P9 fora de producao nenhuma variavel e exigida", async () => {
   assert.equal(saida.subiu, true, `em desenvolvimento o servidor nao subiu: ${saida.stderr}`);
 });
 
+test("MODO NODE_ENV digitado errado nao sobe, e diz qual variavel", async () => {
+  // Ate a v0.7.6, "producao" virava development em silencio: sem cookie Secure,
+  // sem conferencia das obrigatorias, com detalhe de erro na resposta.
+  for (const digitado of ["producao", "prod", "staging", "produção"]) {
+    const porta = await portaLivre();
+    const saida = await iniciarServidor(ambienteDeProducao({ NODE_ENV: digitado, PORT: String(porta) }));
+    assert.equal(saida.subiu, false, `NODE_ENV=${digitado} subiu como development`);
+    assert.match(saida.stderr, /NODE_ENV/, "a mensagem nao diz qual variavel");
+    // Palavra inteira: "prod" aparece dentro de "production", que a mensagem
+    // cita como valor aceito - isso nao e imprimir o valor digitado.
+    const comoPalavra = new RegExp(`(^|[^\\p{L}])${digitado}([^\\p{L}]|$)`, "u");
+    assert.doesNotMatch(saida.stderr, comoPalavra, `a mensagem imprimiu o valor ${digitado}`);
+  }
+});
+
+test("MODO NODE_ENV reconhecido sobe, inclusive com maiuscula e espaco", async () => {
+  // O par negativo: sem ele, um servidor que recusasse tudo passaria acima.
+  for (const valido of ["production", "PRODUCTION", " production "]) {
+    const porta = await portaLivre();
+    const saida = await iniciarServidor(ambienteDeProducao({ NODE_ENV: valido, PORT: String(porta) }));
+    assert.equal(saida.subiu, true, `NODE_ENV="${valido}" nao subiu: ${saida.stderr}`);
+  }
+});
+
 test("P9 o ajudante de teste declara todas as variaveis que o backend le", async () => {
   // Se o backend passar a ler uma variavel nova e ela nao entrar no ajudante,
   // o `backend/.env` real voltaria a preencher o processo de teste.
@@ -347,6 +371,37 @@ test("P5 JSON quebrado no corpo nao vaza a mensagem do parser", async () => {
   assert.ok(resposta.status >= 400);
   assert.deepEqual(vazamentosEm(texto), [], `a resposta vazou: ${texto}`);
   assert.doesNotMatch(texto, /Unexpected token|JSON at position|SyntaxError/);
+});
+
+test("P5 corpo malformado e erro do cliente: 400 ou 413, nunca 500", async () => {
+  // Ate a v0.7.5 o JSON quebrado caia no ramo de erro interno: 500, e um
+  // "[erro interno]" no log que nao era interno; a v0.7.6 corrigiu o JSON. O
+  // corpo grande demais continuou 500 ate a v0.7.6. O caminho nao existe de
+  // proposito - o parser roda antes das rotas, e assim nada chega a limitador.
+  const contarInternos = () => (app.lerStderr().match(/\[erro interno\]/g) || []).length;
+  const antes = contarInternos();
+
+  const quebrado = await pedir("/api/__corpo_invalido", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{ isto nao e json",
+  });
+  assert.equal(quebrado.resposta.status, 400, `JSON quebrado respondeu ${quebrado.resposta.status}`);
+  assert.equal(JSON.parse(quebrado.texto).error.code, "INVALID_JSON");
+  assert.doesNotMatch(quebrado.texto, /Unexpected token|JSON at position|Expected property|SyntaxError/);
+
+  // O limite do express.json() e 64kb.
+  const grande = await pedir("/api/__corpo_invalido", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ texto: "x".repeat(70 * 1024) }),
+  });
+  assert.equal(grande.resposta.status, 413, `corpo grande respondeu ${grande.resposta.status}`);
+  assert.equal(JSON.parse(grande.texto).error.code, "PAYLOAD_TOO_LARGE");
+  assert.doesNotMatch(grande.texto, /request entity too large|limit/i);
+
+  await new Promise((r) => setTimeout(r, 200));
+  assert.equal(contarInternos(), antes, "erro do cliente foi registrado como erro interno");
 });
 
 test("P5 o detalhe do erro vai para o log do servidor", async () => {

@@ -34,12 +34,24 @@ const LOOKUP = "src/services/productLookup.js";
 const APP = "src/App.jsx";
 const VALIDACAO_BACKEND = "backend/src/utils/validation.js";
 const MIGRATION003 = "backend/migrations/003_canonicaliza_upca.js";
+const MIGRATION001 = "backend/migrations/001_initial_schema.sql";
+const MIGRATION002 = "backend/migrations/002_history_favorites.sql";
+const ACCOUNT_REPO = "backend/src/repositories/accountRepository.js";
+const ACCOUNT_SERVICE = "backend/src/services/accountService.js";
+const ACCOUNT_CONTROLLER = "backend/src/controllers/accountController.js";
+const ACCOUNT_ROUTES = "backend/src/routes/accountRoutes.js";
+const E2E_GATE = "scripts/lib/e2eGate.js";
 const ENV_BACKEND = "backend/src/config/env.js";
 const ERRO_BACKEND = "backend/src/middleware/errorMiddleware.js";
 const APP_BACKEND = "backend/src/app.js";
 const VERSION_CHECK = "scripts/version-check.js";
 const VERIFY_DEPLOY = "scripts/verify-deploy.js";
 const RENDER_YAML = "render.yaml";
+const TEXTO_FRONTEND = "src/utils/text.js";
+const SERVER_BACKEND = "backend/src/server.js";
+const MIGRATE_BACKEND = "backend/scripts/migrate.js";
+const DOCTOR_CHECKS = "scripts/lib/doctorChecks.js";
+const E2E_REAL = "scripts/e2e-real.js";
 
 const SUITE_BARCODE = "tests/barcode.test.js";
 const SUITE_LOOKUP = "tests/productLookup.test.js";
@@ -49,6 +61,10 @@ const SUITE_PRODUCAO = "tests/productionHardening.test.js";
 const SUITE_DEPLOY = "tests/verifyDeploy.test.js";
 const SUITE_RENDER = "tests/renderSync.test.js";
 const SUITE_CORPO = "tests/bodyParseError.test.js";
+const SUITE_MIGRATE = "tests/migrate.test.js";
+const SUITE_DOCTOR = "tests/doctor.test.js";
+const SUITE_GATE = "tests/e2eGate.test.js";
+const SUITE_CONTA = "tests/accountIntegration.test.js";
 
 const COMPOSICAO = "  return [porUsuario, porIp];";
 
@@ -282,6 +298,313 @@ const MUTACOES = [
     deveQuebrar: "P13 o registro de requisicoes do verify:deploy nao tem escrita",
     banco: false,
   },
+  // --- leitura da camera (para a v0.8.0, por decisao do dono do projeto) -------
+  {
+    id: "U1",
+    requisito: "C2",
+    descricao: "a leitura da camera volta a apagar as letras",
+    arquivo: TEXTO_FRONTEND,
+    de: "  if (bruto.length <= TAMANHO_MAXIMO_DO_CODIGO && /^[A-Za-z0-9._-]+$/.test(bruto)) return bruto;",
+    para: '  if (bruto) return bruto.replace(/[^\\d]/g, "");',
+    suite: SUITE_LOOKUP,
+    deveQuebrar: "C2 a camera nunca transforma um codigo em outro",
+    banco: false,
+  },
+  {
+    id: "U2",
+    requisito: "C2",
+    descricao: "o App volta a limpar a leitura da camera com cleanBarcode",
+    arquivo: APP,
+    de: "            const detectedBarcode = codigoLidoPelaCamera(result.getText());",
+    para: "            const detectedBarcode = cleanBarcode(result.getText());",
+    suite: SUITE_LOOKUP,
+    deveQuebrar: "C2 o App usa a leitura segura e nunca manda leitura da camera para a busca por nome",
+    banco: false,
+  },
+  {
+    id: "U3",
+    requisito: "C2",
+    descricao: "leitura da camera volta a poder cair na busca por nome",
+    arquivo: APP,
+    de: '      if (origem !== "camera" && !isBarcodeQuery(nextQuery)) {',
+    para: "      if (!isBarcodeQuery(nextQuery)) {",
+    suite: SUITE_LOOKUP,
+    deveQuebrar: "C2 o App usa a leitura segura e nunca manda leitura da camera para a busca por nome",
+    banco: false,
+  },
+  // --- demais correcoes autorizadas pelo dono, para a v0.8.0 -------------------
+  //
+  // Nao ha mutante para o isolamento do `env.test.js`, e e de proposito: o
+  // defeito a injetar seria "escrever no backend/.env real", e a rodada de
+  // mutacao o executaria de verdade, apagando a configuracao do dono.
+  {
+    id: "U4",
+    requisito: "O2e",
+    descricao: "corpo grande demais volta a virar erro interno 500",
+    arquivo: ERRO_BACKEND,
+    de: "  if (ehCorpoGrandeDemais(error)) {",
+    para: "  if (false) {",
+    suite: SUITE_CORPO,
+    deveQuebrar: "O2e corpo grande demais responde 413 fixo, sem a mensagem do leitor",
+    banco: false,
+  },
+  {
+    id: "U4b",
+    requisito: "O2e",
+    descricao: "basta copiar o type do corpo grande para ganhar 413",
+    arquivo: ERRO_BACKEND,
+    de: '  return error?.constructor?.name === "PayloadTooLargeError" && error.type === "entity.too.large";',
+    para: '  return error.type === "entity.too.large";',
+    suite: SUITE_CORPO,
+    deveQuebrar: "O2e copiar name, type e status do corpo grande nao basta para ganhar 413",
+    banco: false,
+  },
+  {
+    id: "U5",
+    requisito: "MODO",
+    descricao: "NODE_ENV desconhecido volta a ser aceito",
+    arquivo: ENV_BACKEND,
+    de: "  if (VALID_NODE_ENVS.has(bruto.trim().toLowerCase())) return [];",
+    para: "  return [];",
+    suite: SUITE_PRODUCAO,
+    deveQuebrar: "MODO NODE_ENV digitado errado nao sobe, e diz qual variavel",
+    banco: false,
+  },
+  {
+    id: "U5b",
+    requisito: "MODO",
+    descricao: "o servidor deixa de conferir o modo antes de subir",
+    arquivo: SERVER_BACKEND,
+    de: "  if (modo.length > 0) {",
+    para: "  if (false) {",
+    suite: SUITE_PRODUCAO,
+    deveQuebrar: "MODO NODE_ENV digitado errado nao sobe, e diz qual variavel",
+    banco: false,
+  },
+  {
+    id: "U6",
+    requisito: "MIG",
+    descricao: "a falha de migration volta a imprimir so error.message",
+    arquivo: MIGRATE_BACKEND,
+    de: "  console.error(`Migration falhou:\\n${descreverFalha(error)}`);",
+    para: "  console.error(error.message);",
+    suite: SUITE_MIGRATE,
+    deveQuebrar: "MIG migration que nao alcanca o banco falha dizendo por que",
+    banco: false,
+  },
+  {
+    id: "U7",
+    requisito: "MIG",
+    descricao: "o doctor volta a contar so migrations .sql",
+    arquivo: DOCTOR_CHECKS,
+    de: '  return fileName.endsWith(".sql") || fileName.endsWith(".js");',
+    para: '  return fileName.endsWith(".sql");',
+    suite: SUITE_DOCTOR,
+    deveQuebrar: "o doctor conta as mesmas migrations que o runner aplica, .sql e .js",
+    banco: false,
+  },
+  {
+    id: "U8",
+    requisito: "ORC",
+    descricao: "o orcamento do gate deixa de mostrar o teto por IP",
+    arquivo: E2E_REAL,
+    de: "const TETOS_POR_IP = { colecoes: 3000, exportacao: 20 };",
+    para: "const TETOS_POR_IP = {};",
+    suite: SUITE_GATE,
+    deveQuebrar: "o orcamento do gate usa os mesmos tetos do limitador, inclusive o por IP",
+    banco: false,
+  },
+  // --- v0.8.0: direitos do titular ---------------------------------------------
+  //
+  // Os seis pedidos pelo prompt (E2, E4, E5, D2, D4, D8) e alguns a mais. Nao ha
+  // mutante "a exclusao deixa de apagar as sessoes": a cascata de `sessions`
+  // apagaria do mesmo jeito, entao esse mutante nao mudaria comportamento
+  // nenhum - sobreviveria sem que isso dissesse algo sobre os testes. O D5 e o
+  // mutante W5b (cascata de `sessions` removida) cobrem o que importa.
+  {
+    id: "W1",
+    requisito: "E2",
+    descricao: "a exportacao passa a incluir o registro bruto do usuario, com hash",
+    arquivo: ACCOUNT_REPO,
+    de:
+      "  const { rows } = await client.query(`SELECT ${COLUNAS_DA_CONTA} FROM users WHERE id = $1`, [userId]);\n" +
+      "  return rows[0] ? { nome: rows[0].name, email: rows[0].email, criadaEm: rows[0].created_at } : null;",
+    para:
+      '  const { rows } = await client.query("SELECT * FROM users WHERE id = $1", [userId]);\n' +
+      "  return rows[0] ? { ...rows[0], nome: rows[0].name, email: rows[0].email, criadaEm: rows[0].created_at } : null;",
+    suite: SUITE_CONTA,
+    deveQuebrar: "E2 a exportacao nao contem o password_hash nem o salt reais - pelo valor",
+    banco: true,
+  },
+  {
+    id: "W1b",
+    requisito: "E2",
+    descricao: "o servico passa a repassar a conta inteira em vez dos campos escolhidos",
+    arquivo: ACCOUNT_SERVICE,
+    de: "    conta: { nome: conta.nome, email: conta.email, criadaEm: data(conta.criadaEm) },",
+    para: "    conta: { ...(await findUserById(userId)), nome: conta.nome, email: conta.email, criadaEm: data(conta.criadaEm) },",
+    suite: SUITE_CONTA,
+    deveQuebrar: "E2 a exportacao nao contem o password_hash nem o salt reais - pelo valor",
+    banco: true,
+  },
+  {
+    id: "W2",
+    requisito: "E4",
+    descricao: "a consulta de historico da exportacao perde o filtro por usuario",
+    arquivo: ACCOUNT_REPO,
+    de: "FROM product_history WHERE user_id = $1 ORDER BY viewed_at DESC",
+    para: "FROM product_history WHERE $1::uuid IS NOT NULL ORDER BY viewed_at DESC",
+    suite: SUITE_CONTA,
+    deveQuebrar: "E4 a exportacao de A nao contem nada de B, com B populado",
+    banco: true,
+  },
+  {
+    id: "W2b",
+    requisito: "E4",
+    descricao: "a consulta de favoritos da exportacao perde o filtro por usuario",
+    arquivo: ACCOUNT_REPO,
+    de: "FROM product_favorites WHERE user_id = $1 ORDER BY created_at DESC",
+    para: "FROM product_favorites WHERE $1::uuid IS NOT NULL ORDER BY created_at DESC",
+    suite: SUITE_CONTA,
+    deveQuebrar: "E4 a exportacao de A nao contem nada de B, com B populado",
+    banco: true,
+  },
+  {
+    id: "W3",
+    requisito: "E5",
+    descricao: "a exportacao passa a ler req.body.userId",
+    arquivo: ACCOUNT_CONTROLLER,
+    de: "  const dados = await exportarDadosDoTitular(req.user.id);",
+    para: "  const dados = await exportarDadosDoTitular(req.body?.userId ?? req.user.id);",
+    suite: SUITE_CONTA,
+    deveQuebrar: "E5 userId no corpo, na query ou em cabecalho nao muda quem e exportado",
+    banco: true,
+  },
+  {
+    id: "W3b",
+    requisito: "E5",
+    descricao: "a exportacao passa a ler o userId da query",
+    arquivo: ACCOUNT_CONTROLLER,
+    de: "  const dados = await exportarDadosDoTitular(req.user.id);",
+    para: "  const dados = await exportarDadosDoTitular(req.query.userId ?? req.user.id);",
+    suite: SUITE_CONTA,
+    deveQuebrar: "E5 userId no corpo, na query ou em cabecalho nao muda quem e exportado",
+    banco: true,
+  },
+  {
+    id: "W4",
+    requisito: "D2",
+    descricao: "a exclusao deixa de revalidar a senha",
+    arquivo: ACCOUNT_SERVICE,
+    de: "  if (!senhaConfere) {",
+    para: "  if (false) {",
+    suite: SUITE_CONTA,
+    deveQuebrar: "D2 exclusao com senha errada nao remove nada",
+    banco: true,
+  },
+  {
+    id: "W5",
+    requisito: "D4",
+    descricao: "a cascata sai de product_favorites, na migration",
+    arquivo: MIGRATION002,
+    de:
+      "  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n" +
+      "  product_code text NOT NULL,\n  product_name text NOT NULL,\n  product_brand text,\n  image_url text,\n  created_at",
+    para:
+      "  user_id uuid NOT NULL REFERENCES users(id),\n" +
+      "  product_code text NOT NULL,\n  product_name text NOT NULL,\n  product_brand text,\n  image_url text,\n  created_at",
+    suite: SUITE_CONTA,
+    deveQuebrar: "D4 o schema montado SO pelas migrations tem ON DELETE CASCADE em toda FK para users",
+    banco: true,
+  },
+  {
+    id: "W5b",
+    requisito: "D4",
+    descricao: "a cascata sai de sessions, na migration",
+    arquivo: MIGRATION001,
+    de: "  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n  token_hash text NOT NULL UNIQUE,",
+    para: "  user_id uuid NOT NULL REFERENCES users(id),\n  token_hash text NOT NULL UNIQUE,",
+    suite: SUITE_CONTA,
+    deveQuebrar: "D4 o schema montado SO pelas migrations tem ON DELETE CASCADE em toda FK para users",
+    banco: true,
+  },
+  {
+    id: "W6",
+    requisito: "D8",
+    descricao: "a exclusao deixa de ser transacional",
+    arquivo: ACCOUNT_SERVICE,
+    de: "const executarEmTransacao = withTransaction;",
+    para: 'const executarEmTransacao = async (fn) => fn({ query: (await import("../database/pool.js")).query });',
+    suite: SUITE_CONTA,
+    deveQuebrar: "D8 falha simulada no meio da exclusao deixa o estado anterior intacto",
+    banco: true,
+  },
+  {
+    id: "W7",
+    requisito: "E8",
+    descricao: "a rota de exportacao perde o limitador proprio",
+    arquivo: ACCOUNT_ROUTES,
+    de: 'accountRoutes.get("/export", requireAuth, exportRateLimit, exportar);',
+    para: 'accountRoutes.get("/export", requireAuth, exportar);',
+    suite: SUITE_CONTA,
+    deveQuebrar: "E8 a rota real recusa a exportacao acima do teto do usuario",
+    banco: true,
+  },
+  {
+    id: "W8",
+    requisito: "D9",
+    descricao: "a exclusao sai do limitador de autenticacao",
+    arquivo: ACCOUNT_ROUTES,
+    de: 'accountRoutes.delete("/", authRateLimit, requireAuth, excluir);',
+    para: 'accountRoutes.delete("/", requireAuth, excluir);',
+    suite: SUITE_CONTA,
+    deveQuebrar: "D9 a tentativa com senha errada gasta o mesmo balde do login",
+    banco: true,
+  },
+  {
+    id: "W9",
+    requisito: "D1",
+    descricao: "a exclusao deixa de limpar o cookie de sessao",
+    arquivo: ACCOUNT_CONTROLLER,
+    de: "  clearSessionCookie(res);",
+    para: "  void clearSessionCookie;",
+    suite: SUITE_CONTA,
+    deveQuebrar: "D1 exclusao com a senha correta remove a conta e limpa o cookie",
+    banco: true,
+  },
+  {
+    id: "W10",
+    requisito: "E7",
+    descricao: "o nome do arquivo passa a levar o e-mail do titular",
+    arquivo: ACCOUNT_CONTROLLER,
+    de: '    "Content-Disposition": `attachment; filename="${nomeDoArquivoDeExportacao(dados.geradoEm)}"`,',
+    para: '    "Content-Disposition": `attachment; filename="${dados.conta.email}-${nomeDoArquivoDeExportacao(dados.geradoEm)}"`,',
+    suite: SUITE_CONTA,
+    deveQuebrar: "E7 o arquivo nao leva e-mail nem nome, e a resposta nao pode ir para cache",
+    banco: true,
+  },
+  {
+    id: "W10b",
+    requisito: "E7",
+    descricao: "a exportacao passa a poder ir para cache",
+    arquivo: ACCOUNT_CONTROLLER,
+    de: '    "Cache-Control": "no-store",',
+    para: '    "Cache-Control": "private, max-age=3600",',
+    suite: SUITE_CONTA,
+    deveQuebrar: "E7 o arquivo nao leva e-mail nem nome, e a resposta nao pode ir para cache",
+    banco: true,
+  },
+  {
+    id: "W11",
+    requisito: "A11",
+    descricao: "o gate perde o requisito accountDeletion",
+    arquivo: E2E_GATE,
+    de: '    ["accountDeletion", report.accountDeletion === "PASSED"],',
+    para: "",
+    suite: SUITE_GATE,
+    deveQuebrar: "A11: o modo strict tem exatamente 20 requisitos, 18 antigos mais os dois novos",
+    banco: false,
+  },
   {
     id: "S1",
     requisito: "N1a",
@@ -461,7 +784,7 @@ const MUTACOES = [
     descricao: "o caminho manual deixa de conferir a entrada e vira o da camera",
     arquivo: LOOKUP,
     de: "    const validacao = validarCodigoDeBarras(entrada);",
-    para: "    const validacao = { valido: true, codigo: cleanBarcode(entrada) };",
+    para: "    const validacao = { valido: true, codigo: codigoLidoPelaCamera(entrada) };",
     suite: SUITE_LOOKUP,
     deveQuebrar: "M2 codigo invalido nao chega a rede",
     banco: false,

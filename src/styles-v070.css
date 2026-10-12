@@ -308,3 +308,108 @@
   opacity: 0.55;
   cursor: progress;
 }
+
+/* ---------------------------------------------------------------------------
+   Seus dados (v0.8.0): baixar e excluir a conta.
+
+   A exclusao nao tem desfazer, e o visual diz isso antes do texto: o botao que
+   abre a confirmacao e contornado em `--danger`, e o botao final e cheio.
+   `--danger` (#a8221b) sobre branco passa AA com folga, e sobre `--danger-soft`
+   tambem - o botao final desabilitado continua legivel, so nao funciona.
+
+   A caixa de marcar tem 24px, como a das alergias: enxergar se esta marcada e
+   o que decide se a conta vai ser apagada.
+   --------------------------------------------------------------------------- */
+
+.account-data p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--t-md);
+  line-height: 1.5;
+}
+
+.account-delete-open,
+.account-delete-final {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: var(--touch);
+  padding: 0 22px;
+  border-radius: var(--r-pill);
+  font-size: var(--t-md);
+  font-weight: 650;
+}
+
+.account-delete-open {
+  border: 1px solid var(--danger-line);
+  background: var(--surface);
+  color: var(--danger);
+}
+
+.account-delete-open:hover {
+  background: var(--danger-soft);
+}
+
+.account-delete-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--danger-line);
+  border-radius: var(--r-card);
+  background: var(--danger-soft);
+}
+
+.account-delete-confirm label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+
+.account-delete-confirm input[type="password"] {
+  min-width: 0;
+}
+
+.account-data .account-delete-warning {
+  color: var(--danger);
+  font-weight: 650;
+}
+
+.account-delete-confirm .account-delete-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--touch);
+}
+
+.account-delete-check input {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  accent-color: var(--danger);
+}
+
+.account-delete-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.account-delete-final {
+  border: 0;
+  background: var(--danger);
+  color: #fff;
+}
+
+.account-delete-final:disabled {
+  background: var(--surface);
+  color: var(--danger);
+  border: 1px solid var(--danger-line);
+  cursor: not-allowed;
+}
