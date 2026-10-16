@@ -1,4 +1,4 @@
-# Arquitetura NutriScan v0.8.0
+# Arquitetura NutriScan v0.9.0
 
 ## Visao geral
 
@@ -282,6 +282,25 @@ A identidade vem so de `req.user`. A exclusao apaga as sessoes e a linha de
 `users` na mesma transacao; alergias, historico e favoritos saem pela cascata das
 FKs (`ON DELETE CASCADE` nas quatro tabelas que referenciam `users`). Exclusao
 fisica, sem `deleted_at`. Decisoes em `docs/DADOS_DO_TITULAR.md`.
+
+## Nivel de alerta por alergia (v0.9.0)
+
+```text
+user_allergies.alert_level   standard | strict   (CHECK no banco, default standard)
+PUT /api/profile/allergies   { allergies, alertLevels? }
+buildAllergyVerdict          alertLevels -> resposta a classificacao
+```
+
+O nivel muda a RESPOSTA do motor a classificacao, nunca a classificacao:
+`analyzeProductAllergens` continua decidindo declarado e traco. Em
+`shared/allergyVerdict.js`, alergia `strict` faz o traco virar conflito (piso
+`caution`) e o conflito declarado subir o piso para `urgent`. Alergia
+`standard` produz o veredito da v0.8.0, byte a byte.
+
+O nivel e lido do PostgreSQL junto com as alergias e passado ao veredito, que e
+montado antes da chamada de IA. Ele nao entra no `allergySnapshot` enviado ao
+modelo. O frontend usa o mesmo motor, com o nivel do perfil, no veredito local e
+nas etiquetas da tela do produto. Decisoes em `docs/NIVEL_DE_ALERTA.md`.
 
 ## Alergias por perfil
 

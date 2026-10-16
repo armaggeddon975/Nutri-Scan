@@ -20,7 +20,8 @@ meus dados" e "Excluir minha conta". Formato de request e response em
 
 ```text
 users               nome, e-mail, hash e salt da senha, data de criacao
-user_allergies      alergias marcadas no perfil (dado de saude)
+user_allergies      alergias marcadas no perfil (dado de saude), cada uma com
+                    o nivel de alerta declarado (v0.9.0)
 product_history     produtos abertos: codigo, nome, marca, imagem, quando
 product_favorites   produtos favoritados: codigo, nome, marca, imagem, quando
 sessions            uma linha por aparelho logado: hash do token e validade
@@ -48,6 +49,7 @@ conta.email                   users.email                        dado do titular
 conta.criadaEm                users.created_at                   dado do titular
 alergias[].id                 user_allergies.allergy_id          codigo do catalogo (ex.: milk)
 alergias[].nome               rotulo do catalogo                 legivel por gente
+alergias[].alertaMaximo       user_allergies.alert_level         nivel declarado (v0.9.0)
 alergias[].marcadaEm          user_allergies.created_at          dado do titular
 historico[].codigo            product_history.product_code       dado do titular
 historico[].nome/marca        product_history.product_name/brand dado do titular
@@ -100,6 +102,11 @@ JSON e o formato que qualquer linguagem le sem biblioteca extra, e e o mesmo que
 a API ja fala. O campo `versaoDoFormato` existe para que uma mudanca futura de
 estrutura seja anunciada no proprio arquivo, em vez de quebrar em silencio quem
 le. As datas saem em ISO 8601 (UTC).
+
+**Quando a versao do formato muda.** Ela muda quando um campo some, troca de
+nome ou muda de significado - o que quebraria quem le. Campo ACRESCENTADO nao
+muda a versao: quem le a versao 1 continua lendo do mesmo jeito. Foi o caso do
+`alertaMaximo`, na v0.9.0.
 
 ### Entrega: download direto, com `Content-Disposition`
 

@@ -52,6 +52,10 @@ const SERVER_BACKEND = "backend/src/server.js";
 const MIGRATE_BACKEND = "backend/scripts/migrate.js";
 const DOCTOR_CHECKS = "scripts/lib/doctorChecks.js";
 const E2E_REAL = "scripts/e2e-real.js";
+const MIGRATION004 = "backend/migrations/004_nivel_de_alerta.sql";
+const ASSISTANT_PROMPT = "backend/src/ai/assistantPrompt.js";
+const ASSISTANT_SERVICE = "backend/src/ai/assistantService.js";
+const PROFILE_CONTROLLER = "backend/src/controllers/profileController.js";
 
 const SUITE_BARCODE = "tests/barcode.test.js";
 const SUITE_LOOKUP = "tests/productLookup.test.js";
@@ -65,6 +69,8 @@ const SUITE_MIGRATE = "tests/migrate.test.js";
 const SUITE_DOCTOR = "tests/doctor.test.js";
 const SUITE_GATE = "tests/e2eGate.test.js";
 const SUITE_CONTA = "tests/accountIntegration.test.js";
+const SUITE_NIVEL = "tests/alertLevel.test.js";
+const SUITE_NIVEL_BANCO = "tests/alertLevelIntegration.test.js";
 
 const COMPOSICAO = "  return [porUsuario, porIp];";
 
@@ -602,7 +608,7 @@ const MUTACOES = [
     de: '    ["accountDeletion", report.accountDeletion === "PASSED"],',
     para: "",
     suite: SUITE_GATE,
-    deveQuebrar: "A11: o modo strict tem exatamente 20 requisitos, 18 antigos mais os dois novos",
+    deveQuebrar: "A11: o modo strict tem exatamente 21 requisitos, os 20 da v0.8.0 mais severityVerdict",
     banco: false,
   },
   {
@@ -794,7 +800,9 @@ const MUTACOES = [
     requisito: "M5",
     descricao: "remove o piso de risco do veredito",
     arquivo: VEREDITO,
-    de: "    minimumSafety: status === VERDICT_STATUS.conflict ? CONFLICT_MINIMUM_SAFETY : null,",
+    // A linha mudou de forma na v0.9.0 (o piso agora sai de `minimumSafetyFor`);
+    // o defeito injetado e o mesmo: veredito sem piso nenhum.
+    de: "    minimumSafety: minimumSafetyFor(status, conflicts),",
     para: "    minimumSafety: null,",
     suite: SUITE_LOOKUP,
     deveQuebrar: "M5 o piso de risco vale no caminho manual",
@@ -1051,6 +1059,188 @@ const MUTACOES = [
     para: "DELETE FROM product_favorites WHERE $1 IS NOT NULL AND id = $2 RETURNING id",
     suite: SUITE_INTEGRACAO,
     deveQuebrar: "I2 usuario B nao remove item de A",
+    banco: true,
+  },
+  // --- v0.9.0: nivel de alerta por alergia ("severidade" no prompt) ---------
+  //
+  // Os seis pedidos pelo prompt (S2, S3, S5, S6, S12, S13) e alguns a mais.
+  // "Severidade passa a ser gravada junto com o item do historico" nao cabe num
+  // mutante de um arquivo so - gravar exige coluna E escrita. Vira duas metades,
+  // cada uma pega por um S13: X6 cria o lugar para guardar (schema), X6b faz o
+  // item sair com o nivel (leitura).
+  {
+    id: "X1",
+    requisito: "S2",
+    descricao: "o piso do alerta maximo volta a ser caution",
+    arquivo: VEREDITO,
+    de: 'export const STRICT_CONFLICT_MINIMUM_SAFETY = "urgent";',
+    para: 'export const STRICT_CONFLICT_MINIMUM_SAFETY = "caution";',
+    suite: SUITE_NIVEL,
+    deveQuebrar: "S2 alerta maximo + conflito declarado: piso urgent",
+    banco: false,
+  },
+  {
+    id: "X2",
+    requisito: "S3",
+    descricao: "traco de alergia em alerta maximo volta a nao produzir conflito",
+    arquivo: VEREDITO,
+    de:
+      "    ...traceRisks\n" +
+      "      .filter((risk) => isStrictAlert(alertLevels, risk.id))\n" +
+      "      .map((risk) => pickStrictRisk(risk, VERDICT_ORIGIN.traces)),\n" +
+      "  ];\n" +
+      "  const traces = traceRisks.filter((risk) => !isStrictAlert(alertLevels, risk.id)).map(pickRisk);",
+    para: "  ];\n  const traces = traceRisks.map(pickRisk);",
+    suite: SUITE_NIVEL,
+    deveQuebrar: "S3 alerta maximo + traco: conflito no veredito, piso caution",
+    banco: false,
+  },
+  {
+    id: "X3",
+    requisito: "S5",
+    descricao: "o piso deixa de ser imposto depois da resposta do modelo",
+    arquivo: VEREDITO,
+    de: "  const safety = raiseSafety(rest.safety, verdict?.minimumSafety);",
+    para: "  const safety = rest.safety;",
+    suite: SUITE_NIVEL,
+    deveQuebrar: "S5 o modelo respondendo normal nao derruba o piso em nenhum dos casos",
+    banco: false,
+  },
+  {
+    id: "X4",
+    requisito: "S6",
+    descricao: "o schema da resposta do modelo passa a aceitar campo de nivel",
+    arquivo: ASSISTANT_PROMPT,
+    de: "    usedProductContext: z.boolean(),\n  })\n  .strict();",
+    para:
+      "    usedProductContext: z.boolean(),\n" +
+      "    alertLevel: z.string().optional(),\n" +
+      "    alertLevels: z.record(z.string()).optional(),\n" +
+      "    severity: z.string().optional(),\n" +
+      "  })\n  .strict();",
+    suite: SUITE_NIVEL,
+    deveQuebrar: "S6 o modelo nao escreve nem influencia o nivel: campo de nivel vindo dele derruba a resposta",
+    banco: false,
+  },
+  {
+    id: "X5",
+    requisito: "S12",
+    descricao: "a restricao CHECK do nivel sai da migration 004",
+    arquivo: MIGRATION004,
+    de:
+      "    ALTER TABLE user_allergies\n" +
+      "      ADD CONSTRAINT user_allergies_alert_level_check\n" +
+      "      CHECK (alert_level IN ('standard', 'strict'));",
+    para: "    NULL;",
+    suite: SUITE_NIVEL_BANCO,
+    deveQuebrar: "S12 o banco recusa nivel invalido inserido direto em SQL - no banco e no schema das migrations",
+    banco: true,
+  },
+  {
+    id: "X6",
+    requisito: "S13",
+    descricao: "a migration passa a criar onde guardar o nivel junto do item do historico",
+    arquivo: MIGRATION004,
+    de: "ALTER TABLE user_allergies\n  ADD COLUMN IF NOT EXISTS alert_level text NOT NULL DEFAULT 'standard';",
+    para:
+      "ALTER TABLE user_allergies\n  ADD COLUMN IF NOT EXISTS alert_level text NOT NULL DEFAULT 'standard';\n\n" +
+      "ALTER TABLE product_history\n  ADD COLUMN IF NOT EXISTS alert_level text;",
+    suite: SUITE_NIVEL_BANCO,
+    deveQuebrar: "S13 nenhuma tabela de colecao tem onde guardar nivel ou veredito - no banco e no schema das migrations",
+    banco: true,
+  },
+  {
+    id: "X6b",
+    requisito: "S13",
+    descricao: "o item do historico passa a sair com o nivel de alerta",
+    arquivo: REPO_HISTORICO,
+    de: "    `SELECT ${COLUNAS} FROM product_history WHERE user_id = $1 ORDER BY viewed_at DESC`,",
+    para:
+      "    `SELECT ${COLUNAS}, (SELECT json_object_agg(allergy_id, alert_level) FROM user_allergies ua WHERE ua.user_id = product_history.user_id) AS \"alertLevels\" FROM product_history WHERE user_id = $1 ORDER BY viewed_at DESC`,",
+    suite: SUITE_NIVEL_BANCO,
+    deveQuebrar: "S13 nivel nao congelado: o item salvo nao muda e a leitura seguinte reflete o nivel novo",
+    banco: true,
+  },
+  {
+    id: "X7",
+    requisito: "S17",
+    descricao: "o registro de minimizacao volta a levar o piso aplicado",
+    arquivo: ASSISTANT_SERVICE,
+    de: '      modelSafety: "normal",\n      total: minimizationAttempts,',
+    para: '      modelSafety: "normal",\n      enforcedSafety: verdict.minimumSafety,\n      total: minimizationAttempts,',
+    suite: SUITE_NIVEL,
+    deveQuebrar: "S17 o log da tentativa de minimizacao e o mesmo com alerta padrao ou maximo",
+    banco: false,
+  },
+  {
+    id: "X8",
+    requisito: "S18",
+    descricao: "o nivel de alerta passa a ir ao modelo dentro do allergySnapshot",
+    arquivo: ASSISTANT_SERVICE,
+    de: "  const context = buildAssistantContext({\n    product: data.product,\n    allergies: profileAllergies,\n  });",
+    para:
+      "  const context = buildAssistantContext({\n    product: data.product,\n    allergies: profileAllergies,\n  });\n" +
+      "  context.allergySnapshot.alertLevels = alertLevels;",
+    suite: SUITE_NIVEL,
+    deveQuebrar: "S18 o payload enviado a Anthropic nao ganhou canal novo: o nivel nao vai nem no allergySnapshot",
+    banco: false,
+  },
+  {
+    id: "X9",
+    requisito: "A11",
+    descricao: "o gate perde o requisito severityVerdict",
+    arquivo: E2E_GATE,
+    de: '    ["severityVerdict", report.severityVerdict === "PASSED"],\n',
+    para: "",
+    suite: SUITE_GATE,
+    deveQuebrar: "A11: o modo strict tem exatamente 21 requisitos, os 20 da v0.8.0 mais severityVerdict",
+    banco: false,
+  },
+  {
+    id: "X10",
+    requisito: "S9",
+    descricao: "a validacao passa a aceitar nivel para alergia ausente do perfil",
+    arquivo: VALIDACAO_BACKEND,
+    de: "      if (!perfil.has(allergyId)) {",
+    para: "      if (false && !perfil.has(allergyId)) {",
+    suite: SUITE_NIVEL,
+    deveQuebrar: "S9 nivel para alergia ausente do perfil e recusado pela validacao",
+    banco: false,
+  },
+  {
+    id: "X11",
+    requisito: "S1",
+    descricao: "o conflito de alergia padrao ganha campos e deixa de ser o da v0.8.0",
+    arquivo: VEREDITO,
+    de: "      isStrictAlert(alertLevels, risk.id) ? pickStrictRisk(risk, VERDICT_ORIGIN.declared) : pickRisk(risk),",
+    para:
+      "      isStrictAlert(alertLevels, risk.id)\n" +
+      "        ? pickStrictRisk(risk, VERDICT_ORIGIN.declared)\n" +
+      '        : { ...pickRisk(risk), origin: VERDICT_ORIGIN.declared, alertLevel: "standard" },',
+    suite: SUITE_NIVEL,
+    deveQuebrar: "S1 nivel padrao + conflito declarado: piso caution, identico a v0.8.0",
+    banco: false,
+  },
+  {
+    id: "X12",
+    requisito: "S8",
+    descricao: "a validacao passa a aceitar qualquer texto como nivel",
+    arquivo: VALIDACAO_BACKEND,
+    de: '    z.enum(ALERT_LEVEL_VALUES, { message: "Nível de alerta inválido. Use standard ou strict." }),',
+    para: "    z.string(),",
+    suite: SUITE_NIVEL,
+    deveQuebrar: "S8 nivel desconhecido e recusado pela validacao",
+    banco: false,
+  },
+  {
+    id: "X13",
+    requisito: "S16",
+    descricao: "a rota do perfil passa a aceitar userId do corpo",
+    arquivo: PROFILE_CONTROLLER,
+    de: "  const user = await updateAllergies(req.user.id, req.body);",
+    para: "  const user = await updateAllergies(req.body?.userId || req.user.id, req.body);",
+    suite: SUITE_NIVEL_BANCO,
+    deveQuebrar: "S16 o nivel de A nao e visivel nem alteravel por B",
     banco: true,
   },
 ];

@@ -386,6 +386,7 @@ async function main() {
     manualCodeLookup: "NOT_EXECUTED",
     accountExport: "NOT_EXECUTED",
     accountDeletion: "NOT_EXECUTED",
+    severityVerdict: "NOT_EXECUTED",
     logout: "NOT_EXECUTED",
     deterministicEngine: "NOT_EXECUTED",
     assistantGuest: "NOT_EXECUTED",
@@ -980,6 +981,106 @@ async function main() {
             "OK",
             "manual code lookup",
             "digito verificador barra antes da rede; manual e camera dao o mesmo veredito",
+          );
+        }
+
+        // ------------------------------------------------------------------
+        // v0.9.0 - severityVerdict: o nivel de alerta muda o que o MOTOR decide.
+        //
+        // O perfil e gravado pela API real, na rota de sempre, e lido de volta
+        // por OUTRO aparelho da mesma conta (clientB). O veredito sai do codigo
+        // do backend lendo esse perfil do PostgreSQL. O modelo e SIMULADO e
+        // nega o conflito em todos os casos - e a unica forma de forcar o
+        // modelo a negar, e assim nenhuma chamada paga a mais e feita. O que se
+        // confere e o que chegaria ao cliente: `safety` e `allergyVerdict`.
+        // ------------------------------------------------------------------
+        {
+          const niveisEsperados = { milk: "standard", peanut: "strict" };
+          const gravado = await clientA.request("/profile/allergies", {
+            method: "PUT",
+            body: { allergies: ["milk", "peanut"], alertLevels: { peanut: "strict" } },
+          });
+          assert(gravado.response.status === 200, `gravar o nivel de alerta falhou (${gravado.response.status})`);
+          assert(
+            JSON.stringify(gravado.data.user.alertLevels) === JSON.stringify(niveisEsperados),
+            `nivel gravado errado: ${JSON.stringify(gravado.data.user.alertLevels)}`,
+          );
+          const lidoPorB = await clientB.request("/profile");
+          assert(
+            JSON.stringify(lidoPorB.data.user.alertLevels) === JSON.stringify(niveisEsperados),
+            "o nivel de alerta nao chegou ao outro aparelho da conta",
+          );
+
+          const modeloQueNega = {
+            messages: {
+              create: async () => ({
+                stop_reason: "end_turn",
+                content: [
+                  {
+                    type: "text",
+                    text: JSON.stringify({
+                      answer: "Pode consumir sem preocupacao.",
+                      category: "allergy",
+                      safety: "normal",
+                      usedProductContext: true,
+                    }),
+                  },
+                ],
+              }),
+            },
+          };
+          const perguntar = (produto) =>
+            answerAssistantChat(
+              { user: { id: register.data.user.id } },
+              { message: "Posso consumir esse produto?", conversation: [], product: produto, guestAllergies: [] },
+              modeloQueNega,
+              { logger: { warn: () => {} } },
+            );
+
+          // Alerta maximo (amendoim).
+          const casosMaximo = [
+            ["maximo + declarado", { name: "Pacoca E2E", ingredients_text: "amendoim torrado, acucar" }, "urgent", "declared"],
+            ["maximo + traco", { name: "Biscoito E2E", ingredients_text: "farinha de arroz, sal", traces: ["peanuts"] }, "caution", "traces"],
+          ];
+          for (const [nome, produto, piso, origem] of casosMaximo) {
+            const r = await perguntar(produto);
+            assert(r.allergyVerdict.status === "conflict", `${nome}: status ${r.allergyVerdict.status}`);
+            assert(r.allergyVerdict.minimumSafety === piso, `${nome}: piso ${r.allergyVerdict.minimumSafety}`);
+            assert(r.safety === piso, `${nome}: o modelo negando derrubou o piso - chegou ${r.safety}`);
+            const entrada = r.allergyVerdict.conflicts.find((c) => c.id === "peanut");
+            assert(
+              entrada?.origin === origem && entrada?.alertLevel === "strict",
+              `${nome}: o veredito nao distingue origem e nivel: ${JSON.stringify(entrada)}`,
+            );
+          }
+
+          // Alerta padrao (leite): o comportamento da v0.8.0.
+          const declaradoPadrao = await perguntar({ name: "Leite E2E", ingredients_text: "leite integral" });
+          assert(declaradoPadrao.safety === CONFLICT_MINIMUM_SAFETY, `padrao + declarado: chegou ${declaradoPadrao.safety}`);
+          assert(
+            JSON.stringify(declaradoPadrao.allergyVerdict.conflicts) === JSON.stringify([{ id: "milk", label: "Leite/lactose" }]),
+            `padrao + declarado: o conflito ganhou campo: ${JSON.stringify(declaradoPadrao.allergyVerdict.conflicts)}`,
+          );
+          assert(declaradoPadrao.allergyVerdict.minimumSafety === CONFLICT_MINIMUM_SAFETY, "padrao + declarado: piso mudou");
+          assert(
+            declaradoPadrao.allergyVerdict.alert ===
+              "Este produto tem Leite/lactose, que está no seu perfil de alergias. Confira a embalagem física antes de consumir.",
+            "padrao + declarado: o texto do alerta mudou",
+          );
+          const tracoPadrao = await perguntar({ name: "Bolacha E2E", ingredients_text: "farinha de arroz, sal", traces: ["milk"] });
+          assert(
+            tracoPadrao.allergyVerdict.status === "traces" &&
+              tracoPadrao.allergyVerdict.conflicts.length === 0 &&
+              tracoPadrao.allergyVerdict.minimumSafety === null &&
+              tracoPadrao.safety === "normal",
+            `padrao + traco: deveria seguir sem conflito e sem piso: ${JSON.stringify(tracoPadrao.allergyVerdict)}`,
+          );
+
+          report.severityVerdict = "PASSED";
+          log(
+            "OK",
+            "severity verdict",
+            "alerta maximo: urgent no declarado, caution no traco; padrao igual a v0.8.0; modelo negando nao derruba o piso",
           );
         }
 

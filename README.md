@@ -1,4 +1,4 @@
-# NutriScan v0.8.0
+# NutriScan v0.9.0
 
 NutriScan e um app web para consultar alimentos por nome ou codigo de barras,
 ver tabela nutricional, identificar ingredientes sensiveis e conversar com um
@@ -32,6 +32,7 @@ Com isso, `{ traces: "milk" }` e tratado como traco, enquanto
 - Modo visitante independente.
 - Conta online com alergias sincronizadas via backend e PostgreSQL.
 - Exportar os proprios dados e excluir a propria conta, pela tela Conta (v0.8.0).
+- Alerta maximo por alergia: o aviso mais forte, inclusive para "pode conter" (v0.9.0).
 
 ## Requisitos
 
@@ -329,6 +330,34 @@ informacao de seguranca errada em abril, quando a pessoa marca uma alergia nova.
 O veredito e sempre recalculado pelo motor deterministico na hora de exibir, com
 o perfil atual.
 
+## Alerta maximo por alergia (v0.9.0)
+
+Quem tem conta escolhe, em cada alergia marcada, se quer o **alerta maximo** -
+o aviso mais forte. A opcao fica em **Alergias** e em **Conta**, logo abaixo da
+lista de alergias.
+
+```text
+                         alerta padrao                alerta maximo
+ingrediente no rotulo    conflito, cautela            conflito, URGENTE
+"pode conter"            so informado                 CONFLITO, cautela
+```
+
+- **O padrao e o comportamento de sempre.** Toda alergia comeca em alerta
+  padrao, inclusive as que ja estavam cadastradas. O app nunca sobe o nivel por
+  conta propria; ele convida a revisar, uma vez, com um cartao na tela inicial
+  que sai com um toque.
+- **Quem decide e a pessoa.** O app nao sugere, nao corrige e nao pergunta o
+  motivo. O nome "alerta maximo" descreve o que o app faz, nao uma condicao de
+  saude.
+- **A IA nao decide nem recebe o nivel.** O alerta e calculado pelo motor do
+  app, e a IA nao consegue rebaixa-lo.
+- **Entra na exportacao da conta e sai na exclusao.** Nunca vai para o log.
+- **Sem conta, nao ha alerta maximo:** o nivel e guardado no perfil.
+
+Na tela do produto, a alergia em alerta maximo aparece como "Amendoim · alerta
+maximo". As decisoes - dois niveis em vez de tres, o nome, o padrao - estao em
+[docs/NIVEL_DE_ALERTA.md](docs/NIVEL_DE_ALERTA.md).
+
 ## Seus dados: exportar e excluir a conta (v0.8.0)
 
 Quem tem conta pode, sozinho e pela interface:
@@ -380,7 +409,7 @@ escrito para quem publica: o que preencher no painel, como as migrations
 entram, como verificar o resultado e o que fazer quando um subgate falha. As
 decisoes de HTTPS, cookie e migrations tambem estao la.
 
-As versoes 0.7.1 a 0.8.0 ainda nao foram publicadas; o servico no ar roda a
+As versoes 0.7.1 a 0.9.0 ainda nao foram publicadas; o servico no ar roda a
 0.7.0.
 
 ### Variaveis obrigatorias em producao
@@ -547,6 +576,7 @@ como `sem proteinas do leite`. Se o rotulo tambem trouxer `leite`, `whey`,
 - [Arquitetura](docs/ARCHITECTURE.md)
 - [Deploy](docs/DEPLOY.md)
 - [Dados do titular: exportacao e exclusao](docs/DADOS_DO_TITULAR.md)
+- [Nivel de alerta por alergia](docs/NIVEL_DE_ALERTA.md)
 - [Nutri Assistente IA](docs/AI_ASSISTANT.md)
 - [Relatorio de auditoria](AUDIT_REPORT.md)
 - [Relatorio E2E](E2E_REPORT.md)

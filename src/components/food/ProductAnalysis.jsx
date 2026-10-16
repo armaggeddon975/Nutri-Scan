@@ -9,6 +9,7 @@ export function ProductAnalysis({
   localMatches,
   nutrientRows,
   allergyScan,
+  alertLevels,
   productScore,
   onSelectProduct,
   isFavorite = false,
@@ -143,6 +144,9 @@ export function ProductAnalysis({
               allergyScan.profileRisks.map((risk) => (
                 <span className="danger-tag" key={risk.id}>
                   {risk.severity === "traces" ? `Pode conter ${risk.label}` : risk.label}
+                  {/* Nivel declarado pela pessoa (v0.9.0). A classificacao do
+                      rotulo - tem ou pode conter - nao muda; muda so o aviso. */}
+                  {alertLevels?.[risk.id] === "strict" ? " · alerta máximo" : ""}
                 </span>
               ))
             ) : allergyScan.hasData ? (

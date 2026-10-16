@@ -6,6 +6,7 @@ import {
   validarCodigoDeBarras,
 } from "../../../shared/barcode.js";
 import { isValidAllergyId } from "../config/allergies.js";
+import { ALERT_LEVEL_VALUES } from "../../../shared/allergyVerdict.js";
 import { normalizeEmail, normalizeNameKey } from "./normalize.js";
 
 const allergySchema = z
@@ -46,9 +47,40 @@ export const loginSchema = z.object({
   password: passwordSchema,
 });
 
-export const allergiesUpdateSchema = z.object({
-  allergies: allergySchema,
-});
+// NIVEL DE ALERTA POR ALERGIA (v0.9.0)
+//
+// `alertLevels` e opcional: corpo sem ele continua valido e significa nivel
+// `standard` para todas as alergias - e o contrato de antes da v0.9.0.
+//
+// Duas recusas, as duas com 400 VALIDATION_ERROR:
+//   - nivel fora de `standard` / `strict`;
+//   - nivel para alergia que nao esta em `allergies`. Nao existe nivel solto,
+//     de alergia que a pessoa nao tem.
+const alertLevelsSchema = z
+  .record(
+    z.string().refine(isValidAllergyId, { message: "Nível de alerta para alergia que não existe no catálogo." }),
+    z.enum(ALERT_LEVEL_VALUES, { message: "Nível de alerta inválido. Use standard ou strict." }),
+  )
+  .optional();
+
+export const allergiesUpdateSchema = z
+  .object({
+    allergies: allergySchema,
+    alertLevels: alertLevelsSchema,
+  })
+  .superRefine((data, ctx) => {
+    const perfil = new Set(data.allergies);
+    for (const allergyId of Object.keys(data.alertLevels || {})) {
+      if (!perfil.has(allergyId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["alertLevels", allergyId],
+          message: "Nível de alerta para alergia que não está no perfil.",
+        });
+      }
+    }
+  })
+  .transform((data) => ({ allergies: data.allergies, alertLevels: data.alertLevels || {} }));
 
 export function validateRegister(input) {
   const result = registerSchema.parse(input);

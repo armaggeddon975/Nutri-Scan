@@ -42,3 +42,29 @@ export function writeStoredAllergies(allergies) {
     return false;
   }
 }
+
+// CONVITE DO ALERTA MAXIMO (v0.9.0)
+//
+// O convite para revisar o nivel de alerta aparece UMA vez por conta, neste
+// aparelho. Guarda so o id da conta e a palavra "visto" - nada do perfil. Fica
+// no navegador porque nao e dado da pessoa, e conveniencia de tela: num aparelho
+// novo o convite pode aparecer de novo, e isso nao custa nada a ela.
+const ALERT_INVITE_PREFIX = "nutriscan:convite-alerta-maximo:";
+
+export function readAlertInviteSeen(userId) {
+  if (!userId) return true;
+  try {
+    return localStorage.getItem(ALERT_INVITE_PREFIX + userId) === "visto";
+  } catch {
+    return false;
+  }
+}
+
+export function writeAlertInviteSeen(userId) {
+  if (!userId) return;
+  try {
+    localStorage.setItem(ALERT_INVITE_PREFIX + userId, "visto");
+  } catch {
+    // Sem armazenamento, o convite volta na proxima visita. Nao trava nada.
+  }
+}

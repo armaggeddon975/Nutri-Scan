@@ -1,4 +1,4 @@
-# API NutriScan v0.8.0
+# API NutriScan v0.9.0
 
 Base local: `http://localhost:3000/api`
 
@@ -18,7 +18,7 @@ Exemplo:
   "status": "ok",
   "database": "not_configured",
   "ai": "not_configured",
-  "version": "0.8.0"
+  "version": "0.9.0"
 }
 ```
 
@@ -127,6 +127,39 @@ O veredito acompanha tambem as respostas locais de protecao (urgencia, fora de
 escopo, tentativa de injecao). Sem backend, o frontend calcula o mesmo veredito
 com o motor compartilhado: o alerta de alergia nao depende de IA.
 
+#### Alerta maximo no veredito (v0.9.0)
+
+Quando a alergia esta em nivel `strict` no perfil (ver Perfil, abaixo), o
+veredito responde de outro jeito - a classificacao do rotulo nao muda:
+
+```text
+declarado + standard   conflito {id, label}, piso caution        (igual a v0.8.0)
+declarado + strict     conflito com origin "declared", piso urgent
+traco     + standard   em traces, sem piso                         (igual a v0.8.0)
+traco     + strict     conflito com origin "traces", piso caution
+```
+
+Cada conflito de alergia `strict` traz dois campos a mais:
+
+```json
+{ "id": "peanut", "label": "Amendoim", "origin": "traces", "alertLevel": "strict" }
+```
+
+`origin` diz de onde veio o conflito (`declared` ou `traces`); `alertLevel` diz
+que a alergia esta em alerta maximo. Conflito de alergia `standard` continua
+`{ "id", "label" }`, sem os dois campos: ausentes, valem `declared` e
+`standard`. Com todas as alergias em `standard`, o veredito e o da v0.8.0, byte
+a byte.
+
+`minimumSafety` pode ser `urgent` - so no conflito declarado de alergia
+`strict`. O texto de `alert` diz o que o rotulo traz e que a pessoa pediu
+alerta maximo; nao diz o que fazer alem de conferir a embalagem.
+
+O nivel vem SO do perfil no PostgreSQL, e o visitante e sempre `standard`. Ele
+nao e enviado ao modelo, nem dentro do `allergySnapshot`, e a resposta do modelo
+nao o le nem o escreve: uma chave de nivel na resposta da IA derruba a resposta
+inteira com `AI_SCHEMA_INVALID`.
+
 Erros mapeados:
 
 - `AI_NOT_CONFIGURED`
@@ -199,19 +232,68 @@ cookie. O backend sempre tenta limpar o cookie.
 
 ### `GET /api/profile`
 
-Exige sessao valida. Retorna usuario publico com alergias.
+Exige sessao valida. Retorna usuario publico com alergias e, desde a v0.9.0, o
+nivel de alerta de cada uma:
+
+```json
+{
+  "user": {
+    "id": "...",
+    "name": "Maria",
+    "email": "maria@example.com",
+    "allergies": ["milk", "peanut"],
+    "alertLevels": { "milk": "standard", "peanut": "strict" },
+    "createdAt": "2026-09-30T11:20:05.000Z"
+  }
+}
+```
+
+`alertLevels` traz uma entrada para CADA alergia de `allergies`, `standard`
+incluida. `GET /api/auth/me`, o login e o cadastro devolvem o mesmo formato.
 
 ### `PUT /api/profile/allergies`
 
-Exige sessao valida. Substitui a lista completa de alergias do usuario.
+Exige sessao valida. Substitui a lista completa de alergias do usuario - e, com
+ela, o nivel de alerta de cada uma.
 
 Body:
 
 ```json
 {
-  "allergies": ["milk", "gluten"]
+  "allergies": ["milk", "peanut"],
+  "alertLevels": { "peanut": "strict" }
 }
 ```
+
+#### Nivel de alerta por alergia (v0.9.0)
+
+```text
+standard   o comportamento de sempre, identico ao da v0.8.0
+strict     "alerta maximo": traco do alergenico tambem vira conflito, e o
+           conflito declarado sobe o piso de risco para urgent
+```
+
+O nivel e DECLARADO pela pessoa. O servidor nao infere, nao sugere e nao
+corrige nivel nenhum. Detalhes e decisoes em [NIVEL_DE_ALERTA.md](NIVEL_DE_ALERTA.md).
+
+- `alertLevels` e **opcional**. Corpo sem ele continua valido e significa
+  `standard` para todas as alergias - e o contrato de antes da v0.9.0.
+- Alergia ausente do mapa e gravada como `standard`. Basta mandar as `strict`.
+- Como a rota SUBSTITUI o perfil, um corpo sem `alertLevels` tambem volta para
+  `standard` uma alergia que estava `strict`.
+- A identidade vem da sessao. `userId` ou `user_id` no corpo sao descartados.
+
+Recusas, todas `400 VALIDATION_ERROR`, sem gravar nada:
+
+```text
+nivel fora de standard / strict      "Nível de alerta inválido. Use standard ou strict."
+nivel para alergia fora de allergies "Nível de alerta para alergia que não está no perfil."
+chave que nao e alergia do catalogo  "Nível de alerta para alergia que não existe no catálogo."
+```
+
+O banco tambem recusa: a coluna `user_allergies.alert_level` tem uma restricao
+`CHECK (alert_level IN ('standard', 'strict'))`, entao nem um INSERT direto em
+SQL grava outro valor.
 
 ## Historico e favoritos (v0.7.0)
 
@@ -424,7 +506,7 @@ O nome do arquivo e so o produto e o dia - nunca o e-mail nem o nome.
     "criadaEm": "2026-09-30T11:20:05.000Z"
   },
   "alergias": [
-    { "id": "milk", "nome": "Leite/lactose", "marcadaEm": "2026-09-30T11:20:05.000Z" }
+    { "id": "milk", "nome": "Leite/lactose", "alertaMaximo": false, "marcadaEm": "2026-09-30T11:20:05.000Z" }
   ],
   "historico": [
     {
@@ -446,6 +528,10 @@ O nome do arquivo e so o produto e o dia - nunca o e-mail nem o nome.
   ]
 }
 ```
+
+`alertaMaximo` (v0.9.0) e o nivel de alerta que a pessoa declarou para a
+alergia: `true` para alerta maximo. Campo acrescentado sem mudar nenhum outro, e
+por isso `versaoDoFormato` continua 1.
 
 `historico` vem do mais recente para o mais antigo (`consultadoEm`), e
 `favoritos` tambem (`favoritadoEm`). Listas vazias saem como `[]`. `marca` e

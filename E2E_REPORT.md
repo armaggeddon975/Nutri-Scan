@@ -1,6 +1,519 @@
-# E2E Report - NutriScan v0.8.0
+# E2E Report - NutriScan v0.9.0
 
-Data: 2026-10-12
+Data: 2026-10-16
+
+## Resultado geral
+
+```text
+verify:e2e                 PASS, exit code 0 - na execucao FINAL; houve tres (ver abaixo)
+doctor:e2e                 PASS - "Migrations - 4/4 applied"
+e2e:strict                 PASS, mode=strict, ok=true
+requisitos strict          21 de 21 em PASSED - os 20 da v0.8.0 e o novo
+severityVerdict            PASSED
+PostgreSQL real            EXECUTADO - banco de producao (o mesmo das versoes anteriores)
+Claude real                EXECUTADO - 2 chamadas pagas na execucao final
+residuo no banco           0
+
+migration 004 no banco     APLICADA no banco de producao, por decisao do dono (ver abaixo)
+verify:deploy simulado     FAIL, exit code 1 - 7 PASS, D2 FAIL (alvo http, sem TLS)
+verify:deploy REAL         FAIL, exit code 1 - 7 PASS, D1 FAIL (no ar 0.7.0)
+
+camera em hardware         NAO EXECUTADO
+deploy real da 0.9.0       NAO EXECUTADO - nada foi publicado
+```
+
+Nenhum resultado foi herdado. Os PASS das versoes anteriores estao preservados
+na secao historica e nao valem para esta versao.
+
+## Tres execucoes, e por que
+
+```text
+1a  FAIL  doctor strict: migration 004 pendente no banco do gate
+2a  FAIL  a API temporaria subiu com database=error; a chamada real do visitante falhou
+3a  PASS  mesmo codigo, mesmo comando
+```
+
+### A primeira: a migration nova ainda nao estava no banco
+
+```text
+[FAIL] strict requirement: Migrations - pending 004_nivel_de_alerta.sql - run npm run db:migrate
+[FAIL] Doctor strict-e2e - 1 requisito(s) obrigatorio(s) ausente(s)
+[FAIL] doctor:e2e - exit code 1
+[FAIL] verify:e2e - o gate exige 2 etapa(s) executada(s), recebeu 1
+=== EXIT CODE: 1 ===
+```
+
+O doctor em modo strict exige as migrations aplicadas no banco do gate antes de
+rodar - e o banco do gate e o de producao, que a 0.7.0 no ar tambem usa. Nenhuma
+chamada a IA foi feita.
+
+Aplicar a 004 la e mudar o schema de producao antes de qualquer publicacao. **A
+decisao foi do dono do projeto**, perguntado antes. O que pesou: a 004 so
+acrescenta uma coluna com padrao e uma restricao; o codigo da 0.7.0 so faz
+`SELECT allergy_id`, `DELETE` e `INSERT (user_id, allergy_id)` em
+`user_allergies` (conferido no commit `694c6c2`), entao o padrao preenche
+`standard` e a restricao aceita; e e reversivel com `DROP COLUMN`. Foi o mesmo
+caminho da 003 na v0.7.4.
+
+Aplicada com o runner do proprio projeto, que imprime so o nome dos arquivos:
+
+```text
+> nutriscan-backend@0.9.0 db:migrate
+> node scripts/migrate.js
+skip 001_initial_schema.sql
+skip 002_history_favorites.sql
+skip 003_canonicaliza_upca.js
+applied 004_nivel_de_alerta.sql
+=== EXIT: 0 ===
+```
+
+Lido de volta do catalogo, so leitura:
+
+```text
+coluna   alert_level  text  NOT NULL  DEFAULT 'standard'
+check    user_allergies_alert_level_check
+         CHECK ((alert_level = ANY (ARRAY['standard'::text, 'strict'::text])))
+dados    as 7 alergias que ja existiam: todas 'standard'
+FKs      product_favorites, product_history, sessions, user_allergies: todas CASCADE
+```
+
+As 7 alergias existentes ficaram `standard`: a regra da migration conferida em
+dado real. E o servico no ar continuou de pe depois dela:
+
+```text
+GET https://nutriscan-h1wp.onrender.com/api/health
+status ok | database connected | ai configured | versao 0.7.0
+(campos da resposta JSON, reescritos em texto: o bloco desta versao so carrega
+JSON da propria 0.9.0, regra do teste T9c)
+```
+
+### A segunda: falha de rede, sem causa no log
+
+```text
+[OK] migrations - aplicadas duas vezes (idempotente)
+[RUN] backend - iniciando API temporaria na porta 3100
+[OK] health - status=degraded database=error ai=configured
+[WARN] assistant guest - adiado - chamada real da Anthropic (visitante) falhou
+[FAIL] E2E real - PostgreSQL nao conectado (health.database=error); modo strict exige banco real
+[FAIL] e2e:strict - exit code 1
+=== EXIT CODE: 1 ===
+```
+
+O gate aplicou as migrations (o banco respondeu) e, segundos depois, a API
+temporaria viu o banco com erro; a chamada real do visitante tambem falhou -
+`anthropicCalls: 1`. O log nao traz a causa, e ela **nao foi comprovada**. Logo
+depois, tres `SELECT 1` no banco responderam em cerca de 200 ms cada, e a API da
+Anthropic respondia; a explicacao mais provavel, e nao medida, e uma falha de
+rede passageira. O gate reprovou corretamente: nao aprovou nada que nao
+executou.
+
+A terceira rodou com o mesmo codigo e o mesmo comando, sem nenhuma mudanca no
+gate. Somando as tres, foram ate 3 chamadas pagas (1 na segunda, 2 na terceira).
+
+## Como rodou
+
+```text
+PORT=3100 RUN_ANTHROPIC_INTEGRATION_TESTS=true npm run verify:e2e
+```
+
+`PORT=3100` pelo mesmo motivo das versoes anteriores: `127.0.0.1:3000` continua
+ocupado por outro projeto do dono, que nao foi tocado. A porta e configuracao de
+ambiente; nenhum arquivo do gate foi alterado para isso.
+
+## Saida literal do gate - a execucao final
+
+Os blocos de aviso de SSL do driver `pg` foram suprimidos desta transcricao; sao
+o mesmo aviso registrado desde a v0.7.2, sobre a semantica futura de `sslmode`.
+Todo o resto e literal, inclusive o JSON.
+
+```text
+> nutriscan@0.9.0 verify:e2e
+> node scripts/verify-e2e.js
+
+[OK] pre-requisito - Claude real exigido nesta execucao, contra o backend local
+[RUN] doctor:e2e
+NutriScan Doctor - modo STRICT E2E (C:\Users\diego\OneDrive\Área de Trabalho\PJ)
+[OK] Node.js - 24.19.0
+[OK] npm - 11.17.0
+[OK] Frontend dependencies - installed (3 modules resolved)
+[OK] Backend dependencies - installed (4 modules resolved)
+[OK] backend/.env - found
+[OK] Env loader - backend/src/config/env.js
+[OK] DATABASE_URL - configured
+[OK] PostgreSQL - accessible
+[OK] Migrations - 4/4 applied
+[OK] ANTHROPIC_API_KEY - configured
+[OK] ANTHROPIC_MODEL - claude-sonnet-5
+[OK] RUN_ANTHROPIC_INTEGRATION_TESTS - enabled
+[OK] Backend port - 3100
+[OK] Frontend origin - http://localhost:5173
+[WARN] Docker - unavailable (optional)
+[OK] Doctor strict-e2e - todos os requisitos obrigatorios atendidos
+[OK] doctor:e2e
+[RUN] e2e:strict
+[OK] migrations - aplicadas duas vezes (idempotente)
+[RUN] backend - iniciando API temporaria na porta 3100
+[OK] health - status=ok database=connected ai=configured
+[OK] deterministic engine - contains/traces conforme baseline
+[OK] privacy - payload sem segredos e com snapshot deterministico
+[OK] anthropic real #1 - pergunta generica validada
+[OK] fallback - AI_NOT_CONFIGURED -> source local
+[OK] session schema - token_hash presente e sem coluna de token bruto
+[OK] assistant authority - PostgreSQL vence guestAllergies e snapshot marca conflito
+[OK] anthropic real #2 - produto com conflito validado com sessao autenticada
+[OK] multi-device - alergias sincronizadas entre dispositivos A e B
+[OK] isolation - contas permanecem isoladas
+[OK] history sync - A gravou, B leu, conta isolada nao viu
+[OK] favorites sync - A gravou, B leu, remocao cruzada recusada com 404
+[OK] verdict freshness - item salvo sem veredito; perfil muda sem alterar o registro
+[OK] manual code lookup - digito verificador barra antes da rede; manual e camera dao o mesmo veredito
+[OK] severity verdict - alerta maximo: urgent no declarado, caution no traco; padrao igual a v0.8.0; modelo negando nao derruba o piso
+[OK] account export - tudo de A, nada do vizinho, nada de senha nem de sessao
+[OK] account deletion - senha errada nao apaga; senha certa apaga tudo; sessoes caem; vizinha intacta
+[OK] auth - register, me, allergies, login, logout idempotente
+{
+  "version": "0.9.0",
+  "mode": "strict",
+  "startedAt": "2026-10-16T10:51:24.612Z",
+  "finishedAt": "2026-10-16T10:51:58.870Z",
+  "baseUrl": "http://127.0.0.1:3100/api",
+  "backendProcess": "STARTED_BY_RUNNER",
+  "database": "EXECUTED",
+  "migrations": "EXECUTED_IDEMPOTENT",
+  "auth": "PASSED",
+  "sessionSchema": "PASSED",
+  "multiDevice": "PASSED",
+  "isolation": "PASSED",
+  "historySync": "PASSED",
+  "favoritesSync": "PASSED",
+  "verdictFreshness": "PASSED",
+  "manualCodeLookup": "PASSED",
+  "accountExport": "PASSED",
+  "accountDeletion": "PASSED",
+  "severityVerdict": "PASSED",
+  "logout": "PASSED",
+  "deterministicEngine": "PASSED",
+  "assistantGuest": "PASSED",
+  "assistantAuthenticated": "PASSED",
+  "assistantAuthority": "PASSED",
+  "fallback": "PASSED",
+  "privacy": "PASSED",
+  "anthropic": "configured",
+  "anthropicReal": "EXECUTED_GENERIC_AND_PRODUCT",
+  "anthropicCalls": 2,
+  "ok": true,
+  "rateLimitBudget": {
+    "margem": "no maximo 50% do teto",
+    "baldes": [
+      {
+        "balde": "assistente",
+        "usado": 2,
+        "teto": 20,
+        "margemMaxima": 10,
+        "folga": 18,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "auth",
+        "usado": 7,
+        "teto": 40,
+        "margemMaxima": 20,
+        "folga": 33,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "colecoes",
+        "usado": 17,
+        "teto": 300,
+        "margemMaxima": 150,
+        "folga": 283,
+        "tetoPorIp": 3000,
+        "folgaPorIp": 2983,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "exportacao",
+        "usado": 1,
+        "teto": 5,
+        "margemMaxima": 2,
+        "folga": 4,
+        "tetoPorIp": 20,
+        "folgaPorIp": 19,
+        "dentroDaMargem": true
+      }
+    ],
+    "estouraram": []
+  }
+}
+[OK] e2e:strict
+[PASS] verify:e2e - PostgreSQL real e Claude real comprovados
+=== EXIT CODE: 0 ===
+```
+
+## Tabela de subgates
+
+```text
+backendProcess          STARTED_BY_RUNNER
+database                EXECUTED
+migrations              EXECUTED_IDEMPOTENT
+auth                    PASSED
+sessionSchema           PASSED
+multiDevice             PASSED
+isolation               PASSED
+historySync             PASSED
+favoritesSync           PASSED
+verdictFreshness        PASSED
+manualCodeLookup        PASSED
+accountExport           PASSED
+accountDeletion         PASSED
+severityVerdict         PASSED
+logout                  PASSED
+deterministicEngine     PASSED
+assistantGuest          PASSED
+assistantAuthenticated  PASSED
+assistantAuthority      PASSED
+fallback                PASSED
+privacy                 PASSED
+anthropicReal           EXECUTED_GENERIC_AND_PRODUCT
+```
+
+`anthropicCalls: 2`, `anthropicReal: EXECUTED_GENERIC_AND_PRODUCT`, `ok: true`.
+
+## O que o subgate novo confere
+
+**severityVerdict** - com a conta A do gate:
+
+- grava pela API real `{ allergies: ["milk", "peanut"], alertLevels: { peanut: "strict" } }`
+  e exige de volta `{ milk: "standard", peanut: "strict" }`;
+- le o perfil por OUTRO aparelho da mesma conta (clientB) e exige o mesmo nivel;
+- pergunta ao assistente, com o codigo do backend lendo o perfil do PostgreSQL,
+  sobre quatro produtos. O modelo e SIMULADO e responde `safety: "normal"` nos
+  quatro - e a unica forma de forcar o modelo a negar o conflito, e nao custa
+  chamada paga. O que se confere e o que chegaria ao cliente:
+
+```text
+amendoim (alerta maximo) declarado    status conflict, piso urgent, safety urgent,
+                                      conflito com origin "declared" e alertLevel "strict"
+amendoim (alerta maximo) em traco     status conflict, piso caution, safety caution,
+                                      conflito com origin "traces" e alertLevel "strict"
+leite (alerta padrao) declarado       safety caution; conflito exatamente {id, label},
+                                      sem campo novo; o texto do alerta da v0.8.0
+leite (alerta padrao) em traco        status traces, sem conflito, sem piso,
+                                      safety "normal" do modelo mantido - como na v0.8.0
+```
+
+O subgate nao faz requisicao a nenhum balde limitado: grava e le o perfil, que
+nao passa por limitador, e chama o assistente dentro do processo.
+
+## Contagem de requisicoes do gate por balde
+
+```text
+balde        usado   teto/usuario     teto/IP   margem maxima (50%)   dentro
+assistente      2             20           -              10          sim
+auth            7             40           -              20          sim
+colecoes       17            300        3000             150          sim
+exportacao      1              5          20               2          sim
+```
+
+Nenhum balde estourou. Os numeros sao os da v0.8.0: o subgate novo nao gasta
+nenhum.
+
+## Limpeza do banco depois do gate
+
+Conferida por script proprio, que usa o pool do backend e so imprime contagens -
+a string de conexao nunca e lida nem impressa.
+
+```text
+=== CONTAGEM TOTAL NO BANCO ===
+users              4
+sessions           1
+product_history    0
+product_favorites  0
+
+=== RESIDUO DE TESTE (deve ser 0 em todas as linhas) ===
+gate E2E (e2e-real.js)         nutriscan-e2e-%          0
+suite de colecoes              colecoes-test-%          0
+suite de integracao antiga     e2e-%@example.test       0
+reproducao do E1               repro-e1-%               0
+qualquer @example.test         %@example.test           0
+qualquer @example.com          %@example.com            0
+
+RESIDUO SOMADO (com sobreposicao entre padroes): 0
+
+=== LINHAS ORFAS (cascata da migration) ===
+product_history sem dono    0
+product_favorites sem dono  0
+```
+
+As quatro contas e a sessao que restam nao batem com nenhum padrao de teste. O
+gate cria e apaga so contas `nutriscan-e2e-*`.
+
+## E2E_LAST_RUN.json - conteudo integral
+
+O arquivo esta no `.gitignore`, entao NAO vai no ZIP. Conteudo integral da
+execucao final:
+
+```json
+{
+  "version": "0.9.0",
+  "mode": "strict",
+  "startedAt": "2026-10-16T10:51:24.612Z",
+  "finishedAt": "2026-10-16T10:51:58.870Z",
+  "baseUrl": "http://127.0.0.1:3100/api",
+  "backendProcess": "STARTED_BY_RUNNER",
+  "database": "EXECUTED",
+  "migrations": "EXECUTED_IDEMPOTENT",
+  "auth": "PASSED",
+  "sessionSchema": "PASSED",
+  "multiDevice": "PASSED",
+  "isolation": "PASSED",
+  "historySync": "PASSED",
+  "favoritesSync": "PASSED",
+  "verdictFreshness": "PASSED",
+  "manualCodeLookup": "PASSED",
+  "accountExport": "PASSED",
+  "accountDeletion": "PASSED",
+  "severityVerdict": "PASSED",
+  "logout": "PASSED",
+  "deterministicEngine": "PASSED",
+  "assistantGuest": "PASSED",
+  "assistantAuthenticated": "PASSED",
+  "assistantAuthority": "PASSED",
+  "fallback": "PASSED",
+  "privacy": "PASSED",
+  "anthropic": "configured",
+  "anthropicReal": "EXECUTED_GENERIC_AND_PRODUCT",
+  "anthropicCalls": 2,
+  "ok": true,
+  "rateLimitBudget": {
+    "margem": "no maximo 50% do teto",
+    "baldes": [
+      {
+        "balde": "assistente",
+        "usado": 2,
+        "teto": 20,
+        "margemMaxima": 10,
+        "folga": 18,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "auth",
+        "usado": 7,
+        "teto": 40,
+        "margemMaxima": 20,
+        "folga": 33,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "colecoes",
+        "usado": 17,
+        "teto": 300,
+        "margemMaxima": 150,
+        "folga": 283,
+        "tetoPorIp": 3000,
+        "folgaPorIp": 2983,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "exportacao",
+        "usado": 1,
+        "teto": 5,
+        "margemMaxima": 2,
+        "folga": 4,
+        "tetoPorIp": 20,
+        "folgaPorIp": 19,
+        "dentroDaMargem": true
+      }
+    ],
+    "estouraram": []
+  }
+}
+```
+
+## `verify:deploy` contra alvo LOCAL simulado
+
+O backend real em `NODE_ENV=production`, servindo o `dist/`, contra o
+PostgreSQL LOCAL, na porta 3999, sem chave de IA. O alvo e `http://`, entao o
+D2 TEM de reprovar: nao ha TLS local.
+
+```text
+[alvo] NutriScan API v0.9.0 ouvindo na porta 3999
+
+verify:deploy - alvo http://127.0.0.1:3999
+versao do repositorio: 0.9.0
+
+[PASS        ] D1  versao no ar igual a do repositorio
+                ambos declaram 0.9.0
+[FAIL        ] D2  resposta por HTTPS, e http:// redireciona
+                o alvo foi informado como http:// - o deploy precisa responder por HTTPS
+[PASS        ] D3  cabecalhos de seguranca (HSTS, CSP, nosniff)
+                HSTS max-age=31536000, CSP e nosniff presentes
+[PASS        ] D4  rota /api inexistente da 404 de API, nao index.html
+                404 de API, em JSON
+[PASS        ] D5  rota autenticada sem sessao da 401
+                4 rotas autenticadas recusam sem sessao com 401
+[PASS        ] D6  erro provocado nao vaza stack, SQL nem caminho
+                erro provocado (HTTP 400) sem stack, SQL, tabela nem caminho
+[PASS        ] D7  o frontend e servido e carrega
+                HTML e 2 asset(s) servidos (1 script(s))
+[PASS        ] D8  nenhuma chave no HTML nem nos bundles
+                3 arquivo(s) inspecionado(s), nenhum segredo
+
+PASS 7 | FAIL 1 | NOT_EXECUTED 0
+[FAIL] verify:deploy
+
+=== EXIT CODE do verify:deploy: 1 ===
+=== EXIT (script): 1 ===
+```
+
+## `verify:deploy` contra o deploy REAL
+
+Somente leitura, contra `https://nutriscan-h1wp.onrender.com`.
+
+```text
+
+> nutriscan@0.9.0 verify:deploy
+> node scripts/verify-deploy.js https://nutriscan-h1wp.onrender.com
+
+verify:deploy - alvo https://nutriscan-h1wp.onrender.com
+versao do repositorio: 0.9.0
+
+[FAIL        ] D1  versao no ar igual a do repositorio
+                repositorio declara 0.9.0 e o deploy anuncia 0.7.0
+[PASS        ] D2  resposta por HTTPS, e http:// redireciona
+                HTTPS responde, e http:// redireciona (301) para https://
+[PASS        ] D3  cabecalhos de seguranca (HSTS, CSP, nosniff)
+                HSTS max-age=31536000, CSP e nosniff presentes
+[PASS        ] D4  rota /api inexistente da 404 de API, nao index.html
+                404 de API, em JSON
+[PASS        ] D5  rota autenticada sem sessao da 401
+                4 rotas autenticadas recusam sem sessao com 401
+[PASS        ] D6  erro provocado nao vaza stack, SQL nem caminho
+                erro provocado (HTTP 500) sem stack, SQL, tabela nem caminho
+[PASS        ] D7  o frontend e servido e carrega
+                HTML e 2 asset(s) servidos (1 script(s))
+[PASS        ] D8  nenhuma chave no HTML nem nos bundles
+                3 arquivo(s) inspecionado(s), nenhum segredo
+
+PASS 7 | FAIL 1 | NOT_EXECUTED 0
+[FAIL] verify:deploy
+=== EXIT CODE: 1 ===
+```
+
+O D1 reprova porque o servico no ar roda a 0.7.0 - as versoes 0.7.1 a 0.9.0
+nunca foram publicadas. Os sete PASS medem a 0.7.0 e **nao provam nada sobre a
+0.9.0**.
+
+## O que este relatorio NAO prova
+
+- A leitura da camera em aparelho real: **NAO EXECUTADO**.
+- O deploy real da 0.9.0: **NAO EXECUTADO**.
+- HTTPS da 0.9.0: **NAO COMPROVADO** - o alvo simulado nao tem TLS.
+- A causa da falha da segunda execucao: **NAO COMPROVADA**.
+
+## Historico de auditorias anteriores
+
+## E2E da v0.8.0 - 2026-10-12
 
 ## Resultado geral
 
@@ -433,8 +946,6 @@ tocadas no deploy real: o `verify:deploy` nao as testa, de proposito.
 - A leitura da camera em aparelho real: **NAO EXECUTADO**.
 - O deploy real da 0.8.0: **NAO EXECUTADO**.
 - HTTPS da 0.8.0: **NAO COMPROVADO** - o alvo simulado nao tem TLS.
-
-## Historico de auditorias anteriores
 
 ## E2E da v0.7.6 - 2026-10-12
 

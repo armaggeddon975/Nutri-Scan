@@ -1,9 +1,9 @@
-# Publicar o NutriScan - v0.8.0
+# Publicar o NutriScan - v0.9.0
 
 Este documento e para **quem vai publicar**, nao para quem escreveu o codigo.
 Siga na ordem. Nenhum passo pede para adivinhar.
 
-**Situacao hoje:** as versoes 0.7.1 a 0.8.0 nunca foram publicadas. O servico
+**Situacao hoje:** as versoes 0.7.1 a 0.9.0 nunca foram publicadas. O servico
 `nutriscan` no Render ainda roda a 0.7.0.
 
 Nenhum valor real de credencial aparece aqui. Onde houver `<...>`, troque pelo
@@ -346,6 +346,27 @@ mao, com uma conta descartavel criada so para isso - nunca com a sua:
 A exclusao remove as linhas do banco em uso. O provedor do PostgreSQL pode
 manter historico para restauracao por um prazo que depende do plano - o codigo
 nao alcanca esse historico. Ver [DADOS_DO_TITULAR.md](DADOS_DO_TITULAR.md).
+
+### Nivel de alerta por alergia (v0.9.0)
+
+A v0.9.0 traz a migration `004_nivel_de_alerta.sql`, aplicada no build como as
+outras. Ela acrescenta a coluna `user_allergies.alert_level`, com padrao
+`standard`, e a restricao que so aceita `standard` ou `strict`. Toda alergia
+que ja existe no banco fica `standard`: o comportamento de quem ja usa o app
+nao muda ate a pessoa escolher o alerta maximo. Nenhuma variavel nova.
+
+A migration e idempotente. Se o build falhar depois dela, rodar de novo nao
+muda nada.
+
+Depois de publicar, para conferir a mao (com uma conta descartavel):
+
+1. Entre, marque Amendoim e, em **Alerta maximo**, marque Amendoim.
+2. Abra um produto com amendoim nos ingredientes: a etiqueta deve dizer
+   "Amendoim · alerta maximo".
+3. Desmarque o alerta maximo e abra o mesmo produto: a etiqueta volta a ser so
+   "Amendoim".
+
+O `verify:deploy` nao toca nisso: ele so le, e a rota de alergias grava.
 
 ### Pontos de atencao conhecidos
 

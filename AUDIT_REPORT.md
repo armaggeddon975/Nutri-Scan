@@ -1,6 +1,732 @@
-# Relatorio de Auditoria - NutriScan v0.8.0
+# Relatorio de Auditoria - NutriScan v0.9.0
 
-Data: 2026-10-12
+Data: 2026-10-16
+
+## Escopo
+
+Entrada 0.8.0, saida 0.9.0. Nivel de alerta por alergia - o que o prompt chama
+de "severidade". Minor: capacidade nova de produto, e o modelo de dados de
+alergias ganha uma coluna.
+
+**Isto nao e orientacao de saude nem parecer.** O relatorio descreve o que o
+software faz. Ele nao declara o NutriScan clinicamente adequado nem em
+conformidade juridica.
+
+Preservado sem refatoracao, como a secao 3 mandou: exportacao, exclusao, C1, o
+piso de risco e as duas barreiras do `allergyVerdict` (o schema fechado da
+resposta do modelo e `applyAllergyAuthority`, que nao mudou uma linha), digito
+verificador, canonicalizacao, tetos 300/3000, IPv6 /64, isolamento, handler de
+erro, fail-closed e a sincronia com o `render.yaml`. `verify:deploy` sem nenhuma
+linha alterada.
+
+Codigo de producao da entrega (secoes 6, 7 e 8):
+
+```text
+NOVO  backend/migrations/004_nivel_de_alerta.sql   coluna, CHECK, regra do dado existente
+      shared/allergyVerdict.js                     a resposta do motor ao nivel
+      backend/src/ai/assistantService.js           le o nivel do banco; log sem nivel
+      backend/src/repositories/userRepository.js   grava e le o nivel
+      backend/src/services/profileService.js       aceita alertLevels
+      backend/src/services/authService.js          perfil publico com alertLevels
+      backend/src/utils/validation.js              recusas de nivel
+      backend/src/utils/normalize.js               alertLevels no usuario publico
+      backend/src/repositories/accountRepository.js  exportacao: alert_level
+      backend/src/services/accountService.js       exportacao: alertaMaximo
+NOVO  src/components/allergies/AlertLevelPicker.jsx  a caixa por alergia
+      src/App.jsx                                  estado, gravacao e o convite
+      src/pages/Allergies/AllergiesPage.jsx, src/pages/Account/AccountPage.jsx
+      src/pages/Home/HomePage.jsx                  o convite
+      src/components/food/ProductAnalysis.jsx      "· alerta maximo" na etiqueta
+      src/components/assistant/AllergyVerdict.jsx  titulo e etiquetas do veredito
+      src/services/profileService.js, src/services/storageService.js
+      src/styles-v070.css                          so acrescimo; styles.css intocado
+```
+
+Gate e testes: `scripts/e2e-real.js` (subgate `severityVerdict`),
+`scripts/lib/e2eGate.js` (requisito novo), `scripts/mutation-check.js` (14
+mutantes novos; P4 e W11 ajustados - ver A2), `backend/tests/alertLevel.test.js`
+e `backend/tests/alertLevelIntegration.test.js` (novos),
+`backend/tests/e2eGate.test.js` (21 requisitos), e tres pontos de teste que
+injetam o carregador de alergias (`allergyVerdict.test.js`, `fallback.test.js`)
+ganharam o carregador de nivel ao lado - nenhuma assercao mudou.
+
+## A4 - o rotulo: "alerta maximo", e por que
+
+```text
+prompt          codigo        tela
+PADRAO          standard      (sem marca: e o normal)
+GRAVE           strict        "Alerta maximo"
+severidade      alertLevel    "nivel de alerta"
+```
+
+- **"Alerta maximo" descreve o que a pessoa quer do APP**, como a secao 5.1
+  pede, e nao uma condicao dela. "Alergia grave" seria a pessoa declarar ao app
+  uma classificacao clinica, e o app nao diagnostica nem classifica ninguem.
+  Quem quer o aviso mais forte por qualquer motivo usa o mesmo nivel sem afirmar
+  nada sobre si.
+- **O campo e `alertLevel`, e nao `severity`.** No motor, `risk.severity` JA e
+  a classificacao do rotulo (`contains` / `traces`). Reusar a palavra faria o
+  mesmo objeto ter duas "severidades" com sentidos diferentes - receita para o
+  proximo defeito.
+- Na tela: "Marque onde voce quer o aviso mais forte. O app passa a avisar
+  tambem quando o rotulo diz 'pode conter'." - o que o app faz, nunca o que a
+  pessoa deve fazer. Um teste renderiza o texto novo e reprova vocabulario de
+  diagnostico ou de conduta.
+
+## 6.1 - dois niveis
+
+Implementado com dois, como o prompt mandou. Concordo com o motivo: o nivel do
+meio nao mudaria nada do que a pessoa faz diante do produto. Nenhum terceiro
+nivel foi implementado.
+
+## A3 - DDL da migration e a regra do dado existente
+
+`backend/migrations/004_nivel_de_alerta.sql`:
+
+```sql
+ALTER TABLE user_allergies
+  ADD COLUMN IF NOT EXISTS alert_level text NOT NULL DEFAULT 'standard';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+      FROM pg_constraint
+     WHERE conname = 'user_allergies_alert_level_check'
+       AND conrelid = 'user_allergies'::regclass
+  ) THEN
+    ALTER TABLE user_allergies
+      ADD CONSTRAINT user_allergies_alert_level_check
+      CHECK (alert_level IN ('standard', 'strict'));
+  END IF;
+END
+$$;
+```
+
+**Regra de 6.2, declarada no cabecalho da propria migration:** toda alergia ja
+cadastrada recebe `standard`; ninguem e elevado para `strict`. O `DEFAULT
+'standard'` do `ADD COLUMN` preenche as linhas existentes, e vale tambem para
+toda alergia nova gravada sem nivel. Conferido em dado real: no banco de
+producao, as 7 alergias que ja existiam ficaram `standard` (ver A10).
+
+**CHECK, e nao ENUM:** mudar a lista depois e trocar uma restricao numa migration
+comum e transacional - um ENUM nao perde valor sem recriar o tipo; a coluna
+continua `text`, sem tipo novo para o driver, o schema temporario dos testes e o
+`pg_dump`; e a regra fica escrita na tabela.
+
+**Idempotente:** `IF NOT EXISTS` na coluna; a restricao so e criada se nao
+existir nesta tabela. O S11 roda a 004 tres vezes num schema montado pelas
+migrations e exige o mesmo dado e uma restricao so.
+
+**Coluna, e nao tabela:** severidade e atributo da alergia da pessoa (6.4). Nao
+ha como gravar nivel de alergia que a pessoa nao tem, e a cascata
+`user_allergies.user_id -> users(id) ON DELETE CASCADE`, da migration 001, leva o
+nivel junto na exclusao da conta - confirmado no catalogo dos dois bancos e pelo
+S15.
+
+## 6.2 - o padrao preserva o comportamento atual, e o convite
+
+- Toda alergia sem nivel declarado e `standard`, identica a v0.8.0.
+- **O convite:** quem tem conta, tem alergia e ainda nao usou o alerta maximo ve
+  na tela inicial um cartao - "Novidade / Alerta maximo / Agora voce escolhe, em
+  cada alergia, se quer o aviso mais forte. Quer revisar as suas?" - com
+  "Revisar minhas alergias" e "Agora nao". E cartao, nao janela: o resto da tela
+  continua usavel (teste e conferido no navegador). Qualquer um dos dois botoes
+  o tira de vez.
+- **"Uma vez" e por conta, neste aparelho.** A marca de "visto" fica no
+  navegador, com o id da conta e nada do perfil. Num aparelho novo o convite pode
+  voltar. Escolhido para nao criar dado novo no banco so por isso; descrito para
+  decisao.
+- O convite fica na tela ate a pessoa responder: so nao aparece mais depois de um
+  dos dois botoes.
+
+## O que muda no veredito, caso a caso
+
+O que muda e a RESPOSTA a classificacao, nao a classificacao.
+`analyzeProductAllergens` nao foi tocado: o `git diff` de `shared/allergenEngine.js`
+contra a v0.8.0 e vazio - e o do `backend/src/ai/assistantPrompt.js`, onde mora o
+schema fechado da resposta do modelo, tambem.
+
+```text
+                       standard (padrao)                     strict (alerta maximo)
+declarado no rotulo    conflito {id,label}, piso caution     conflito, piso URGENT
+                       (identico a v0.8.0)                   origin "declared", alertLevel "strict"
+"pode conter"          traces, sem piso                      CONFLITO, piso caution
+                       (identico a v0.8.0)                   origin "traces", alertLevel "strict"
+```
+
+- `urgent` so existe no caso declarado + alerta maximo (6.4).
+- **Byte a byte:** o S1 compara 20 combinacoes de produto e perfil com a saida
+  literal do `buildAllergyVerdict` da v0.8.0, gravada no teste - sem mapa de
+  nivel e com o mapa explicito em `standard`. As 20 sao identicas.
+- O texto de `alert` do alerta maximo: "Este produto tem Amendoim, que esta no
+  seu perfil de alergias. Voce pediu alerta maximo para Amendoim. Confira a
+  embalagem fisica antes de consumir." / "Pode conter tracos de Amendoim. Voce
+  pediu alerta maximo para Amendoim. Confira a embalagem fisica antes de
+  consumir." O fecho e o mesmo do texto de sempre.
+
+## Como o veredito distingue os casos para a interface
+
+- Cada conflito de alergia `strict` traz `origin` (`declared` ou `traces`) e
+  `alertLevel: "strict"`. Conflito de alergia `standard` continua `{ id, label }`;
+  ausentes, os campos valem `declared` e `standard` - e o que preserva o byte a
+  byte. `conflictOrigin()` em `shared/allergyVerdict.js` faz essa leitura.
+- `minimumSafety: "urgent"` marca o caso declarado + alerta maximo.
+- A tela usa isso: no assistente, o titulo vira "Alerta maximo: conflito com o
+  seu perfil" quando o piso e `urgent`, e a etiqueta diz "Pode conter Amendoim ·
+  alerta maximo" no traco; na tela do produto, "Amendoim · alerta maximo".
+
+## A IA e o nivel (5.1, 5.3, S5, S6, S18)
+
+- O veredito e montado ANTES da chamada de IA, com o nivel lido do PostgreSQL;
+  o piso e imposto DEPOIS, por `applyAllergyAuthority`, sem alteracao.
+- Uma chave de nivel na resposta do modelo (`alertLevel`, `alertLevels`,
+  `severity`) derruba a resposta inteira com `AI_SCHEMA_INVALID` - o schema
+  `.strict()` que ja existia. E `applyAllergyAuthority` descarta qualquer
+  `allergyVerdict` vindo do modelo (S6).
+- **O nivel NAO vai para a Anthropic, nem dentro do `allergySnapshot`.** A 5.2
+  permitia; a decisao foi nao usar a permissao. O modelo nao precisa dele (o
+  veredito e o piso sao do servidor), e um modelo que nao recebe o nivel nao
+  consegue comenta-lo, questiona-lo ou "corrigi-lo" - a garantia e estrutural,
+  e nao uma instrucao no prompt. O S18 exige que o payload ao modelo seja
+  identico com alerta padrao ou maximo, e que o snapshot tenha exatamente as
+  chaves da v0.8.0.
+
+## O log (5.2, S17)
+
+O registro `assistant.allergy_minimization_attempt` levava `enforcedSafety`.
+Com o alerta maximo, esse campo diria "urgent" justamente quando a alergia e
+`strict` - o log contaria qual alergia a pessoa marcou. **O campo saiu**, e
+`conflicts` passou a listar so o conflito declarado, que existe com qualquer
+nivel; a regra de quando registrar continua a da v0.8.0 (conflito declarado +
+modelo dizendo "normal"). Para o mesmo produto e as mesmas alergias, o registro e
+identico com alerta padrao ou maximo (S17, unitario). E o S17 de integracao
+captura o console de todos os fluxos reais - gravar o nivel, nivel recusado,
+perfil, `me`, exportacao e o assistente lendo o banco - e nao encontra
+`strict`, `alertLevel`, `alert_level`, `alertaMaximo` nem `urgent`.
+
+## API (secao 8)
+
+`PUT /api/profile/allergies` aceita `alertLevels: { allergyId: "standard" |
+"strict" }`, opcional. Corpo sem ele continua valido e significa `standard`
+(S10). Recusas, todas `400 VALIDATION_ERROR` e sem gravar nada: nivel
+desconhecido (S8), nivel para alergia fora de `allergies` (S9), chave fora do
+catalogo - inclusive `__proto__` e `constructor`. `userId`/`user_id` no corpo sao
+descartados (S16). O perfil publico ganhou `alertLevels`, com uma entrada por
+alergia. Documentado em `docs/API.md`.
+
+## A1 - S1 a S18, R1 a R6
+
+Todos presentes e verdes na suite completa contra PostgreSQL real (A7). Nenhum
+em SKIP nessa execucao. Sem banco (A6), os de integracao saem como NAO EXECUTADO,
+e nao como PASS.
+
+```text
+unitarios (tests/alertLevel.test.js)
+S1  S1 nivel padrao + conflito declarado: piso caution, identico a v0.8.0
+S2  S2 alerta maximo + conflito declarado: piso urgent
+S3  S3 alerta maximo + traco: conflito no veredito, piso caution
+S4  S4 nivel padrao + traco: nenhum conflito, igual a v0.8.0
+S5  S5 o modelo respondendo normal nao derruba o piso em nenhum dos casos
+S6  S6 o modelo nao escreve nem influencia o nivel: campo de nivel vindo dele derruba a resposta
+S7  S7 o veredito distingue declarado de traco, e alerta maximo de padrao
+    S7 a tela diz coisas diferentes para alerta maximo e para traco
+S8  S8 nivel desconhecido e recusado pela validacao
+S9  S9 nivel para alergia ausente do perfil e recusado pela validacao
+S10 S10 corpo sem nivel continua valido e significa padrao
+S17 S17 o log da tentativa de minimizacao e o mesmo com alerta padrao ou maximo
+S18 S18 o payload enviado a Anthropic nao ganhou canal novo: o nivel nao vai nem no allergySnapshot
+    o convite para revisar o nivel e dispensavel e nao bloqueia a tela
+    o texto novo descreve o que o app faz, sem diagnostico nem orientacao medica
+
+com PostgreSQL real (tests/alertLevelIntegration.test.js)
+S8  S8 a API recusa nivel desconhecido, e nada muda no banco
+S9  S9 a API recusa nivel para alergia ausente do perfil, e nada muda
+S10 S10 corpo sem nivel continua funcionando e grava padrao
+S11 S11 migration 004: alergias existentes recebem padrao, e rodar de novo nao muda nada
+S12 S12 o banco recusa nivel invalido inserido direto em SQL - no banco e no schema das migrations
+S13 S13 nivel nao congelado: o item salvo nao muda e a leitura seguinte reflete o nivel novo
+    S13 nenhuma tabela de colecao tem onde guardar nivel ou veredito - no banco e no schema das migrations
+S14 S14 o nivel de alerta entra na exportacao da conta
+S15 S15 o nivel sai na exclusao da conta - varredura das tabelas
+S16 S16 o nivel de A nao e visivel nem alteravel por B
+S17 S17 o nivel nunca aparece no log - API real e assistente com o perfil do banco
+S5  S5 com o perfil do banco, o modelo negando nao derruba o piso do alerta maximo
+```
+
+Como os delicados provam o que dizem:
+
+- **S11 e S12** montam um schema temporario rodando SO os arquivos de
+  `migrations/`. Mudar uma migration nao muda o banco de teste ja migrado - e o
+  mesmo truque do D4 da v0.8.0. O S11 grava um perfil ANTES da 004, aplica a 004
+  e exige `standard`; aplica de novo duas vezes e exige o mesmo dado. O S12
+  tenta `INSERT` e `UPDATE` com `grave`, `STRICT` e `urgent` direto em SQL, no
+  banco em uso e no schema das migrations, e exige o erro `23514`.
+- **S13** grava historico e favorito, troca o nivel e le de novo: os itens sao
+  identicos byte a byte, nao carregam campo de nivel nem de veredito, e o
+  veredito calculado com o perfil lido vai de `caution` para `urgent` e volta. O
+  segundo S13 confere, no banco e no schema das migrations, que nenhuma coluna
+  das colecoes tem nome de nivel, veredito, safety ou risco.
+- **S16**: B tenta gravar no perfil de A com `userId` e `user_id` de A no corpo; a
+  resposta e de B, e o nivel de A continua o mesmo no banco.
+
+R1 a R6 - regressao, verdes na mesma execucao (74 testes):
+
+```text
+R1  C1            T1 exploit C1: modelo negando conflito nao entrega falso seguro
+R2  isolamento    I1, I2, I3 (estaticos e contra o banco)
+R3  digito        M1 (5), M3 (3), M9 (2); canonicalizacao N1 a N1g (14);
+                  tetos R1, R2, R5 (5), R6, R7 e R11 (403 de 3000 por IP)
+R4  exportacao    E2 (hash e salt pelo valor), E4 (nada do vizinho)
+R5  exclusao      D4 (varredura de toda coluna de toda tabela; cascata no banco e
+                  no schema das migrations)
+R6  handler       O2a a O2e (11), P5 (4); fail-closed P9 (6) e MODO (2);
+                  verify:deploy somente leitura P13 (3)
+```
+
+## A2 - validacao por mutacao
+
+Rodada completa, com banco, sobre o codigo entregue:
+
+```text
+RUN_DB_INTEGRATION_TESTS=true DATABASE_URL=<PostgreSQL LOCAL> DATABASE_SSL=false \
+  node scripts/mutation-check.js --com-banco
+```
+
+```text
+mortas 95 | nao executadas 0 | problemas 1 | linha de base: antes verde, depois verde
+REPROVADO: ha teste que nao detecta o defeito que deveria detectar.
+=== EXIT: 1 ===
+```
+
+**96 mutantes: 95 mortos, 1 sobrevivente (W1, da v0.8.0), 0 nao executados, 0
+inaplicaveis.** A linha de base - as 14 suites sem mutacao, incluidas as duas
+novas - estava verde antes e depois. **Os 14 mutantes novos morreram todos.** O
+script sai com codigo 1 por causa do W1, e isso fica registrado como esta.
+
+### Os seis mutantes pedidos pelo prompt
+
+```text
+pedido pelo prompt                                mutante  teste que o pegou                                   resultado
+piso de grave volta a ser caution (S2)            X1       S2 alerta maximo + conflito declarado               MORTA
+traco de grave volta a nao produzir conflito (S3) X2       S3 alerta maximo + traco                            MORTA
+piso deixa de ser imposto apos o modelo (S5)      X3       S5 o modelo respondendo normal                      MORTA
+campo de severidade do modelo aceito (S6)         X4       S6 o modelo nao escreve nem influencia o nivel      MORTA
+restricao do banco removida (S12)                 X5       S12 ... no banco e no schema das migrations         MORTA
+severidade gravada junto com o historico (S13)    X6       S13 nenhuma tabela de colecao tem onde guardar      MORTA
+                                                  X6b      S13 nivel nao congelado: o item salvo nao muda      MORTA
+```
+
+O sexto nao cabe num mutante de um arquivo so: gravar o nivel junto do item
+exige um lugar para guardar E a escrita. Virou duas metades, cada uma pega por um
+S13 - X6 cria a coluna em `product_history` pela migration (o schema), X6b faz o
+item do historico sair com o nivel do perfil (a leitura).
+
+O X5 e o X6 mexem na migration, e o banco de teste ja esta migrado: so morrem
+porque o S12 e o S13 tambem conferem um schema montado SO pelas migrations, como
+o D4 da v0.8.0.
+
+### Os outros sete mutantes novos
+
+```text
+X7   S17  o registro de minimizacao volta a levar o piso aplicado       MORTA
+X8   S18  o nivel passa a ir ao modelo dentro do allergySnapshot       MORTA
+X9   A11  o gate perde o requisito severityVerdict                     MORTA
+X10  S9   a validacao aceita nivel para alergia fora do perfil          MORTA
+X11  S1   o conflito de alergia padrao ganha campos novos               MORTA
+X12  S8   a validacao aceita qualquer texto como nivel                  MORTA
+X13  S16  a rota do perfil aceita userId do corpo                       MORTA
+```
+
+(X1 a X13, mais o X6b: 14 mutantes.)
+
+### Dois mutantes antigos ajustados - sem mudar o defeito
+
+- **P4** (v0.7.3, "remove o piso de risco do veredito") mirava a linha
+  `minimumSafety: status === VERDICT_STATUS.conflict ? CONFLICT_MINIMUM_SAFETY : null,`,
+  que mudou de forma: o piso agora sai de `minimumSafetyFor(status, conflicts)`.
+  A ancora foi refeita para a linha nova; o defeito injetado e o mesmo
+  (`minimumSafety: null`), e o teste que o pega e o mesmo (M5). MORTA.
+- **W11** (v0.8.0, "o gate perde accountDeletion") e o mesmo mutante; o teste que
+  o pega foi renomeado de "exatamente 20 requisitos" para "exatamente 21". MORTA.
+
+### O sobrevivente: W1, o mesmo da v0.8.0
+
+O W1 faz o repositorio da exportacao devolver a linha inteira de `users`, mas o
+servico monta o arquivo campo a campo - a exportacao nao muda, e o E2E esta certo
+em passar. E equivalente, foi descrito na v0.8.0 com a demonstracao de que a
+suite estatica (`nunca usa SELECT *`) o pega, e esta versao nao mexeu nele nem no
+`mutation-check.js` por causa dele.
+
+### A rodada inteira
+
+Linha de base:
+
+```text
+[linha de base - antes] 14 suite(s), sem mutacao
+  VERDE    tests/productionHardening.test.js
+  VERDE    tests/verifyDeploy.test.js
+  VERDE    tests/renderSync.test.js
+  VERDE    tests/bodyParseError.test.js
+  VERDE    tests/productLookup.test.js
+  VERDE    tests/migrate.test.js
+  VERDE    tests/doctor.test.js
+  VERDE    tests/e2eGate.test.js
+  VERDE    tests/accountIntegration.test.js
+  VERDE    tests/barcode.test.js
+  VERDE    tests/collectionsIntegration.test.js
+  VERDE    tests/rateLimit.test.js
+  VERDE    tests/alertLevel.test.js
+  VERDE    tests/alertLevelIntegration.test.js
+```
+
+```text
+T1  P2   MORTA                  "P2 producao sem FRONTEND_ORIGIN nao sobe, e diz qual falta" falhou, como deveria
+T1b  P2   MORTA                  "P2 sem FRONTEND_ORIGIN, nem o createApp direto cai no default de localhost" falhou, como deveria
+T2  P5   MORTA                  "P5 erro do driver do banco nao chega ao cliente" falhou, como deveria
+T2b  P5   MORTA                  "P5 o detalhe do erro vai para o log do servidor" falhou, como deveria
+T3  P9   MORTA                  "P9 cada variavel obrigatoria ausente impede a subida, e a mensagem diz qual" falhou, como deveria
+T3b  P9   MORTA                  "P9 valor booleano nao reconhecido nao cai em default silencioso" falhou, como deveria
+T4  P12  MORTA                  "P12 versao no ar diferente da do repositorio reprova o D1" falhou, como deveria
+T5  P13  MORTA                  "P13 o registro de requisicoes do verify:deploy nao tem escrita" falhou, como deveria
+T5b  P13  MORTA                  "P13 contra o roteador REAL, nenhuma rota de escrita e alcancada" falhou, como deveria
+T6  P3   MORTA                  "P3 CORS devolve a origem configurada, nunca a do request" falhou, como deveria
+T7  P4   MORTA                  "P4 com trust proxy, req.ip segue o X-Forwarded-For e o balde acompanha" falhou, como deveria
+T8  P11  MORTA                  "P11 NOT_EXECUTED nao conta como PASS no agregado" falhou, como deveria
+T9  P11  MORTA                  "P11 o comando de verdade sai com codigo 1 quando um subgate falha" falhou, como deveria
+V1  S1/S4 MORTA                  "S1 render.yaml contem todas as obrigatorias de VARIAVEIS_OBRIGATORIAS_EM_PRODUCAO" falhou, como deveria
+V1b  S2   MORTA                  "S2 render.yaml nao declara variavel que o codigo nao le" falhou, como deveria
+V1c  S3   MORTA                  "S3 nenhuma credencial com valor literal no render.yaml" falhou, como deveria
+V2  O2a  MORTA                  "O2a JSON malformado responde 400, nao 500 - a medicao do auditor" falhou, como deveria
+V3  O2d  MORTA                  "O2d erro de biblioteca com statusCode arbitrario nao escolhe o status" falhou, como deveria
+V3b  O2d  MORTA                  "O2d copiar o type do body-parser nao basta para ganhar 400" falhou, como deveria
+V4  R7   MORTA                  "P13 o registro de requisicoes do verify:deploy nao tem escrita" falhou, como deveria
+U1  C2   MORTA                  "C2 a camera nunca transforma um codigo em outro" falhou, como deveria
+U2  C2   MORTA                  "C2 o App usa a leitura segura e nunca manda leitura da camera para a busca por nome" falhou, como deveria
+U3  C2   MORTA                  "C2 o App usa a leitura segura e nunca manda leitura da camera para a busca por nome" falhou, como deveria
+U4  O2e  MORTA                  "O2e corpo grande demais responde 413 fixo, sem a mensagem do leitor" falhou, como deveria
+U4b  O2e  MORTA                  "O2e copiar name, type e status do corpo grande nao basta para ganhar 413" falhou, como deveria
+U5  MODO MORTA                  "MODO NODE_ENV digitado errado nao sobe, e diz qual variavel" falhou, como deveria
+U5b  MODO MORTA                  "MODO NODE_ENV digitado errado nao sobe, e diz qual variavel" falhou, como deveria
+U6  MIG  MORTA                  "MIG migration que nao alcanca o banco falha dizendo por que" falhou, como deveria
+U7  MIG  MORTA                  "o doctor conta as mesmas migrations que o runner aplica, .sql e .js" falhou, como deveria
+U8  ORC  MORTA                  "o orcamento do gate usa os mesmos tetos do limitador, inclusive o por IP" falhou, como deveria
+W1  E2   MUTACAO SOBREVIVEU     a suite passou com o defeito aplicado
+W1b  E2   MORTA                  "E2 a exportacao nao contem o password_hash nem o salt reais - pelo valor" falhou, como deveria
+W2  E4   MORTA                  "E4 a exportacao de A nao contem nada de B, com B populado" falhou, como deveria
+W2b  E4   MORTA                  "E4 a exportacao de A nao contem nada de B, com B populado" falhou, como deveria
+W3  E5   MORTA                  "E5 userId no corpo, na query ou em cabecalho nao muda quem e exportado" falhou, como deveria
+W3b  E5   MORTA                  "E5 userId no corpo, na query ou em cabecalho nao muda quem e exportado" falhou, como deveria
+W4  D2   MORTA                  "D2 exclusao com senha errada nao remove nada" falhou, como deveria
+W5  D4   MORTA                  "D4 o schema montado SO pelas migrations tem ON DELETE CASCADE em toda FK para users" falhou, como deveria
+W5b  D4   MORTA                  "D4 o schema montado SO pelas migrations tem ON DELETE CASCADE em toda FK para users" falhou, como deveria
+W6  D8   MORTA                  "D8 falha simulada no meio da exclusao deixa o estado anterior intacto" falhou, como deveria
+W7  E8   MORTA                  "E8 a rota real recusa a exportacao acima do teto do usuario" falhou, como deveria
+W8  D9   MORTA                  "D9 a tentativa com senha errada gasta o mesmo balde do login" falhou, como deveria
+W9  D1   MORTA                  "D1 exclusao com a senha correta remove a conta e limpa o cookie" falhou, como deveria
+W10  E7   MORTA                  "E7 o arquivo nao leva e-mail nem nome, e a resposta nao pode ir para cache" falhou, como deveria
+W10b  E7   MORTA                  "E7 o arquivo nao leva e-mail nem nome, e a resposta nao pode ir para cache" falhou, como deveria
+W11  A11  MORTA                  "A11: o modo strict tem exatamente 21 requisitos, os 20 da v0.8.0 mais severityVerdict" falhou, como deveria
+S1  N1a  MORTA                  "N1 o schema canonicaliza UPC-A para EAN-13" falhou, como deveria
+S1b  N1a  MORTA                  "N1a o mesmo produto em UPC-A e EAN-13 vira UMA linha canonica" falhou, como deveria
+S1c  N1c  MORTA                  "N1c requisicao DIRETA ao backend grava a forma canonica" falhou, como deveria
+S2  N1e  MORTA                  "N1e o schema nao altera EAN-13 nem EAN-8" falhou, como deveria
+S2b  N1d  MORTA                  "N1d codigo nao-EAN passa intacto pela canonicalizacao" falhou, como deveria
+S3  N1g  MORTA                  "N1g a migration funde as duas formas pela regra declarada" falhou, como deveria
+S4  N1g  MORTA                  "N1g a migration e idempotente e nao toca codigo nao-EAN" falhou, como deveria
+S5  R2   MORTA                  "N1 a canonicalizacao nao afrouxa a conferencia do digito" falhou, como deveria
+S6  N1   MORTA                  "N1 a canonicalizacao usa shared/barcode.js, sem copia local" falhou, como deveria
+P1  M1   MORTA                  "M1 codigos com digito verificador errado sao recusados pelo motivo certo" falhou, como deveria
+P1b  M1   MORTA                  "M1 codigos validos de EAN-13, EAN-8 e UPC-A sao aceitos" falhou, como deveria
+P2  M3   MORTA                  "M3 o backend recusa productCode com digito verificador invalido" falhou, como deveria
+P2b  M3   MORTA                  "M3 a regra do backend e estreita e nao quebra cadastro legitimo" falhou, como deveria
+P3  M4   MORTA                  "o caminho manual nao monta o resultado por conta propria" falhou, como deveria
+P3b  M4   MORTA                  "M2 codigo invalido nao chega a rede" falhou, como deveria
+P4  M5   MORTA                  "M5 o piso de risco vale no caminho manual" falhou, como deveria
+P5  M9   MORTA                  "M9 nao existe segunda implementacao do digito verificador" falhou, como deveria
+P5b  M9   MORTA                  "M9 backend e frontend usam a MESMA implementacao de shared/" falhou, como deveria
+P6  M7   MORTA                  "M7 UPC-A vira EAN-13 com zero a esquerda, e o produto e o mesmo" falhou, como deveria
+P7  M6   MORTA                  "M6 cada motivo de recusa tem mensagem propria" falhou, como deveria
+P8  M8   MORTA                  "M8 nenhum outro caractere e removido em silencio" falhou, como deveria
+P9  M10  MORTA                  "M10 o backend recusa gravar codigo com digito verificador invalido" falhou, como deveria
+N1  R1/R3 MORTA                  "R1 usuario dentro do teto mas IP estourado recebe 429" falhou, como deveria
+N1b  R3   MORTA                  "R3 multiplas contas do mesmo IP nao ultrapassam o teto por IP" falhou, como deveria
+N2  R2   MORTA                  "R2 IP dentro do teto mas usuario estourado recebe 429" falhou, como deveria
+N2b  R4   MORTA                  "R4 dois usuarios atras do MESMO IP mantem cotas separadas" falhou, como deveria
+N3  R4   MORTA                  "R4 a requisicao recusada pelo teto de usuario nao consome orcamento do IP" falhou, como deveria
+N4  R5   MORTA                  "R5 dados forjados no request nao conseguem balde de IP novo" falhou, como deveria
+N5  R5   MORTA                  "R5 um bloco IPv6 /64 nao vira infinitos baldes" falhou, como deveria
+M1  R6   MORTA                  "R6 os tres tetos por rota seguem nos valores declarados" falhou, como deveria
+M2  R7   MORTA                  "R7 o teto por IP esta no valor medido" falhou, como deveria
+M3  Q3   MORTA                  "Q3 nenhuma variavel de ambiente desliga os limitadores" falhou, como deveria
+M3b  Q4   MORTA                  "Q4 nenhum dos limitadores tem opcao de pular requisicao" falhou, como deveria
+M4  Q2   MORTA                  "Q2 em producao o teto por usuario recusa na requisicao seguinte ao teto" falhou, como deveria
+M6  R9   MORTA                  "I1 usuario A nao le historico nem favorito de B" falhou, como deveria
+M7  R9   MORTA                  "I2 usuario B nao remove item de A" falhou, como deveria
+X1  S2   MORTA                  "S2 alerta maximo + conflito declarado: piso urgent" falhou, como deveria
+X2  S3   MORTA                  "S3 alerta maximo + traco: conflito no veredito, piso caution" falhou, como deveria
+X3  S5   MORTA                  "S5 o modelo respondendo normal nao derruba o piso em nenhum dos casos" falhou, como deveria
+X4  S6   MORTA                  "S6 o modelo nao escreve nem influencia o nivel: campo de nivel vindo dele derruba a resposta" falhou, como deveria
+X5  S12  MORTA                  "S12 o banco recusa nivel invalido inserido direto em SQL - no banco e no schema das migrations" falhou, como deveria
+X6  S13  MORTA                  "S13 nenhuma tabela de colecao tem onde guardar nivel ou veredito - no banco e no schema das migrations" falhou, como deveria
+X6b  S13  MORTA                  "S13 nivel nao congelado: o item salvo nao muda e a leitura seguinte reflete o nivel novo" falhou, como deveria
+X7  S17  MORTA                  "S17 o log da tentativa de minimizacao e o mesmo com alerta padrao ou maximo" falhou, como deveria
+X8  S18  MORTA                  "S18 o payload enviado a Anthropic nao ganhou canal novo: o nivel nao vai nem no allergySnapshot" falhou, como deveria
+X9  A11  MORTA                  "A11: o modo strict tem exatamente 21 requisitos, os 20 da v0.8.0 mais severityVerdict" falhou, como deveria
+X10  S9   MORTA                  "S9 nivel para alergia ausente do perfil e recusado pela validacao" falhou, como deveria
+X11  S1   MORTA                  "S1 nivel padrao + conflito declarado: piso caution, identico a v0.8.0" falhou, como deveria
+X12  S8   MORTA                  "S8 nivel desconhecido e recusado pela validacao" falhou, como deveria
+X13  S16  MORTA                  "S16 o nivel de A nao e visivel nem alteravel por B" falhou, como deveria
+mortas 95 | nao executadas 0 | problemas 1 | linha de base: antes verde, depois verde
+```
+
+## A5 a A9
+
+```text
+A5  npm run build                          sucesso
+A6  npm --prefix backend test              383 testes, 312 pass, 0 fail, 71 skipped
+                                           (68 exigem PostgreSQL, 1 a IA real,
+                                           2 a Open Food Facts real - todos
+                                           declarados NAO EXECUTADO, nenhum PASS)
+A7  suite contra PostgreSQL real (local)   383 testes, 380 pass, 0 fail, 3 skipped
+                                           (1 IA real, 2 Open Food Facts real)
+A8  npm audit --audit-level=moderate       frontend: found 0 vulnerabilities
+    npm --prefix backend audit (moderate)  backend:  found 0 vulnerabilities
+A9  npm run verify:release                 exit 0 - build, testes, os dois
+                                           audits e "secret scan - 0 real secrets"
+```
+
+O A7 rodou com `RUN_DB_INTEGRATION_TESTS=true` contra o PostgreSQL LOCAL (17,
+porta 5433), com `DATABASE_URL` definida no comando - nunca contra o banco de
+producao. Gastos da suite contra os tetos por IP, medidos na propria execucao:
+`[R11] 403 de 3000` e `[exportacao] 17 de 20`.
+
+**A rodada final, sobre a arvore entregue, nao passou de primeira - e o registro
+fica aqui:**
+
+```text
+verify:release 1  FAIL  T9c: o E2E_REPORT colava o /api/health de producao em
+                        JSON, com o campo de versao em 0.7.0, dentro do bloco da 0.9.0.
+                        Reescrito em texto; o teste nao foi tocado.
+                        (A suite com banco, no mesmo momento, falhou inteira:
+                        o PostgreSQL LOCAL estava parado - a maquina reiniciou.)
+verify:release 2  FAIL  2 testes de http.test.js: getaddrinfo ENOTFOUND do banco
+                        configurado - o DNS da maquina falhou naquele instante
+verify:release 3  FAIL  testes 0 fail; o npm audit nao resolveu registry.npmjs.org
+verify:release 4  PASS  exit 0 - nenhuma linha de codigo mudou desde a tentativa 1
+                        (ao escrever este registro, o T9c pegou o mesmo padrao
+                        de novo, neste texto; reescrito)
+verify:release 5  PASS  exit 0 - a arvore exata que foi para o ZIP
+suite com banco   PASS  383 / 380 / 0 / 3, depois de subir o PostgreSQL local
+```
+
+As falhas 2 e 3 sao de ambiente, conferidas antes de repetir: o banco respondia
+`SELECT 1` e os nomes resolviam. Sao a mesma familia da segunda execucao do E2E.
+
+## A10 - `verify:e2e`, e a migration no banco de producao
+
+**PASS, exit code 0, na terceira execucao**, com PostgreSQL real e Claude real -
+2 chamadas pagas nela. Os 21 requisitos em `PASSED`, `ok: true`. A saida literal,
+a tabela de subgates, a contagem por balde e o `E2E_LAST_RUN.json` integral
+estao no `E2E_REPORT.md`, com as tres execucoes:
+
+```text
+1a  FAIL  doctor strict: migration 004 pendente no banco do gate
+2a  FAIL  API temporaria com database=error e chamada real do visitante falhando;
+          causa NAO COMPROVADA - logo depois o banco e a Anthropic respondiam
+3a  PASS  mesmo codigo, mesmo comando, nenhuma mudanca no gate
+```
+
+**A 004 foi aplicada no banco de producao**, que e o banco do gate - por
+decisao do dono do projeto, perguntado antes. A 0.7.0 no ar usa o mesmo banco.
+O que sustentou a decisao: a 004 e aditiva; o codigo da 0.7.0 (commit
+`694c6c2`) so faz `SELECT allergy_id`, `DELETE` e `INSERT (user_id, allergy_id)`
+em `user_allergies`, entao o padrao preenche `standard` e a restricao aceita; e
+e reversivel com `DROP COLUMN`. Depois dela, o servico no ar respondeu
+status `ok`, database `connected`, versao 0.7.0, e as 7 alergias
+que ja existiam la ficaram `standard`.
+
+O subgate novo:
+
+```text
+[OK] severity verdict - alerta maximo: urgent no declarado, caution no traco; padrao igual a v0.8.0; modelo negando nao derruba o piso
+```
+
+Ele grava o nivel pela API real, le por OUTRO aparelho da conta e consulta o
+assistente com o codigo do backend lendo o perfil do PostgreSQL. O modelo e
+simulado de proposito e nega o conflito nos quatro casos - e a unica forma de
+forcar a negacao, que e o que o auditor faz, e nao custa chamada paga. Nao gasta
+requisicao de balde limitado: a contagem por balde e a da v0.8.0 (assistente 2,
+auth 7, colecoes 17, exportacao 1).
+
+## A11 - os 20 requisitos antigos continuam exigidos; agora sao 21
+
+Prova por execucao, sobre o `E2E_LAST_RUN.json` desta versao: para cada
+requisito do modo strict, um relatorio com SO aquele requisito em
+`NOT_EXECUTED` tem de reprovar, e reprovar so por ele.
+
+```text
+requisitos no modo strict (flag da IA ligada): 21
+faltando no E2E_LAST_RUN.json desta versao: []
+
+requisito                origem   presente   NOT_EXECUTED sozinho reprova
+backendProcess           v0.8.0   sim        sim, e so ele
+database                 v0.8.0   sim        sim, e so ele
+migrations               v0.8.0   sim        sim, e so ele
+auth                     v0.8.0   sim        sim, e so ele
+sessionSchema            v0.8.0   sim        sim, e so ele
+multiDevice              v0.8.0   sim        sim, e so ele
+isolation                v0.8.0   sim        sim, e so ele
+logout                   v0.8.0   sim        sim, e so ele
+assistantAuthority       v0.8.0   sim        sim, e so ele
+deterministicEngine      v0.8.0   sim        sim, e so ele
+fallback                 v0.8.0   sim        sim, e so ele
+privacy                  v0.8.0   sim        sim, e so ele
+historySync              v0.8.0   sim        sim, e so ele
+favoritesSync            v0.8.0   sim        sim, e so ele
+verdictFreshness         v0.8.0   sim        sim, e so ele
+manualCodeLookup         v0.8.0   sim        sim, e so ele
+accountExport            v0.8.0   sim        sim, e so ele
+accountDeletion          v0.8.0   sim        sim, e so ele
+severityVerdict          v0.9.0   sim        sim, e so ele
+anthropicReal            v0.8.0   sim        sim, e so ele
+assistantAuthenticated   v0.8.0   sim        sim, e so ele
+
+os 20 da v0.8.0 presentes: 20 de 20
+novos: ["severityVerdict"]
+```
+
+Os testes que travam isso na suite, verdes:
+
+```text
+A11: os 20 requisitos da v0.8.0 continuam exigidos, um a um
+A11: o modo strict tem exatamente 21 requisitos, os 20 da v0.8.0 mais severityVerdict
+A11: severityVerdict e requisito BASE e reprova sozinho          (inclusive "SKIPPED")
+A11: os 18 requisitos da v0.7.6 continuam exigidos, um a um
+A10: desde a v0.7.2 entraram so manualCodeLookup, os dois da v0.8.0 e o da v0.9.0, nomeados
+D2: o conjunto de requisitos do modo strict e exatamente este
+```
+
+O teste da v0.8.0 que travava o total em "exatamente 20" foi substituido pelo de
+"exatamente 21", que nomeia o unico requisito novo - nao removido sem troca. O
+mutante X9 (o gate perde `severityVerdict`) e o W11 provam que ele pega a
+perda. `severityVerdict` e BASE: depende so de PostgreSQL e do motor, nao da
+flag da IA - sem a flag, o modo strict exige 19 (os 16 base antigos, os 2 da
+v0.8.0 e ele); com a flag, os 21.
+
+## A12 - limpeza do banco depois do gate
+
+Residuo **0** em todos os padroes de teste, e nenhuma linha orfa. Saida completa
+no `E2E_REPORT.md`.
+
+## A13 - `verify:deploy` inalterado e somente leitura
+
+`git diff` do `scripts/verify-deploy.js` contra a v0.8.0: vazio. Nenhuma rota
+nova foi acrescentada a ele, e o P13 continua verde.
+
+```text
+verify:deploy simulado (local, http)   FAIL, exit 1 - 7 PASS, D2 FAIL (sem TLS local)
+verify:deploy REAL (somente leitura)   FAIL, exit 1 - 7 PASS, D1 FAIL
+                                       "repositorio declara 0.9.0 e o deploy anuncia 0.7.0"
+```
+
+Os dois FAIL sao os esperados. Os sete PASS do real medem a 0.7.0.
+
+## A14 - varredura do nome antigo
+
+Fora de `node_modules`, `dist`, `.git`, `releases` e dos tres relatorios
+historicos, o nome antigo aparece so em `backend/tests/productName.test.js`, o
+teste que o procura. Os testes P1t estao verdes.
+
+## A15 - versao nos sete pontos
+
+```text
+package.json                             0.9.0
+backend/package.json                     0.9.0
+package-lock.json (raiz e "")            0.9.0 / 0.9.0
+backend/package-lock.json (raiz e "")    0.9.0 / 0.9.0
+/api/health de um processo real          D1 do alvo simulado: "ambos declaram 0.9.0"; E2E_LAST_RUN.json: 0.9.0
+README                                   # NutriScan v0.9.0
+CHANGELOG                                ## NutriScan v0.9.0 - 2026-10-16
+```
+
+## A interface, verificada no navegador
+
+Contra o backend local (porta 3200, PostgreSQL local, sem chave de IA), servindo
+o `dist/` compilado, com uma conta de teste com Leite e Amendoim:
+
+- A tela inicial mostrou o convite. "Revisar minhas alergias" abriu Alergias e
+  marcou o convite como visto; "Agora nao", testado depois, tirou o convite, e
+  ele nao voltou ao recarregar.
+- Em Alergias, a secao "Alerta maximo" listou as duas alergias desmarcadas.
+  Marcar Amendoim gravou no servidor `{ milk: "standard", peanut: "strict" }`, e
+  a linha ganhou o tom de alerta.
+- Com Leite tambem em alerta maximo, o produto "leite" mostrou a etiqueta
+  "Leite/lactose · alerta maximo".
+- No assistente, sem chave de IA, o veredito local mostrou "Alerta maximo:
+  conflito com o seu perfil", a etiqueta "Leite/lactose · alerta maximo" e o
+  texto do alerta.
+- Em Conta, os chips sairam como "Leite/lactose · alerta maximo".
+- Sem conta, a opcao nao aparece; a tela diz "Com conta, voce pode pedir alerta
+  maximo em cada alergia."
+- Em 320 px: Alergias e o convite sem rolagem lateral; menor fonte 17 px na
+  secao e 18 px no convite; linhas de 52 px e botoes de 48 e 56 px.
+- No console, so status de rede esperados (401 antes do login, 503 do
+  assistente sem chave).
+
+A conta de teste foi apagada do banco local depois.
+
+## Observacoes descritas e NAO corrigidas - para decisao
+
+Fora das secoes 6, 7 e 8. Descritas, como manda a secao 17.
+
+1. **Orientacao de conduta que JA EXISTIA no produto.** A secao 5.1 proibe
+   orientacao medica "em nenhum lugar do produto ou da documentacao", e a secao
+   14 lista isso como bloqueio. Estes textos sao anteriores a v0.9.0 e nao foram
+   tocados:
+
+   ```text
+   backend/src/ai/assistantService.js:219     resposta local de urgencia: "...procure
+                                              atendimento de emergencia agora."
+   backend/src/ai/assistantPrompt.js:48-49    system prompt: "oriente busca imediata de
+                                              atendimento de emergencia"
+   src/pages/Assistant/AssistantPage.jsx:35   aviso da tela: "Em caso de reacao
+                                              alergica, procure atendimento."
+   src/services/assistantService.js:321       fallback local: "...procure emergencia agora."
+   src/services/assistantService.js:457       fallback local, texto de alergia
+   ```
+
+   Sao o caminho de urgencia do assistente, e remove-los e decisao de produto e
+   de seguranca do usuario, nao detalhe desta versao. Nenhum texto NOVO desta
+   versao orienta conduta - um teste confere o texto novo.
+2. **App antigo aberto em outro aparelho.** A rota SUBSTITUI o perfil, e corpo
+   sem `alertLevels` significa `standard`, como a secao 8 manda. Uma aba com o
+   app de antes da v0.9.0, ainda aberta, que salve as alergias volta todas para
+   `standard`. Alternativa possivel, nao implementada: corpo sem `alertLevels`
+   preservar o nivel das alergias que continuam no perfil.
+3. **Visitante nao tem nivel de alerta.** O nivel vive no perfil, no banco. Dar
+   nivel ao visitante pediria um campo novo na requisicao do assistente.
+4. **O convite e por aparelho**, como descrito em 6.2.
+5. **Herdado da v0.8.0, ainda aberto:** a tela Conta rola de lado em 320 px (a
+   grade do `styles.css` de design), e o log de erro interno grava o objeto de
+   erro inteiro.
+
+## O que esta versao NAO prova
+
+- **A camera em hardware real: NAO EXECUTADO.**
+- **O deploy real da 0.9.0: NAO EXECUTADO.** Nada foi publicado; no ar esta a
+  0.7.0. O que mudou no banco de producao foi so a migration 004, por decisao do
+  dono.
+- **HTTPS da 0.9.0: NAO COMPROVADO** - o alvo simulado nao tem TLS.
+- **A tela em aparelho real: NAO EXECUTADO.** A verificacao foi no navegador
+  embutido do ambiente de desenvolvimento; a largura de 320 px foi emulada.
+- **A causa da segunda execucao do E2E: NAO COMPROVADA.**
+- **Adequacao clinica e conformidade juridica: nao declaradas**, e nao sao algo
+  que teste prove.
+
+## Historico de auditorias anteriores
+
+## Auditoria da v0.8.0 - 2026-10-12
 
 ## Escopo
 
@@ -766,8 +1492,6 @@ Nenhuma delas pede exclusao logica, e nenhuma foi implementada.
   navegador embutido do ambiente de desenvolvimento; a largura de 320 px foi
   emulada.
 - **Conformidade juridica: nao declarada**, e nao e algo que teste prove.
-
-## Historico de auditorias anteriores
 
 ## Auditoria da v0.7.6 - 2026-10-12
 

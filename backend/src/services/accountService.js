@@ -52,9 +52,13 @@ export async function exportarDadosDoTitular(userId) {
     versaoDoFormato: VERSAO_DO_FORMATO,
     geradoEm: new Date().toISOString(),
     conta: { nome: conta.nome, email: conta.email, criadaEm: data(conta.criadaEm) },
+    // `alertaMaximo` (v0.9.0): o nivel de alerta que a pessoa declarou. E dado
+    // dela, entao vai no arquivo. Campo acrescentado, sem mudar nenhum outro:
+    // quem le a versao 1 do formato continua lendo do mesmo jeito.
     alergias: alergias.map((linha) => ({
       id: linha.allergy_id,
       nome: ROTULOS_DE_ALERGIA.get(linha.allergy_id) ?? linha.allergy_id,
+      alertaMaximo: linha.alert_level === "strict",
       marcadaEm: data(linha.created_at),
     })),
     historico: historico.map((linha) => ({

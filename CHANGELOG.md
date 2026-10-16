@@ -1,5 +1,129 @@
 # Changelog
 
+## NutriScan v0.9.0 - 2026-10-16
+
+Nivel de alerta por alergia: o "alerta maximo". Minor, e nao patch: capacidade
+nova de produto, e o modelo de dados de alergias ganha uma coluna.
+
+Isto descreve o que o software faz. Nao e orientacao de saude, e esta versao nao
+declara o NutriScan clinicamente adequado nem em conformidade juridica.
+
+### O projeto segue NAO PUBLICADO
+
+As versoes 0.7.1 a 0.9.0 nunca foram ao ar. O servico `nutriscan` no Render
+continua rodando a **0.7.0**. Esta versao nao publica nada.
+
+### O problema, pelo que era
+
+Ate a v0.8.0 o motor tratava todo conflito de alergia do mesmo jeito: o
+alergenico declarado subia o risco para `caution`, e o traco - "pode conter
+tracos de..." - **nao elevava nada**. Uma pessoa que quer ser avisada ate do
+traco recebia, diante de "pode conter tracos de amendoim", o mesmo tratamento
+de quem nao se importa com traco. Para ela, o traco e justamente a informacao
+que importa.
+
+### O que entrou
+
+Por alergia, a pessoa com conta escolhe entre dois niveis:
+
+```text
+standard   alerta padrao   o comportamento de sempre, identico ao da v0.8.0
+strict     alerta maximo   traco vira conflito (piso caution); o conflito
+                           declarado sobe o piso para urgent
+```
+
+- **Dois niveis, e nao tres.** O do meio nao mudaria nada do que a pessoa faz.
+- **"Alerta maximo", e nao "grave".** O nome descreve o que o app faz, nao uma
+  condicao de saude. No codigo o campo e `alertLevel`: `severity` ja e, no
+  motor, a classificacao do rotulo (`contains`/`traces`).
+- **O padrao preserva o comportamento atual.** Toda alergia existente vira
+  `standard` na migration; nada sobe para `strict` sozinho. Um cartao na tela
+  inicial convida a revisar, uma vez, e sai com um toque.
+- **O motor continua a autoridade.** Muda a RESPOSTA a classificacao, nao a
+  classificacao. Para alergia `standard`, o veredito e o da v0.8.0, byte a byte
+  - 20 combinacoes comparadas com a saida gravada da v0.8.0.
+- **O veredito distingue os casos:** conflito de alergia `strict` traz
+  `origin` (`declared`/`traces`) e `alertLevel`; o de alergia `standard`
+  continua `{ id, label }`.
+- **A IA nao decide, nao le e nao recebe o nivel.** O piso e imposto depois da
+  resposta do modelo; uma chave de nivel na resposta derruba a resposta com
+  `AI_SCHEMA_INVALID`; e o nivel nao vai ao modelo, nem dentro do
+  `allergySnapshot` - o prompt permitia, a decisao foi nao usar.
+- **Nunca no log.** O registro de minimizacao perdeu `enforcedSafety`, que diria
+  "urgent" so quando a alergia e de alerta maximo.
+- **Exportacao e exclusao:** a exportacao ganha `alertaMaximo` por alergia
+  (campo acrescentado; `versaoDoFormato` continua 1); a exclusao leva o nivel
+  pela cascata de `user_allergies`.
+- **Nada congelado:** historico e favoritos continuam sem nivel e sem veredito.
+
+### Banco
+
+Migration `004_nivel_de_alerta.sql`, idempotente:
+
+```sql
+ALTER TABLE user_allergies
+  ADD COLUMN IF NOT EXISTS alert_level text NOT NULL DEFAULT 'standard';
+-- restricao criada so se ainda nao existir:
+ALTER TABLE user_allergies
+  ADD CONSTRAINT user_allergies_alert_level_check
+  CHECK (alert_level IN ('standard', 'strict'));
+```
+
+CHECK, e nao ENUM: mudar a lista depois e trocar uma restricao, sem recriar
+tipo. O banco recusa outro valor mesmo num INSERT direto em SQL.
+
+### API
+
+`PUT /api/profile/allergies` aceita `alertLevels: { allergyId: "standard" |
+"strict" }`, opcional. Corpo sem ele continua valido e significa `standard`.
+Nivel desconhecido, nivel para alergia fora do perfil e chave fora do catalogo
+dao `400 VALIDATION_ERROR`. O perfil publico (`/api/profile`, `/api/auth/me`,
+login, cadastro) ganha `alertLevels`, com uma entrada por alergia.
+
+### Interface
+
+Em **Alergias** e em **Conta**, abaixo da lista, a secao "Alerta maximo", com
+uma caixa por alergia marcada. Na tela do produto, a etiqueta diz "Amendoim ·
+alerta maximo". No assistente, o bloco do veredito ganha o titulo "Alerta
+maximo: conflito com o seu perfil" quando o piso e `urgent`, e "Pode conter X ·
+alerta maximo" no traco. Sem conta, a tela diz que a opcao existe com conta.
+
+### Gate E2E: 20 -> 21 requisitos
+
+Subgate `severityVerdict`: o perfil e gravado pela API real e lido por outro
+aparelho da conta; o veredito sai do backend com o perfil do PostgreSQL e um
+modelo simulado que nega o conflito em todos os casos. Alerta maximo: `urgent`
+no declarado e `caution` no traco; alerta padrao: o da v0.8.0. Requisito BASE
+em `buildStrictRequirements`. Um teste confere os 20 da v0.8.0 um a um, outro
+que o total e 21.
+
+### Testes e mutacao
+
+S1-S18 em `backend/tests/alertLevel.test.js` (sem banco) e
+`backend/tests/alertLevelIntegration.test.js` (PostgreSQL real). S11 e S12
+montam um schema so com as migrations - mudar uma migration nao muda o banco ja
+migrado. `scripts/mutation-check.js` ganhou 14 mutantes (X1-X13, com X6b). O
+mutante P4 (v0.7.3) teve a ancora refeita: a linha do piso mudou de forma; o
+defeito injetado e o mesmo. Resultado em `AUDIT_REPORT.md`.
+
+### Descrito e NAO alterado - para decisao
+
+- **Orientacao de conduta que ja existia no produto**, anterior a esta versao:
+  a resposta local de urgencia do assistente e o fallback do frontend dizem
+  "procure atendimento de emergencia", o aviso da tela do assistente diz "Em
+  caso de reacao alergica, procure atendimento", e o system prompt manda o
+  modelo orientar atendimento. O prompt desta versao proibe orientacao medica
+  no produto; mexer nisso fica fora das secoes 6 a 8. Detalhes no
+  `AUDIT_REPORT.md`.
+- **App antigo aberto.** Uma aba com o app de antes da v0.9.0 que salve as
+  alergias manda o corpo sem nivel, e o perfil volta para `standard`, como o
+  contrato manda.
+
+### O que esta versao NAO prova
+
+- A leitura da camera em aparelho real: **NAO EXECUTADO**.
+- O deploy real da 0.9.0: **NAO EXECUTADO** - nada foi publicado.
+
 ## NutriScan v0.8.0 - 2026-10-12
 
 Direitos do titular: exportar os proprios dados e excluir a propria conta.

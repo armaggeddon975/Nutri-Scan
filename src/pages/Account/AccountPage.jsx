@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Bot, Download, Lock, LogIn, LogOut, Mail, ShieldAlert, Trash2, User, UserPlus } from "lucide-react";
 
 import { ALLERGY_OPTIONS } from "../../data/allergens";
+import { AlertLevelPicker } from "../../components/allergies/AlertLevelPicker";
 import { AllergyPicker } from "../../components/allergies/AllergyPicker";
 import { PageHeader } from "../../components/common/PageHeader";
 import { StatusLine } from "../../components/common/StatusLine";
@@ -94,6 +95,7 @@ function SeusDados({ dataStatus, onExportData, onDeleteAccount }) {
 export function AccountPage({
   currentUser,
   selectedAllergies,
+  alertLevels,
   authMode,
   authForm,
   authStatus,
@@ -103,6 +105,7 @@ export function AccountPage({
   onSubmitAuth,
   onLogout,
   onToggleAllergy,
+  onSetAlertLevel,
   onExportData,
   onDeleteAccount,
 }) {
@@ -130,6 +133,7 @@ export function AccountPage({
                   return (
                     <span className="soft-tag" key={id}>
                       {allergy?.label || id}
+                      {alertLevels?.[id] === "strict" ? " · alerta máximo" : ""}
                     </span>
                   );
                 })
@@ -149,6 +153,11 @@ export function AccountPage({
               <h4>Alergias desse perfil</h4>
             </div>
             <AllergyPicker selectedAllergies={selectedAllergies} onToggleAllergy={onToggleAllergy} />
+            <AlertLevelPicker
+              selectedAllergies={selectedAllergies}
+              alertLevels={alertLevels}
+              onSetAlertLevel={onSetAlertLevel}
+            />
           </article>
 
           <SeusDados dataStatus={dataStatus} onExportData={onExportData} onDeleteAccount={onDeleteAccount} />

@@ -176,7 +176,7 @@ test("T5 autoridade do perfil: veredito usa o banco, nao o guestAllergies", asyn
       guestAllergies: ["soy"],
     },
     clienteMentiroso(),
-    { loadUserAllergies: async () => ["milk"], logger: { warn: () => {} } },
+    { loadUserAllergies: async () => ["milk"], loadUserAlertLevels: async () => ({ milk: "standard" }), logger: { warn: () => {} } },
   );
 
   assert.equal(resposta.allergyVerdict.status, "conflict");
@@ -274,7 +274,7 @@ test("T8 privacidade: payload ao modelo continua sem segredo ou dado pessoal", a
       guestAllergies: ["soy"],
     },
     clienteMentiroso({}, calls),
-    { loadUserAllergies: async () => ["milk"], logger: { warn: () => {} } },
+    { loadUserAllergies: async () => ["milk"], loadUserAlertLevels: async () => ({ milk: "standard" }), logger: { warn: () => {} } },
   );
 
   // Somente `messages`, que e por onde os dados nao confiaveis viajam. O

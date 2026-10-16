@@ -12,13 +12,26 @@ const PRESENTATION = {
   clear: { tone: "safe", Icon: ShieldCheck, title: "Sem conflito com o seu perfil" },
 };
 
+// Rotulo de cada item. Conflito de alerta maximo traz `origin` e `alertLevel`
+// (v0.9.0); sem eles, e o conflito declarado de sempre.
+function riskText(risk) {
+  const base = risk.origin === "traces" ? `Pode conter ${risk.label}` : risk.label;
+  return risk.alertLevel === "strict" ? `${base} · alerta máximo` : base;
+}
+
 export function AllergyVerdict({ verdict }) {
   const presentation = PRESENTATION[verdict?.status];
   // "not_evaluated" (sem produto ou sem alergia no perfil) nao vira alerta:
   // o motor nao avaliou nada, e afirmar qualquer coisa ali seria invencao.
   if (!presentation) return null;
 
-  const { tone, Icon, title } = presentation;
+  const { tone, Icon } = presentation;
+  // O piso `urgent` so existe para conflito declarado de alergia em alerta
+  // maximo. O titulo diz isso; o resto da caixa e o mesmo.
+  const title =
+    verdict.status === "conflict" && verdict.minimumSafety === "urgent"
+      ? "Alerta máximo: conflito com o seu perfil"
+      : presentation.title;
   const risks = verdict.status === "traces" ? verdict.traces : verdict.conflicts;
 
   return (
@@ -31,7 +44,7 @@ export function AllergyVerdict({ verdict }) {
         <p className="allergy-verdict-tags">
           {risks.map((risk) => (
             <span className="danger-tag" key={risk.id}>
-              {risk.label}
+              {riskText(risk)}
             </span>
           ))}
         </p>

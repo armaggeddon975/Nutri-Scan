@@ -97,7 +97,7 @@ test("perfil autenticado do PostgreSQL vence guestAllergies do request", async (
       guestAllergies: ["soy"],
     },
     captureMockClient(calls),
-    { loadUserAllergies },
+    { loadUserAllergies, loadUserAlertLevels: async () => ({ milk: "standard" }) },
   );
 
   const snapshot = snapshotFromCall(calls[0]);

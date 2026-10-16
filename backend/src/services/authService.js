@@ -5,7 +5,7 @@ import {
   findUserByEmailOrNameKey,
   findUserConflict,
   findUserById,
-  getUserAllergies,
+  getUserAllergyProfile,
   replaceUserAllergies,
 } from "../repositories/userRepository.js";
 import {
@@ -147,9 +147,9 @@ export async function loginUser(input) {
   }
 
   return withTransaction(async (client) => {
-    const allergies = await getUserAllergies(user.id, client);
+    const { allergies, alertLevels } = await getUserAllergyProfile(user.id, client);
     const token = await createSessionForUser(user.id, client);
-    return { user: toPublicUser(user, allergies), token };
+    return { user: toPublicUser(user, allergies, alertLevels), token };
   });
 }
 
@@ -176,9 +176,9 @@ export async function getUserFromSessionToken(token) {
   const user = await findUserById(session.user_id);
   if (!user) return null;
 
-  const allergies = await getUserAllergies(user.id);
+  const { allergies, alertLevels } = await getUserAllergyProfile(user.id);
   return {
-    user: toPublicUser(user, allergies),
+    user: toPublicUser(user, allergies, alertLevels),
     tokenHash,
   };
 }

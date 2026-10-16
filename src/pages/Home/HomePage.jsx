@@ -43,7 +43,28 @@ const SHORTCUTS = [
   },
 ];
 
-export function HomePage({ selectedAllergies, productAnalysis, onNavigate, onSearchAndOpen }) {
+// Convite do alerta maximo (v0.9.0). Aparece uma vez, para quem tem conta e
+// alergia marcada e ainda nao usou o alerta maximo. Nao bloqueia nada: e um
+// cartao com dois botoes, e qualquer um dos dois o tira da tela de vez.
+function AlertInvite({ onReview, onDismiss }) {
+  return (
+    <section className="alert-invite" aria-label="Novidade: alerta máximo">
+      <p className="eyebrow">Novidade</p>
+      <h2>Alerta máximo</h2>
+      <p>Agora você escolhe, em cada alergia, se quer o aviso mais forte. Quer revisar as suas?</p>
+      <div className="alert-invite-actions">
+        <button className="primary-button" type="button" onClick={onReview}>
+          Revisar minhas alergias
+        </button>
+        <button className="secondary-button" type="button" onClick={onDismiss}>
+          Agora não
+        </button>
+      </div>
+    </section>
+  );
+}
+
+export function HomePage({ selectedAllergies, productAnalysis, onNavigate, onSearchAndOpen, alertInvite }) {
   const hasProfile = selectedAllergies.length > 0;
 
   return (
@@ -94,6 +115,10 @@ export function HomePage({ selectedAllergies, productAnalysis, onNavigate, onSea
           </span>
         </button>
       </div>
+
+      {alertInvite?.visible && (
+        <AlertInvite onReview={alertInvite.onReview} onDismiss={alertInvite.onDismiss} />
+      )}
 
       <section aria-label="Experimente" className="samples">
         <div className="samples-heading">

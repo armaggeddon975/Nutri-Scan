@@ -1,11 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 import { env } from "../config/env.js";
-import { getUserAllergies } from "../repositories/userRepository.js";
+import { getUserAlertLevels, getUserAllergies } from "../repositories/userRepository.js";
 import { buildAssistantContext } from "./contextBuilder.js";
 import {
   applyAllergyAuthority,
   buildAllergyVerdict,
+  declaredConflicts,
   isMinimizationAttempt,
   PROFILE_SOURCE,
 } from "../../../shared/allergyVerdict.js";
@@ -41,14 +42,21 @@ export function resetMinimizationAttempts() {
   minimizationAttempts = 0;
 }
 
+// O NIVEL DE ALERTA NUNCA VAI PARA O LOG (v0.9.0)
+//
+// Ate a v0.8.0 o registro levava `enforcedSafety`, o piso aplicado. Com o
+// alerta maximo, esse campo passaria a dizer "urgent" justamente quando a
+// alergia e `strict` - o log contaria qual alergia a pessoa marcou. O campo
+// saiu, e `conflicts` lista so o conflito DECLARADO, que existe com qualquer
+// nivel. Para o mesmo produto e as mesmas alergias, o registro e identico com
+// alerta padrao ou maximo; um teste confere isso.
 function recordMinimizationAttempt(verdict, logger = console) {
   minimizationAttempts += 1;
   logger.warn(
     JSON.stringify({
       event: "assistant.allergy_minimization_attempt",
-      conflicts: verdict.conflicts.map((risk) => risk.id),
+      conflicts: declaredConflicts(verdict).map((risk) => risk.id),
       modelSafety: "normal",
-      enforcedSafety: verdict.minimumSafety,
       total: minimizationAttempts,
     }),
   );
@@ -152,6 +160,16 @@ export async function buildAssistantProfileAllergies(req, guestAllergies, loadUs
   return guestAllergies;
 }
 
+// Nivel de alerta (v0.9.0): SO do perfil no PostgreSQL, como as alergias. Nao
+// existe nivel vindo do request - visitante e sempre `standard` -, e nada da
+// resposta do modelo chega aqui: o veredito e montado antes da chamada.
+export async function buildAssistantAlertLevels(req, loadUserAlertLevels = getUserAlertLevels) {
+  if (req.user?.id) {
+    return loadUserAlertLevels(req.user.id);
+  }
+  return {};
+}
+
 // Ponto unico de saida do endpoint. Toda resposta - do modelo, das protecoes
 // locais ou do caminho de urgencia - passa por aqui antes de chegar ao usuario.
 // Ter um so lugar torna a invariante auditavel: nenhuma resposta com conflito
@@ -170,6 +188,13 @@ export async function answerAssistantChat(req, input, client = getAnthropicClien
     data.guestAllergies,
     options.loadUserAllergies,
   );
+  const alertLevels = await buildAssistantAlertLevels(req, options.loadUserAlertLevels);
+  // O contexto - e o allergySnapshot dentro dele, que e o que vai ao modelo -
+  // NAO recebe o nivel de alerta. O prompt da v0.9.0 permitia manda-lo dentro
+  // do snapshot; a decisao foi nao usar a permissao. O modelo nao precisa do
+  // nivel para nada (o veredito e o piso sao do servidor), e um modelo que nao
+  // recebe o nivel nao consegue comentar, questionar nem "corrigir" o que a
+  // pessoa declarou. E dado de saude a menos saindo para terceiro.
   const context = buildAssistantContext({
     product: data.product,
     allergies: profileAllergies,
@@ -184,6 +209,7 @@ export async function answerAssistantChat(req, input, client = getAnthropicClien
     profileAllergies: context.allergySnapshot.profileAllergies,
     hasProductContext: context.allergySnapshot.hasProductContext,
     profileSource: req.user?.id ? PROFILE_SOURCE.database : PROFILE_SOURCE.request,
+    alertLevels,
   });
   const finalize = (response) => finalizeAssistantResponse(response, verdict, options);
 

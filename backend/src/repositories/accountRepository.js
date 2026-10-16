@@ -23,7 +23,7 @@ export async function lerConta(userId, client = { query }) {
 
 export async function lerAlergias(userId, client = { query }) {
   const { rows } = await client.query(
-    "SELECT allergy_id, created_at FROM user_allergies WHERE user_id = $1 ORDER BY allergy_id",
+    "SELECT allergy_id, alert_level, created_at FROM user_allergies WHERE user_id = $1 ORDER BY allergy_id",
     [userId],
   );
   return rows;

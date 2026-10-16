@@ -190,6 +190,7 @@ const reportCompleto = {
   manualCodeLookup: "PASSED",
   accountExport: "PASSED",
   accountDeletion: "PASSED",
+  severityVerdict: "PASSED",
   anthropicReal: "EXECUTED_GENERIC_AND_PRODUCT",
   assistantAuthenticated: "PASSED",
 };
@@ -264,6 +265,7 @@ test("D2: o conjunto de requisitos do modo strict e exatamente este", () => {
     "manualCodeLookup",
     "accountExport",
     "accountDeletion",
+    "severityVerdict",
   ]);
 
   const chavesComFlag = buildStrictRequirements(reportCompleto, { anthropicFlagEnabled: true }).map(
@@ -436,8 +438,8 @@ test("A12: os 14 requisitos anteriores a v0.7.0 continuam exigidos, um a um", ()
   assert.equal(REQUISITOS_ANTES_DA_V070.length, 14);
 
   // A v0.7.0 acrescentou tres (historico, favoritos, frescor do veredito), a
-  // v0.7.3 acrescentou um (`manualCodeLookup`) e a v0.8.0, dois (exportar e
-  // excluir a conta).
+  // v0.7.3 acrescentou um (`manualCodeLookup`), a v0.8.0, dois (exportar e
+  // excluir a conta), e a v0.9.0, um (`severityVerdict`).
   //
   // A assercao aqui e sobre o que este teste realmente guarda: que nenhum dos
   // 14 antigos sumiu e que nada foi acrescentado sem ser nomeado. Travar um
@@ -447,7 +449,15 @@ test("A12: os 14 requisitos anteriores a v0.7.0 continuam exigidos, um a um", ()
   const acrescentados = atuais.filter((chave) => !REQUISITOS_ANTES_DA_V070.includes(chave));
   assert.deepEqual(
     acrescentados,
-    ["historySync", "favoritesSync", "verdictFreshness", "manualCodeLookup", "accountExport", "accountDeletion"],
+    [
+      "historySync",
+      "favoritesSync",
+      "verdictFreshness",
+      "manualCodeLookup",
+      "accountExport",
+      "accountDeletion",
+      "severityVerdict",
+    ],
     `requisitos acrescentados desde a v0.6.9 fora do esperado: ${acrescentados.join(", ")}`,
   );
 });
@@ -518,7 +528,7 @@ test("A10: os 17 requisitos da v0.7.2 continuam exigidos, um a um", () => {
   }
 });
 
-test("A10: desde a v0.7.2 entraram so manualCodeLookup e os dois da v0.8.0, nomeados", () => {
+test("A10: desde a v0.7.2 entraram so manualCodeLookup, os dois da v0.8.0 e o da v0.9.0, nomeados", () => {
   // Ate a v0.7.6 este teste travava o total em 18. O total exato agora e do
   // teste A11, abaixo; aqui fica o que este sempre guardou: nada entrou desde a
   // v0.7.2 sem ser nomeado.
@@ -528,7 +538,7 @@ test("A10: desde a v0.7.2 entraram so manualCodeLookup e os dois da v0.8.0, nome
   const novos = atuais.filter((chave) => !REQUISITOS_DA_V072.includes(chave));
   assert.deepEqual(
     novos,
-    ["manualCodeLookup", "accountExport", "accountDeletion"],
+    ["manualCodeLookup", "accountExport", "accountDeletion", "severityVerdict"],
     `requisitos novos inesperados: ${novos.join(", ")}`,
   );
 });
@@ -558,15 +568,56 @@ test("A11: os 18 requisitos da v0.7.6 continuam exigidos, um a um", () => {
   }
 });
 
-test("A11: o modo strict tem exatamente 20 requisitos, 18 antigos mais os dois novos", () => {
+// A11 da v0.9.0: o subgate novo nao pode custar nenhum requisito antigo.
+//
+// A v0.8.0 saiu com 20 requisitos em modo strict, aprovada por auditoria
+// externa. A v0.9.0 acrescenta `severityVerdict` e passa a 21. Ate a v0.8.0
+// havia aqui um teste que travava o total em 20; ele foi substituido por este,
+// que trava em 21 e nomeia o unico requisito novo - nao removido sem troca.
+const REQUISITOS_DA_V080 = [...REQUISITOS_DA_V076, "accountExport", "accountDeletion"];
+
+test("A11: os 20 requisitos da v0.8.0 continuam exigidos, um a um", () => {
+  assert.equal(REQUISITOS_DA_V080.length, 20, "a lista de referencia mudou de tamanho");
+
   const atuais = buildStrictRequirements(reportCompleto, { anthropicFlagEnabled: true }).map(
     ([chave]) => chave,
   );
 
-  assert.equal(atuais.length, 20, `o modo strict tem ${atuais.length} requisitos`);
+  for (const chave of REQUISITOS_DA_V080) {
+    assert.ok(atuais.includes(chave), `o requisito ${chave} da v0.8.0 sumiu do modo strict`);
+    assert.deepEqual(
+      findMissingRequirements({ ...reportCompleto, [chave]: "NOT_EXECUTED" }, { anthropicFlagEnabled: true }),
+      [chave],
+      `o requisito ${chave} da v0.8.0 deixou de reprovar quando nao executado`,
+    );
+  }
+});
 
-  const novos = atuais.filter((chave) => !REQUISITOS_DA_V076.includes(chave));
-  assert.deepEqual(novos, ["accountExport", "accountDeletion"], `requisitos novos inesperados: ${novos.join(", ")}`);
+test("A11: o modo strict tem exatamente 21 requisitos, os 20 da v0.8.0 mais severityVerdict", () => {
+  const atuais = buildStrictRequirements(reportCompleto, { anthropicFlagEnabled: true }).map(
+    ([chave]) => chave,
+  );
+
+  assert.equal(atuais.length, 21, `o modo strict tem ${atuais.length} requisitos`);
+
+  const novos = atuais.filter((chave) => !REQUISITOS_DA_V080.includes(chave));
+  assert.deepEqual(novos, ["severityVerdict"], `requisitos novos inesperados: ${novos.join(", ")}`);
+});
+
+test("A11: severityVerdict e requisito BASE e reprova sozinho", () => {
+  // Depende de PostgreSQL e do motor, nao de IA: sem a flag continua exigido.
+  for (const flag of [true, false]) {
+    assert.deepEqual(
+      findMissingRequirements({ ...reportCompleto, severityVerdict: "NOT_EXECUTED" }, { anthropicFlagEnabled: flag }),
+      ["severityVerdict"],
+      `severityVerdict deixou de reprovar (flag da IA ${flag})`,
+    );
+    assert.deepEqual(
+      findMissingRequirements({ ...reportCompleto, severityVerdict: "SKIPPED" }, { anthropicFlagEnabled: flag }),
+      ["severityVerdict"],
+      "SKIP nao pode contar como PASS",
+    );
+  }
 });
 
 test("A11: accountExport e accountDeletion sao requisitos BASE e reprovam sozinhos", () => {

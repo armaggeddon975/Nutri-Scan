@@ -61,8 +61,10 @@ import {
   loadScannerLib,
 } from "./services/scannerService";
 import {
+  readAlertInviteSeen,
   readStoredAllergies,
   readStoredUsers,
+  writeAlertInviteSeen,
   writeStoredAllergies,
 } from "./services/storageService";
 import { scanAllergies } from "./utils/allergens";
@@ -89,6 +91,7 @@ function getPublicUser(user) {
     name: user.name,
     email: user.email,
     allergies: user.allergies || [],
+    alertLevels: user.alertLevels || {},
     createdAt: user.createdAt,
   };
 }
@@ -167,6 +170,12 @@ function App() {
   const [selectedAllergies, setSelectedAllergies] = useState(() => getInitialAllergies());
   const selectedAllergiesRef = useRef(selectedAllergies);
   const confirmedAllergiesRef = useRef(selectedAllergies);
+  // Nivel de alerta por alergia (v0.9.0). So existe com conta: vem do perfil no
+  // banco. O visitante e sempre `standard`, e a tela nem mostra a opcao.
+  const [alertLevels, setAlertLevels] = useState({});
+  const alertLevelsRef = useRef({});
+  const confirmedAlertLevelsRef = useRef({});
+  const [alertInviteSeen, setAlertInviteSeen] = useState(true);
   const currentUserRef = useRef(null);
   const [authMode, setAuthMode] = useState("login");
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
@@ -193,13 +202,25 @@ function App() {
     message: "Busque um alimento ou ligue a câmera.",
   });
 
+  // O nivel que veio do servidor, numa chamada so: estado, referencia e o
+  // ultimo confirmado andam juntos.
+  const applyServerAlertLevels = useCallback((user) => {
+    const levels = user?.alertLevels && typeof user.alertLevels === "object" ? user.alertLevels : {};
+    alertLevelsRef.current = levels;
+    confirmedAlertLevelsRef.current = levels;
+    setAlertLevels(levels);
+  }, []);
+
   const restoreGuestSession = useCallback((message, type = "ready") => {
     const guestAllergies = readStoredAllergies();
     currentUserRef.current = null;
     selectedAllergiesRef.current = guestAllergies;
     confirmedAllergiesRef.current = guestAllergies;
+    alertLevelsRef.current = {};
+    confirmedAlertLevelsRef.current = {};
     setCurrentUser(null);
     setSelectedAllergies(guestAllergies);
+    setAlertLevels({});
     setAuthStatus({ type, message });
   }, []);
 
@@ -224,6 +245,7 @@ function App() {
         setSelectedAllergies(serverAllergies);
         selectedAllergiesRef.current = serverAllergies;
         confirmedAllergiesRef.current = serverAllergies;
+        applyServerAlertLevels(user);
         setAuthStatus({
           type: "success",
           message: `Sessão recuperada, ${user.name}.`,
@@ -242,7 +264,22 @@ function App() {
     return () => {
       active = false;
     };
-  }, [restoreGuestSession]);
+  }, [restoreGuestSession, applyServerAlertLevels]);
+
+  // Convite do alerta maximo (v0.9.0): uma vez por conta neste aparelho, so
+  // para quem tem alergia marcada e ainda nao usou o alerta maximo.
+  useEffect(() => {
+    setAlertInviteSeen(readAlertInviteSeen(currentUser?.id));
+  }, [currentUser?.id]);
+  const alertInviteVisible =
+    Boolean(currentUser) &&
+    selectedAllergies.length > 0 &&
+    !alertInviteSeen &&
+    !Object.values(alertLevels).includes("strict");
+  const dismissAlertInvite = () => {
+    writeAlertInviteSeen(currentUser?.id);
+    setAlertInviteSeen(true);
+  };
 
   const nutrientRows = useMemo(() => getNutrientRows(product?.nutriments), [product]);
   const allergyScan = useMemo(
@@ -713,7 +750,9 @@ function App() {
     searchProduct(String(formQuery || query));
   };
 
-  const saveAllergiesForSession = async (nextAllergies, userSnapshot, version) => {
+  // `nextLevels` (v0.9.0) viaja na MESMA fila das alergias: uma gravacao leva
+  // as duas coisas, e a resposta do servidor confirma as duas.
+  const saveAllergiesForSession = async (nextAllergies, nextLevels, userSnapshot, version) => {
     if (!userSnapshot) {
       if (writeStoredAllergies(nextAllergies)) {
         confirmedAllergiesRef.current = nextAllergies;
@@ -733,17 +772,22 @@ function App() {
     if (currentUserRef.current?.id !== userSnapshot.id) return;
 
     try {
-      const { user } = await updateProfileAllergies(nextAllergies);
+      const { user } = await updateProfileAllergies(nextAllergies, nextLevels);
       if (currentUserRef.current?.id !== userSnapshot.id) return;
 
       const serverAllergies = Array.isArray(user?.allergies) ? user.allergies : nextAllergies;
+      const serverLevels =
+        user?.alertLevels && typeof user.alertLevels === "object" ? user.alertLevels : nextLevels;
       const publicUser = getPublicUser(user);
       currentUserRef.current = publicUser;
       confirmedAllergiesRef.current = serverAllergies;
+      confirmedAlertLevelsRef.current = serverLevels;
       setCurrentUser(publicUser);
       if (shouldApplyAllergySaveResult(version, allergySaveVersionRef.current)) {
         selectedAllergiesRef.current = serverAllergies;
         setSelectedAllergies(serverAllergies);
+        alertLevelsRef.current = serverLevels;
+        setAlertLevels(serverLevels);
       }
       setAuthStatus({
         type: "success",
@@ -762,6 +806,8 @@ function App() {
 
       if (shouldApplyAllergySaveResult(version, allergySaveVersionRef.current)) {
         setSelectedAllergies(confirmedAllergiesRef.current);
+        alertLevelsRef.current = confirmedAlertLevelsRef.current;
+        setAlertLevels(confirmedAlertLevelsRef.current);
         setAuthStatus({
           type: "error",
           message: "Não consegui salvar. Tente de novo.",
@@ -777,12 +823,34 @@ function App() {
       : [...previousAllergies, id];
     const userSnapshot = currentUserRef.current;
     const version = ++allergySaveVersionRef.current;
+    // Alergia removida leva o nivel junto; alergia nova entra como `standard`.
+    const nextLevels = Object.fromEntries(
+      Object.entries(alertLevelsRef.current).filter(([allergyId]) => nextAllergies.includes(allergyId)),
+    );
 
     selectedAllergiesRef.current = nextAllergies;
     setSelectedAllergies(nextAllergies);
+    alertLevelsRef.current = nextLevels;
+    setAlertLevels(nextLevels);
     allergySaveQueueRef.current = allergySaveQueueRef.current
       .catch(() => {})
-      .then(() => saveAllergiesForSession(nextAllergies, userSnapshot, version));
+      .then(() => saveAllergiesForSession(nextAllergies, nextLevels, userSnapshot, version));
+  };
+
+  // Liga ou desliga o alerta maximo de UMA alergia que a pessoa ja tem.
+  const setAllergyAlertLevel = (allergyId, level) => {
+    const userSnapshot = currentUserRef.current;
+    if (!userSnapshot) return;
+    const currentAllergies = selectedAllergiesRef.current;
+    if (!currentAllergies.includes(allergyId)) return;
+
+    const nextLevels = { ...alertLevelsRef.current, [allergyId]: level };
+    const version = ++allergySaveVersionRef.current;
+    alertLevelsRef.current = nextLevels;
+    setAlertLevels(nextLevels);
+    allergySaveQueueRef.current = allergySaveQueueRef.current
+      .catch(() => {})
+      .then(() => saveAllergiesForSession(currentAllergies, nextLevels, userSnapshot, version));
   };
 
   const updateAuthForm = (field, value) => {
@@ -827,6 +895,7 @@ function App() {
         setSelectedAllergies(serverAllergies);
         selectedAllergiesRef.current = serverAllergies;
         confirmedAllergiesRef.current = serverAllergies;
+        applyServerAlertLevels(user);
         setAuthForm({ name: "", email: "", password: "" });
         setAuthStatus({
           type: "success",
@@ -852,6 +921,7 @@ function App() {
       setSelectedAllergies(serverAllergies);
       selectedAllergiesRef.current = serverAllergies;
       confirmedAllergiesRef.current = serverAllergies;
+      applyServerAlertLevels(user);
       setAuthForm({ name: "", email: "", password: "" });
       setAuthStatus({
         type: "success",
@@ -871,6 +941,7 @@ function App() {
             setSelectedAllergies(migratedAllergies);
             selectedAllergiesRef.current = migratedAllergies;
             confirmedAllergiesRef.current = migratedAllergies;
+            applyServerAlertLevels(migrated.user);
             setAuthForm({ name: "", email: "", password: "" });
             setAuthStatus({
               type: "success",
@@ -1000,6 +1071,7 @@ function App() {
             profileRisks: allergyScan.profileRisks,
             profileAllergies: selectedAllergiesRef.current,
             hasProductContext: Boolean(product),
+            alertLevels: currentUserRef.current ? alertLevelsRef.current : {},
           }),
         },
       ]);
@@ -1034,6 +1106,7 @@ function App() {
       localMatches={localMatches}
       nutrientRows={nutrientRows}
       allergyScan={allergyScan}
+      alertLevels={currentUser ? alertLevels : {}}
       productScore={productScore}
       onSelectProduct={selectProduct}
       isFavorite={Boolean(product?.code) && favoriteCodes.has(String(product.code))}
@@ -1101,8 +1174,10 @@ function App() {
         <AllergiesPage
           currentUser={currentUser}
           selectedAllergies={selectedAllergies}
+          alertLevels={alertLevels}
           productAnalysis={productAnalysis}
           onToggleAllergy={toggleAllergy}
+          onSetAlertLevel={setAllergyAlertLevel}
         />
       );
     }
@@ -1128,6 +1203,7 @@ function App() {
         <AccountPage
           currentUser={currentUser}
           selectedAllergies={selectedAllergies}
+          alertLevels={alertLevels}
           authMode={authMode}
           authForm={authForm}
           authStatus={authStatus}
@@ -1137,6 +1213,7 @@ function App() {
           onSubmitAuth={submitAuth}
           onLogout={logout}
           onToggleAllergy={toggleAllergy}
+          onSetAlertLevel={setAllergyAlertLevel}
           onExportData={exportarDados}
           onDeleteAccount={excluirConta}
         />
@@ -1170,6 +1247,14 @@ function App() {
         productAnalysis={productAnalysis}
         onNavigate={navigateTo}
         onSearchAndOpen={searchAndOpen}
+        alertInvite={{
+          visible: alertInviteVisible,
+          onReview: () => {
+            dismissAlertInvite();
+            navigateTo("alergias");
+          },
+          onDismiss: dismissAlertInvite,
+        }}
       />
     );
   };

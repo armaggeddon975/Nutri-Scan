@@ -153,6 +153,12 @@ export function buildStrictRequirements(report, { anthropicFlagEnabled = false }
     // diferentes. Um so esconderia qual das duas quebrou.
     ["accountExport", report.accountExport === "PASSED"],
     ["accountDeletion", report.accountDeletion === "PASSED"],
+
+    // v0.9.0 - nivel de alerta por alergia. Requisito BASE: depende so do
+    // PostgreSQL e do motor deterministico. O modelo do subgate e simulado de
+    // proposito, para forcar a negacao do conflito; amarrar o requisito a flag
+    // da Anthropic deixaria o gate aprovar sem nunca ter provado o piso.
+    ["severityVerdict", report.severityVerdict === "PASSED"],
   ];
 
   if (anthropicFlagEnabled) {

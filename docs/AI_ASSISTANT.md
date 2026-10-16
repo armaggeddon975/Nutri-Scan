@@ -1,4 +1,4 @@
-# Nutri Assistente IA - v0.8.0
+# Nutri Assistente IA - v0.9.0
 
 ## Fluxo
 
@@ -262,8 +262,8 @@ descartada em silencio. E `applyAllergyAuthority` remove qualquer
 entregue vem do motor mesmo que algo chegue ali por outro caminho.
 
 O piso de risco so sobe, nunca desce: uma resposta `urgent` continua `urgent`.
-Traco declarado aparece no veredito com `status: "traces"` e alerta proprio, mas
-nao muda o nivel de risco do modelo - `traces` significa "pode conter", e
+Traco declarado de alergia em alerta padrao aparece no veredito com
+`status: "traces"` e alerta proprio, mas nao muda o nivel de risco do modelo - `traces` significa "pode conter", e
 confundir isso com evidencia declarada tiraria o sentido do piso.
 
 Quando o modelo responde `safety: "normal"` havendo conflito declarado, isso e
@@ -274,10 +274,28 @@ registrado como tentativa de minimizacao:
   "event": "assistant.allergy_minimization_attempt",
   "conflicts": ["milk"],
   "modelSafety": "normal",
-  "enforcedSafety": "caution",
   "total": 1
 }
 ```
+
+Ate a v0.8.0 o registro levava tambem `enforcedSafety`, o piso aplicado. Ele
+saiu na v0.9.0: com o alerta maximo, esse campo diria "urgent" justamente quando
+a alergia e de alerta maximo, e o log passaria a contar o nivel que a pessoa
+declarou. `conflicts` lista so o conflito DECLARADO, que existe com qualquer
+nivel - para o mesmo produto e as mesmas alergias, o registro e identico com
+alerta padrao ou maximo.
+
+### Alerta maximo (v0.9.0)
+
+O nivel de alerta de cada alergia vem do perfil no PostgreSQL e muda o veredito
+(ver `docs/NIVEL_DE_ALERTA.md`): o conflito declarado de alergia em alerta
+maximo tem piso `urgent`, e o traco dela vira conflito com piso `caution`. O
+piso continua imposto depois da resposta do modelo.
+
+O nivel NAO e enviado ao modelo - nem dentro do `allergySnapshot`. O modelo nao
+precisa dele, e um modelo que nao o recebe nao consegue comenta-lo nem
+questiona-lo. Uma chave de nivel na resposta do modelo derruba a resposta com
+`AI_SCHEMA_INVALID`, pelo mesmo schema fechado que protege `allergyVerdict`.
 
 O registro nao carrega mensagem, identificador de usuario, e-mail nem chave. Ele
 nao derruba a requisicao: a resposta ja foi corrigida pelo piso, e o objetivo e
