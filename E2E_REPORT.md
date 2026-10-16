@@ -1,6 +1,467 @@
-# E2E Report - NutriScan v0.9.0
+# E2E Report - NutriScan v0.10.0
 
 Data: 2026-10-16
+
+## Resultado geral
+
+```text
+verify:e2e                 PASS, exit code 0 - na primeira execucao
+doctor:e2e                 PASS - "Migrations - 4/4 applied"
+e2e:strict                 PASS, mode=strict, ok=true
+requisitos strict          22 de 22 em PASSED - os 21 da v0.9.0 e o novo
+productComparison          PASSED
+PostgreSQL real            EXECUTADO - banco de producao (o mesmo das versoes anteriores)
+Claude real                EXECUTADO - 2 chamadas pagas
+residuo no banco           0
+
+migration nova             NENHUMA - o schema do banco do gate nao mudou
+verify:deploy simulado     FAIL, exit code 1 - 7 PASS, D2 FAIL (alvo http, sem TLS)
+verify:deploy REAL         FAIL, exit code 1 - 7 PASS, D1 FAIL (no ar 0.7.0)
+
+camera em hardware         NAO EXECUTADO
+deploy real da 0.10.0      NAO EXECUTADO - nada foi publicado
+```
+
+Nenhum resultado foi herdado. Os PASS das versoes anteriores estao preservados
+na secao historica e nao valem para esta versao.
+
+## Como rodou
+
+```text
+PORT=3100 RUN_ANTHROPIC_INTEGRATION_TESTS=true npm run verify:e2e
+```
+
+`PORT=3100` pelo mesmo motivo das versoes anteriores: `127.0.0.1:3000` continua
+ocupado por outro projeto do dono, que nao foi tocado. A porta e configuracao de
+ambiente; nenhum arquivo do gate foi alterado para isso. Uma execucao so, sem
+repeticao.
+
+## Saida literal do gate
+
+Os blocos de aviso de SSL do driver `pg` foram suprimidos desta transcricao; sao
+o mesmo aviso registrado desde a v0.7.2, sobre a semantica futura de `sslmode`.
+Todo o resto e literal, inclusive o JSON.
+
+```text
+> nutriscan@0.10.0 verify:e2e
+> node scripts/verify-e2e.js
+
+[OK] pre-requisito - Claude real exigido nesta execucao, contra o backend local
+[RUN] doctor:e2e
+NutriScan Doctor - modo STRICT E2E (C:\Users\diego\OneDrive\Área de Trabalho\PJ)
+[OK] Node.js - 24.19.0
+[OK] npm - 11.17.0
+[OK] Frontend dependencies - installed (3 modules resolved)
+[OK] Backend dependencies - installed (4 modules resolved)
+[OK] backend/.env - found
+[OK] Env loader - backend/src/config/env.js
+[OK] DATABASE_URL - configured
+[OK] PostgreSQL - accessible
+[OK] Migrations - 4/4 applied
+[OK] ANTHROPIC_API_KEY - configured
+[OK] ANTHROPIC_MODEL - claude-sonnet-5
+[OK] RUN_ANTHROPIC_INTEGRATION_TESTS - enabled
+[OK] Backend port - 3100
+[OK] Frontend origin - http://localhost:5173
+[WARN] Docker - unavailable (optional)
+[OK] Doctor strict-e2e - todos os requisitos obrigatorios atendidos
+[OK] doctor:e2e
+[RUN] e2e:strict
+[OK] migrations - aplicadas duas vezes (idempotente)
+[RUN] backend - iniciando API temporaria na porta 3100
+[OK] health - status=ok database=connected ai=configured
+[OK] deterministic engine - contains/traces conforme baseline
+[OK] privacy - payload sem segredos e com snapshot deterministico
+[OK] anthropic real #1 - pergunta generica validada
+[OK] fallback - AI_NOT_CONFIGURED -> source local
+[OK] session schema - token_hash presente e sem coluna de token bruto
+[OK] assistant authority - PostgreSQL vence guestAllergies e snapshot marca conflito
+[OK] anthropic real #2 - produto com conflito validado com sessao autenticada
+[OK] multi-device - alergias sincronizadas entre dispositivos A e B
+[OK] isolation - contas permanecem isoladas
+[OK] history sync - A gravou, B leu, conta isolada nao viu
+[OK] favorites sync - A gravou, B leu, remocao cruzada recusada com 404
+[OK] verdict freshness - item salvo sem veredito; perfil muda sem alterar o registro
+[OK] manual code lookup - digito verificador barra antes da rede; manual e camera dao o mesmo veredito
+[OK] severity verdict - alerta maximo: urgent no declarado, caution no traco; padrao igual a v0.8.0; modelo negando nao derruba o piso
+[OK] product comparison - um veredito por produto, perfil do banco; o limpo nao herda; explicacao amarrada pelo codigo
+[OK] account export - tudo de A, nada do vizinho, nada de senha nem de sessao
+[OK] account deletion - senha errada nao apaga; senha certa apaga tudo; sessoes caem; vizinha intacta
+[OK] auth - register, me, allergies, login, logout idempotente
+{
+  "version": "0.10.0",
+  "mode": "strict",
+  "startedAt": "2026-10-16T12:32:55.546Z",
+  "finishedAt": "2026-10-16T12:33:40.590Z",
+  "baseUrl": "http://127.0.0.1:3100/api",
+  "backendProcess": "STARTED_BY_RUNNER",
+  "database": "EXECUTED",
+  "migrations": "EXECUTED_IDEMPOTENT",
+  "auth": "PASSED",
+  "sessionSchema": "PASSED",
+  "multiDevice": "PASSED",
+  "isolation": "PASSED",
+  "historySync": "PASSED",
+  "favoritesSync": "PASSED",
+  "verdictFreshness": "PASSED",
+  "manualCodeLookup": "PASSED",
+  "accountExport": "PASSED",
+  "accountDeletion": "PASSED",
+  "severityVerdict": "PASSED",
+  "productComparison": "PASSED",
+  "logout": "PASSED",
+  "deterministicEngine": "PASSED",
+  "assistantGuest": "PASSED",
+  "assistantAuthenticated": "PASSED",
+  "assistantAuthority": "PASSED",
+  "fallback": "PASSED",
+  "privacy": "PASSED",
+  "anthropic": "configured",
+  "anthropicReal": "EXECUTED_GENERIC_AND_PRODUCT",
+  "anthropicCalls": 2,
+  "ok": true,
+  "rateLimitBudget": {
+    "margem": "no maximo 50% do teto",
+    "baldes": [
+      {
+        "balde": "assistente",
+        "usado": 2,
+        "teto": 20,
+        "margemMaxima": 10,
+        "folga": 18,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "auth",
+        "usado": 7,
+        "teto": 40,
+        "margemMaxima": 20,
+        "folga": 33,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "colecoes",
+        "usado": 17,
+        "teto": 300,
+        "margemMaxima": 150,
+        "folga": 283,
+        "tetoPorIp": 3000,
+        "folgaPorIp": 2983,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "comparacao",
+        "usado": 4,
+        "teto": 30,
+        "margemMaxima": 15,
+        "folga": 26,
+        "tetoPorIp": 300,
+        "folgaPorIp": 296,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "exportacao",
+        "usado": 1,
+        "teto": 5,
+        "margemMaxima": 2,
+        "folga": 4,
+        "tetoPorIp": 20,
+        "folgaPorIp": 19,
+        "dentroDaMargem": true
+      }
+    ],
+    "estouraram": []
+  }
+}
+[OK] e2e:strict
+[PASS] verify:e2e - PostgreSQL real e Claude real comprovados
+=== EXIT CODE: 0 ===
+```
+
+## Tabela de subgates
+
+```text
+backendProcess          STARTED_BY_RUNNER
+database                EXECUTED
+migrations              EXECUTED_IDEMPOTENT
+auth                    PASSED
+sessionSchema           PASSED
+multiDevice             PASSED
+isolation               PASSED
+historySync             PASSED
+favoritesSync           PASSED
+verdictFreshness        PASSED
+manualCodeLookup        PASSED
+accountExport           PASSED
+accountDeletion         PASSED
+severityVerdict         PASSED
+productComparison       PASSED
+logout                  PASSED
+deterministicEngine     PASSED
+assistantGuest          PASSED
+assistantAuthenticated  PASSED
+assistantAuthority      PASSED
+fallback                PASSED
+privacy                 PASSED
+anthropicReal           EXECUTED_GENERIC_AND_PRODUCT
+```
+
+`anthropicCalls: 2`, `anthropicReal: EXECUTED_GENERIC_AND_PRODUCT`, `ok: true`.
+
+## O que o subgate novo confere
+
+**productComparison** - com a conta A do gate, cujo perfil, gravado pelo subgate
+anterior, tem leite em alerta padrao e amendoim em alerta maximo:
+
+```text
+1  consultarDoisProdutos, um codigo com digito errado     CODIGO_INVALIDO, nenhuma busca
+2  consultarDoisProdutos, EAN-13 + UPC-A                   DOIS_ENCONTRADOS; o UPC-A buscado
+                                                           e devolvido na forma EAN-13
+3  POST /api/compare, leite x produto limpo                200, profileSource "postgresql";
+                                                           cada veredito IGUAL ao do produto
+                                                           calculado sozinho com o perfil do banco;
+                                                           leite conflict/caution, limpo clear/normal
+4  POST /api/compare, pacoca x produto limpo               pacoca urgent, limpo normal
+5  POST /api/compare, digito errado / codigos iguais       400 / 400
+6  explicarComparacao, modelo SIMULADO que devolve as      cada texto no produto do seu codigo;
+   explicacoes em ordem TROCADA e safety "normal"          leite continua caution, limpo normal
+```
+
+- As buscas usam o caminho de sempre com a busca externa injetada: o subgate nao
+  depende de a Open Food Facts estar no ar.
+- O corpo das comparacoes leva `guestAllergies: ["soy"]` e `userId:
+  "outra-pessoa"`; com sessao, os dois sao ignorados e o perfil vem do banco.
+- O modelo e simulado de proposito: e a unica forma de forcar a troca das
+  explicacoes e a negacao do conflito, que e o que o auditor faz, e nao custa
+  chamada paga. As 2 chamadas pagas sao as de sempre (`anthropicReal`).
+
+## Contagem de requisicoes do gate por balde
+
+```text
+balde        usado   teto/usuario     teto/IP   margem maxima (50%)   dentro
+assistente       2             20           -              10          sim
+auth             7             40           -              20          sim
+colecoes        17            300        3000             150          sim
+comparacao       4             30         300              15          sim
+exportacao       1              5          20               2          sim
+```
+
+Nenhum balde estourou. O balde novo, `comparacao`, gastou 4: as duas
+comparacoes validas e as duas recusadas com 400 (o limitador conta antes da
+validacao). A explicacao foi chamada dentro do processo e nao gastou balde. Os
+outros quatro baldes tem os numeros da v0.9.0.
+
+## Limpeza do banco depois do gate
+
+Conferida por script proprio, que usa o pool do backend e so imprime contagens -
+a string de conexao nunca e lida nem impressa. O padrao da suite nova
+(`comparacao-test-%`) entrou na lista; essa suite roda so contra o PostgreSQL
+local, e o padrao confere que nada dela chegou aqui.
+
+```text
+=== CONTAGEM TOTAL NO BANCO ===
+users              4
+sessions           1
+product_history    0
+product_favorites  0
+
+=== RESIDUO DE TESTE (deve ser 0 em todas as linhas) ===
+gate E2E (e2e-real.js)         nutriscan-e2e-%          0
+suite de colecoes              colecoes-test-%          0
+suite de integracao antiga     e2e-%@example.test       0
+reproducao do E1               repro-e1-%               0
+suite de comparacao            comparacao-test-%        0
+qualquer @example.test         %@example.test           0
+qualquer @example.com          %@example.com            0
+
+RESIDUO SOMADO (com sobreposicao entre padroes): 0
+
+=== LINHAS ORFAS (cascata da migration) ===
+product_history sem dono    0
+product_favorites sem dono  0
+```
+
+As quatro contas e a sessao que restam nao batem com nenhum padrao de teste - sao
+as mesmas contagens da v0.9.0. O gate cria e apaga so contas `nutriscan-e2e-*`.
+
+## E2E_LAST_RUN.json - conteudo integral
+
+O arquivo esta no `.gitignore`, entao NAO vai no ZIP. Conteudo integral:
+
+```json
+{
+  "version": "0.10.0",
+  "mode": "strict",
+  "startedAt": "2026-10-16T12:32:55.546Z",
+  "finishedAt": "2026-10-16T12:33:40.590Z",
+  "baseUrl": "http://127.0.0.1:3100/api",
+  "backendProcess": "STARTED_BY_RUNNER",
+  "database": "EXECUTED",
+  "migrations": "EXECUTED_IDEMPOTENT",
+  "auth": "PASSED",
+  "sessionSchema": "PASSED",
+  "multiDevice": "PASSED",
+  "isolation": "PASSED",
+  "historySync": "PASSED",
+  "favoritesSync": "PASSED",
+  "verdictFreshness": "PASSED",
+  "manualCodeLookup": "PASSED",
+  "accountExport": "PASSED",
+  "accountDeletion": "PASSED",
+  "severityVerdict": "PASSED",
+  "productComparison": "PASSED",
+  "logout": "PASSED",
+  "deterministicEngine": "PASSED",
+  "assistantGuest": "PASSED",
+  "assistantAuthenticated": "PASSED",
+  "assistantAuthority": "PASSED",
+  "fallback": "PASSED",
+  "privacy": "PASSED",
+  "anthropic": "configured",
+  "anthropicReal": "EXECUTED_GENERIC_AND_PRODUCT",
+  "anthropicCalls": 2,
+  "ok": true,
+  "rateLimitBudget": {
+    "margem": "no maximo 50% do teto",
+    "baldes": [
+      {
+        "balde": "assistente",
+        "usado": 2,
+        "teto": 20,
+        "margemMaxima": 10,
+        "folga": 18,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "auth",
+        "usado": 7,
+        "teto": 40,
+        "margemMaxima": 20,
+        "folga": 33,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "colecoes",
+        "usado": 17,
+        "teto": 300,
+        "margemMaxima": 150,
+        "folga": 283,
+        "tetoPorIp": 3000,
+        "folgaPorIp": 2983,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "comparacao",
+        "usado": 4,
+        "teto": 30,
+        "margemMaxima": 15,
+        "folga": 26,
+        "tetoPorIp": 300,
+        "folgaPorIp": 296,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "exportacao",
+        "usado": 1,
+        "teto": 5,
+        "margemMaxima": 2,
+        "folga": 4,
+        "tetoPorIp": 20,
+        "folgaPorIp": 19,
+        "dentroDaMargem": true
+      }
+    ],
+    "estouraram": []
+  }
+}
+```
+
+## `verify:deploy` contra alvo LOCAL simulado
+
+O backend real em `NODE_ENV=production`, servindo o `dist/`, contra o
+PostgreSQL LOCAL, na porta 3999, sem chave de IA. O alvo e `http://`, entao o
+D2 TEM de reprovar: nao ha TLS local.
+
+```text
+[alvo] NutriScan API v0.10.0 ouvindo na porta 3999
+
+verify:deploy - alvo http://127.0.0.1:3999
+versao do repositorio: 0.10.0
+
+[PASS        ] D1  versao no ar igual a do repositorio
+                ambos declaram 0.10.0
+[FAIL        ] D2  resposta por HTTPS, e http:// redireciona
+                o alvo foi informado como http:// - o deploy precisa responder por HTTPS
+[PASS        ] D3  cabecalhos de seguranca (HSTS, CSP, nosniff)
+                HSTS max-age=31536000, CSP e nosniff presentes
+[PASS        ] D4  rota /api inexistente da 404 de API, nao index.html
+                404 de API, em JSON
+[PASS        ] D5  rota autenticada sem sessao da 401
+                4 rotas autenticadas recusam sem sessao com 401
+[PASS        ] D6  erro provocado nao vaza stack, SQL nem caminho
+                erro provocado (HTTP 400) sem stack, SQL, tabela nem caminho
+[PASS        ] D7  o frontend e servido e carrega
+                HTML e 2 asset(s) servidos (1 script(s))
+[PASS        ] D8  nenhuma chave no HTML nem nos bundles
+                3 arquivo(s) inspecionado(s), nenhum segredo
+
+PASS 7 | FAIL 1 | NOT_EXECUTED 0
+[FAIL] verify:deploy
+
+=== EXIT CODE do verify:deploy: 1 ===
+```
+
+## `verify:deploy` contra o deploy REAL
+
+Somente leitura, contra `https://nutriscan-h1wp.onrender.com`.
+
+```text
+
+> nutriscan@0.10.0 verify:deploy
+> node scripts/verify-deploy.js https://nutriscan-h1wp.onrender.com
+
+verify:deploy - alvo https://nutriscan-h1wp.onrender.com
+versao do repositorio: 0.10.0
+
+[FAIL        ] D1  versao no ar igual a do repositorio
+                repositorio declara 0.10.0 e o deploy anuncia 0.7.0
+[PASS        ] D2  resposta por HTTPS, e http:// redireciona
+                HTTPS responde, e http:// redireciona (301) para https://
+[PASS        ] D3  cabecalhos de seguranca (HSTS, CSP, nosniff)
+                HSTS max-age=31536000, CSP e nosniff presentes
+[PASS        ] D4  rota /api inexistente da 404 de API, nao index.html
+                404 de API, em JSON
+[PASS        ] D5  rota autenticada sem sessao da 401
+                4 rotas autenticadas recusam sem sessao com 401
+[PASS        ] D6  erro provocado nao vaza stack, SQL nem caminho
+                erro provocado (HTTP 500) sem stack, SQL, tabela nem caminho
+[PASS        ] D7  o frontend e servido e carrega
+                HTML e 2 asset(s) servidos (1 script(s))
+[PASS        ] D8  nenhuma chave no HTML nem nos bundles
+                3 arquivo(s) inspecionado(s), nenhum segredo
+
+PASS 7 | FAIL 1 | NOT_EXECUTED 0
+[FAIL] verify:deploy
+=== EXIT CODE: 1 ===
+```
+
+O D1 reprova porque o servico no ar roda a 0.7.0 - as versoes 0.7.1 a 0.10.0
+nunca foram publicadas. Os sete PASS medem a 0.7.0 e **nao provam nada sobre a
+0.10.0**. O `scripts/verify-deploy.js` nao mudou uma linha nesta versao, e as
+rotas novas de comparacao sao `POST`: ele nao as toca.
+
+## O que este relatorio NAO prova
+
+- A leitura da camera em aparelho real: **NAO EXECUTADO**.
+- O deploy real da 0.10.0: **NAO EXECUTADO**.
+- HTTPS da 0.10.0: **NAO COMPROVADO** - o alvo simulado nao tem TLS.
+- A explicacao da comparacao contra o modelo REAL: **NAO EXECUTADO**. O gate a
+  exercita com modelo simulado; nenhuma chamada paga foi feita com o schema da
+  comparacao. Ver o AUDIT_REPORT.
+
+## Historico de auditorias anteriores
+
+## E2E da v0.9.0 - 2026-10-16
 
 ## Resultado geral
 
@@ -510,8 +971,6 @@ nunca foram publicadas. Os sete PASS medem a 0.7.0 e **nao provam nada sobre a
 - O deploy real da 0.9.0: **NAO EXECUTADO**.
 - HTTPS da 0.9.0: **NAO COMPROVADO** - o alvo simulado nao tem TLS.
 - A causa da falha da segunda execucao: **NAO COMPROVADA**.
-
-## Historico de auditorias anteriores
 
 ## E2E da v0.8.0 - 2026-10-12
 

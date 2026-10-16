@@ -1,4 +1,4 @@
-import { mensagemDeRecusa, validarCodigoDeBarras } from "../../shared/barcode.js";
+import { exigeDigitoVerificador, mensagemDeRecusa, validarCodigoDeBarras } from "../../shared/barcode.js";
 import { fetchProductByBarcode } from "./openFoodFactsService.js";
 import { codigoLidoPelaCamera } from "../utils/text.js";
 
@@ -39,17 +39,23 @@ export const ENCONTRADO = "encontrado";
 export const ORIGEM_MANUAL = "manual";
 export const ORIGEM_CAMERA = "camera";
 
-/**
- * @param {string} entrada        o que a pessoa digitou ou a camera leu
- * @param {object} opcoes
- * @param {string} opcoes.origem  ORIGEM_MANUAL (padrao) ou ORIGEM_CAMERA
- * @param {Function} opcoes.buscar  injetavel para teste; em producao e a
- *                                  consulta real a Open Food Facts
- */
-export async function consultarProdutoPorCodigo(
-  entrada,
-  { origem = ORIGEM_MANUAL, buscar = fetchProductByBarcode } = {},
-) {
+// Estados da consulta de DOIS produtos (v0.10.0).
+export const PREPARADO = "preparado";
+export const CODIGOS_IGUAIS = "codigos_iguais";
+export const DOIS_ENCONTRADOS = "dois_encontrados";
+export const INCOMPLETO = "incompleto";
+
+// A CONFERENCIA, SEPARADA DA BUSCA (v0.10.0)
+//
+// Ate a v0.9.0 conferir e buscar viviam na mesma funcao. Para comparar dois
+// produtos, os DOIS codigos precisam ser conferidos antes da PRIMEIRA busca -
+// senao um digito errado no segundo so seria visto depois de o primeiro ja ter
+// ido a rede. A conferencia virou esta funcao; `consultarProdutoPorCodigo`
+// continua fazendo exatamente o que fazia, chamando esta e depois a busca.
+//
+// Devolve `{ estado: PREPARADO, codigo }` ou o mesmo objeto de recusa de
+// sempre (`estado: CODIGO_INVALIDO`). Nao faz rede.
+export function prepararCodigo(entrada, origem = ORIGEM_MANUAL) {
   let codigo;
 
   if (origem === ORIGEM_MANUAL) {
@@ -103,6 +109,10 @@ export async function consultarProdutoPorCodigo(
     }
   }
 
+  return { estado: PREPARADO, codigo };
+}
+
+async function buscarCodigoPreparado(codigo, buscar) {
   try {
     const produto = await buscar(codigo);
     if (!produto) return { estado: NAO_ENCONTRADO, codigo };
@@ -110,4 +120,63 @@ export async function consultarProdutoPorCodigo(
   } catch (erro) {
     return { estado: ERRO_DE_REDE, codigo, erro };
   }
+}
+
+/**
+ * @param {string} entrada        o que a pessoa digitou ou a camera leu
+ * @param {object} opcoes
+ * @param {string} opcoes.origem  ORIGEM_MANUAL (padrao) ou ORIGEM_CAMERA
+ * @param {Function} opcoes.buscar  injetavel para teste; em producao e a
+ *                                  consulta real a Open Food Facts
+ */
+export async function consultarProdutoPorCodigo(
+  entrada,
+  { origem = ORIGEM_MANUAL, buscar = fetchProductByBarcode } = {},
+) {
+  const preparado = prepararCodigo(entrada, origem);
+  if (preparado.estado === CODIGO_INVALIDO) return preparado;
+  return buscarCodigoPreparado(preparado.codigo, buscar);
+}
+
+// A forma do codigo que identifica o produto, para saber se os dois sao o
+// mesmo: EAN/UPC com digito correto vira a forma canonica (UPC-A -> EAN-13),
+// pelas funcoes de `shared/barcode.js`; o resto, como esta. E a mesma regra
+// que o backend aplica antes de gravar - e o backend confere de novo.
+export function identidadeDoCodigo(codigo) {
+  if (!exigeDigitoVerificador(codigo)) return codigo;
+  const validacao = validarCodigoDeBarras(codigo);
+  return validacao.valido ? validacao.codigo : codigo;
+}
+
+/**
+ * Consulta de DOIS produtos, para comparar (v0.10.0).
+ *
+ * O mesmo caminho de um produto, duas vezes: `prepararCodigo` e a mesma busca
+ * de `consultarProdutoPorCodigo` - a da Open Food Facts, com a resiliencia de
+ * `openFoodFactsService`. Nao existe segundo caminho de busca.
+ *
+ * Ordem: confere os DOIS codigos; recusa codigos iguais; so entao busca os dois.
+ *
+ * @param {{entrada: string, origem?: string}} primeiro
+ * @param {{entrada: string, origem?: string}} segundo
+ * @param {{buscar?: Function}} opcoes  injetavel para teste
+ */
+export async function consultarDoisProdutos(primeiro, segundo, { buscar = fetchProductByBarcode } = {}) {
+  const preparados = [
+    prepararCodigo(primeiro?.entrada, primeiro?.origem ?? ORIGEM_MANUAL),
+    prepararCodigo(segundo?.entrada, segundo?.origem ?? ORIGEM_MANUAL),
+  ];
+
+  // Qualquer um invalido: nenhuma busca, nem a do outro.
+  if (preparados.some((preparado) => preparado.estado === CODIGO_INVALIDO)) {
+    return { estado: CODIGO_INVALIDO, a: preparados[0], b: preparados[1] };
+  }
+
+  if (identidadeDoCodigo(preparados[0].codigo) === identidadeDoCodigo(preparados[1].codigo)) {
+    return { estado: CODIGOS_IGUAIS, codigo: identidadeDoCodigo(preparados[0].codigo) };
+  }
+
+  const [a, b] = await Promise.all(preparados.map((preparado) => buscarCodigoPreparado(preparado.codigo, buscar)));
+  const ambos = a.estado === ENCONTRADO && b.estado === ENCONTRADO;
+  return { estado: ambos ? DOIS_ENCONTRADOS : INCOMPLETO, a, b };
 }

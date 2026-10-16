@@ -1,5 +1,108 @@
 # Changelog
 
+## NutriScan v0.10.0 - 2026-10-16
+
+Comparacao de dois produtos, lado a lado. Minor: capacidade nova de produto.
+Nao ha migration nem variavel nova.
+
+Isto descreve o que o software faz. Nao e orientacao de saude nem de nutricao,
+e esta versao nao declara o NutriScan clinicamente adequado nem em conformidade
+juridica.
+
+### O projeto segue NAO PUBLICADO
+
+As versoes 0.7.1 a 0.10.0 nunca foram ao ar. O servico `nutriscan` no Render
+continua rodando a **0.7.0**. Esta versao nao publica nada.
+
+### O problema, pelo que era
+
+Na gondola, a pergunta costuma ser "qual destes dois?". Ate a v0.9.0 a pessoa
+escaneava um produto, lia, escaneava o outro, perdia o primeiro de vista e
+decidia de memoria.
+
+### O que entrou
+
+A tela **Comparar** poe dois produtos lado a lado. Para cada um: nome, marca, o
+veredito de alergia DAQUELE produto - com declarado e traco, alerta padrao e
+maximo - e a informacao nutricional que a base traz. Entre eles, as diferencas,
+calculadas pelo app: alergenicos de um rotulo que nao aparecem no outro, e os
+nutrientes por 100 g.
+
+- **Exatamente dois.** Cabem lado a lado no celular e sao a situacao real da
+  gondola.
+- **O app nao elege vencedor.** Nenhum campo diz "melhor", "recomendado" ou
+  "mais seguro", e nada reordena os produtos: a ordem e a da pessoa, e as duas
+  colunas sao iguais.
+- **Um veredito por produto.** Os dois saem do motor em chamadas separadas, e o
+  piso de risco e imposto produto a produto. O produto limpo nao herda o aviso
+  do vizinho em conflito, e o em conflito nao e rebaixado.
+- **A IA so explica, e cada explicacao fica presa ao seu produto.** "Explicar as
+  diferenças" faz uma chamada ao modelo, que devolve uma explicacao por codigo
+  de produto. O servidor poe cada uma no produto pelo codigo - nunca pela ordem
+  da lista - e recusa a resposta se um codigo faltar, se repetir ou nao for da
+  comparacao. O modelo nao escreve, nao altera e nao reordena veredito.
+- **"Nao informado" nao e "nao contem".** Produto sem dado de alergenico sai
+  com `allergenData: "not_informed"` e veredito `not_evaluated` - nunca
+  "sem conflito" - e a tela diz "Sem dados de alergênicos. Confira o rótulo
+  físico." Nutriente que a base nao traz e `null`, nunca 0.
+- **Os codigos seguem o caminho de sempre.** Digitados, lidos pela camera ou
+  escolhidos em Meus produtos, os dois passam pela conferencia do digito, pela
+  canonicalizacao UPC-A -> EAN-13 e pela mesma busca de `openFoodFactsService`.
+  Nao ha segundo caminho de busca. Codigo invalido em qualquer dos dois e
+  recusado antes de qualquer busca.
+- **Codigos iguais sao recusados**, no aparelho e na API: "Esses dois códigos
+  são do mesmo produto. Escolha outro para comparar."
+- **Produto nao encontrado:** o outro aparece, com o seu veredito, e a tela diz
+  qual faltou. Sem tabela de diferencas contra nada.
+- **Nada e guardado.** Sem tabela de comparacoes, sem historico de comparacoes,
+  e comparar nao grava os produtos no historico; "Abrir este produto" grava,
+  pelo caminho de sempre. Visitante nao grava nada.
+
+### API
+
+`POST /api/compare` e `POST /api/compare/explain`, com sessao opcional. Com
+sessao, vale o perfil do PostgreSQL; `userId` no corpo e descartado. Sem sessao,
+vale `guestAllergies`, como no assistente. Forma de request e response em
+`docs/API.md`.
+
+### Limites
+
+A busca de produto roda no navegador e nenhum limitador do backend a cobre. A
+comparacao ganhou o seu: 30 por 10 minutos por usuario e 300 por IP, compostos
+como os de colecoes. A explicacao passa tambem pelo limite do assistente - o
+mesmo teto de chamadas de IA do chat. Nenhum limitador existente mudou.
+
+### Gate E2E: 21 -> 22 requisitos
+
+Subgate `productComparison`: as duas buscas pelo caminho de sempre, com a busca
+externa injetada; a comparacao pela API real, com o perfil do PostgreSQL; o
+veredito de cada produto conferido contra o do produto calculado sozinho; o
+alerta maximo dando `urgent` so ao produto certo; e a explicacao com um modelo
+simulado que troca a ordem das explicacoes e nega o conflito. Requisito BASE. Um
+teste confere os 21 da v0.9.0 um a um, outro que o total e 22.
+
+### Testes e mutacao
+
+C1t-C16 em `backend/tests/comparison.test.js` (sem banco) e
+`backend/tests/comparisonIntegration.test.js` (PostgreSQL real).
+`scripts/mutation-check.js` ganhou 14 mutantes (Y1-Y11, com Y5b, Y5c e Y8b). O
+U8 teve a ancora refeita para a linha nova do orcamento; o W11 e o X9 apontam
+para o teste do total renomeado. Resultado em `AUDIT_REPORT.md`.
+
+### Descrito e NAO alterado - para decisao
+
+- **Orientacao de conduta que ja existia no produto**, anterior a esta versao,
+  ja descrita na v0.9.0. Nenhum texto novo orienta conduta.
+- **O chat diz "sem conflito" para produto sem dado de alergenico.** O
+  `allergyVerdict` do assistente devolve `clear` quando o rotulo nao traz nada.
+  A comparacao nao herdou isso - ela usa `no_allergen_data` -, mas o chat nao
+  foi mudado.
+
+### O que esta versao NAO prova
+
+- A leitura da camera em aparelho real: **NAO EXECUTADO**.
+- O deploy real da 0.10.0: **NAO EXECUTADO** - nada foi publicado.
+
 ## NutriScan v0.9.0 - 2026-10-16
 
 Nivel de alerta por alergia: o "alerta maximo". Minor, e nao patch: capacidade

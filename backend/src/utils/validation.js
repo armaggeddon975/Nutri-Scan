@@ -232,3 +232,51 @@ export const productRefSchema = z.object({
 // evita que texto arbitrario vire erro de SQL - e erro de SQL vazando para o
 // cliente conta a ele que a tabela existe.
 export const itemIdSchema = z.string().uuid("Identificador inválido.");
+
+// -----------------------------------------------------------------------
+// Comparacao de dois produtos (v0.10.0)
+// -----------------------------------------------------------------------
+//
+// EXATAMENTE DOIS. Cada `code` passa pelo MESMO `productCodeSchema` do
+// historico: digito verificador de `shared/barcode.js` e canonicalizacao UPC-A
+// -> EAN-13; codigo que nao e EAN/UPC passa intacto. Codigo invalido em
+// qualquer dos dois recusa a requisicao inteira com 400, antes de qualquer
+// analise.
+//
+// `product` e o produto como o app o buscou na Open Food Facts: dado NAO
+// confiavel, tratado como no assistente. So precisa ser um objeto; o resto
+// passa por `buildAssistantProductContext`, que limita tamanho e campo.
+//
+// Os dois codigos iguais, depois de canonicalizados, sao recusados: comparar
+// um produto com ele mesmo mostraria duas colunas identicas e "nenhuma
+// diferenca", que parece informacao e nao e. `userId`, `user_id` e qualquer
+// outra chave sao descartados: o perfil vem da sessao.
+const comparedProductSchema = z.object({
+  code: productCodeSchema,
+  product: z.record(z.string(), z.unknown(), {
+    invalid_type_error: "A comparação precisa dos dois produtos encontrados.",
+    required_error: "A comparação precisa dos dois produtos encontrados.",
+  }),
+});
+
+export const comparisonSchema = z
+  .object({
+    products: z
+      .array(comparedProductSchema, { required_error: "A comparação precisa de exatamente dois produtos." })
+      .length(2, "A comparação precisa de exatamente dois produtos."),
+    guestAllergies: allergySchema,
+  })
+  .superRefine((data, ctx) => {
+    const [a, b] = data.products;
+    if (a?.code && a.code === b?.code) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["products"],
+        message: "Esses dois códigos são do mesmo produto. Escolha outro para comparar.",
+      });
+    }
+  });
+
+export function validateComparison(input) {
+  return comparisonSchema.parse(input ?? {});
+}

@@ -1,6 +1,858 @@
-# Relatorio de Auditoria - NutriScan v0.9.0
+# Relatorio de Auditoria - NutriScan v0.10.0
 
 Data: 2026-10-16
+
+## Escopo
+
+Entrada 0.9.0, saida 0.10.0. Comparacao de dois produtos, lado a lado. Minor:
+capacidade nova de produto. Nao ha migration nem variavel nova.
+
+**Isto nao e orientacao de saude nem de nutricao.** O relatorio descreve o que o
+software faz. Ele nao declara o NutriScan clinicamente adequado nem em
+conformidade juridica.
+
+Preservado sem refatoracao, como a secao 3 mandou. O `git diff` contra a v0.9.0
+(commit `cc9af41`) e VAZIO em `shared/allergenEngine.js`,
+`backend/src/ai/assistantPrompt.js` (o schema fechado da resposta do chat),
+`scripts/verify-deploy.js`, `backend/migrations/`, `backend/src/repositories/`
+e `src/services/openFoodFactsService.js`. Em `shared/allergyVerdict.js`,
+`applyAllergyAuthority`, o piso (`raiseSafety`, `minimumSafetyFor`) e a logica de
+`alertLevel` nao mudaram; a unica mudanca e um parametro opcional novo, descrito
+abaixo, que so a comparacao passa.
+
+Codigo de producao da entrega (secoes 6, 7 e 8):
+
+```text
+NOVO  shared/productComparison.js                  um veredito por produto + diferencas
+      shared/allergyVerdict.js                     parametro opcional allergenDataAvailable
+NOVO  backend/src/services/comparisonService.js    perfil da sessao, piso por produto, amarracao
+NOVO  backend/src/ai/comparisonPrompt.js           system prompt e schema fechado da explicacao
+NOVO  backend/src/controllers/compareController.js
+NOVO  backend/src/routes/compareRoutes.js          POST /api/compare e /api/compare/explain
+      backend/src/app.js                           monta /api/compare
+      backend/src/middleware/rateLimit.js          teto da comparacao (so acrescimo)
+      backend/src/utils/validation.js              validateComparison (so acrescimo)
+      backend/src/ai/assistantService.js           parseStructuredResponse aceita o schema
+NOVO  src/pages/Compare/ComparePage.jsx            a tela
+NOVO  src/services/compareService.js               chamadas a API e a comparacao no aparelho
+      src/services/productLookup.js                consultarDoisProdutos sobre o caminho de um
+      src/App.jsx                                  estado, scanner para comparar, rota da tela
+      src/components/food/ProductAnalysis.jsx      "Comparar com outro produto"
+      src/components/assistant/AllergyVerdict.jsx  texto de origem opcional
+      src/styles-v070.css                          so acrescimo; styles.css intocado
+```
+
+Gate e testes: `scripts/e2e-real.js` (subgate `productComparison`, balde
+`comparacao`), `scripts/lib/e2eGate.js` (requisito novo),
+`scripts/mutation-check.js` (14 mutantes novos; U8, W11 e X9 ajustados - ver
+A2), `backend/tests/comparison.test.js` e
+`backend/tests/comparisonIntegration.test.js` (novos),
+`backend/tests/e2eGate.test.js` (22 requisitos). Nenhuma assercao de teste
+existente mudou, fora as do gate que nomeiam o total.
+
+## Como a independencia dos vereditos e garantida, em codigo
+
+Nao existe veredito "da comparacao". Existe um por produto, e o codigo nao tem
+caminho para um tocar o outro.
+
+```text
+shared/productComparison.js
+  compareProducts([entradaA, entradaB], perfil)
+    const ladoA = analyzeComparedProduct(entradaA.product, perfil);
+    const ladoB = analyzeComparedProduct(entradaB.product, perfil);
+      -> cada um chama analyzeProductAllergens + buildAllergyVerdict sozinho
+
+backend/src/services/comparisonService.js
+  aplicarPisoPorProduto(comparacao, respostaPara, finalizar)
+    for (const produto of comparacao.products) {
+      const final = finalizar(respostaPara(produto), produto.allergyVerdict);
+      ...
+```
+
+- **O calculo:** duas chamadas a `analyzeComparedProduct`, cada uma recebendo SO
+  o seu produto e o perfil. Nenhuma recebe o resultado da outra.
+- **O piso:** `aplicarPisoPorProduto` chama a barreira uma vez POR PRODUTO, com o
+  veredito DAQUELE produto - `applyAllergyAuthority` sem modelo,
+  `finalizeAssistantResponse` com modelo (as duas da v0.9.0, sem alteracao). Nao
+  ha maximo, uniao nem mescla de pisos.
+- **A prova:** C1t, em cinco pares - leite e arroz nas duas ordens, pacoca,
+  produto sem dado e traco -, exige que o veredito de cada produto seja igual ao
+  do produto calculado sozinho e nao seja o mesmo objeto do outro; C2t poe
+  conflito ao lado de limpo nas duas ordens, com e sem modelo; C3t poe o
+  `urgent` ao lado de um `caution`; C4t, traco ao lado de declarado. O subgate do E2E faz o mesmo contra a API real com o perfil do
+  PostgreSQL. Os mutantes Y1 (B reaproveita o veredito de A) e Y2 (piso calculado
+  uma vez para os dois) morrem no C2t.
+
+## Como a amarracao explicacao-produto e verificada sem confiar no modelo
+
+O modelo devolve `{ explanations: [{ productCode, text, safety }] x2, category,
+usedProductContext }`, e o servidor nunca usa a POSICAO de uma explicacao.
+
+```text
+amarrarExplicacoes(explicacoes, produtos)
+  Map por productCode
+  codigo repetido                  -> AI_SCHEMA_INVALID (502), resposta inteira recusada
+  codigo faltando / codigo estranho -> AI_SCHEMA_INVALID (502)
+aplicarPisoPorProduto: explicacao = porCodigo.get(produto.code)
+```
+
+- O schema Zod e `.strict()` em todos os niveis e exige exatamente dois itens:
+  qualquer chave fora do contrato, no topo ou dentro de uma explicacao, derruba a
+  resposta. O C7t tenta `allergyVerdict` dentro de uma explicacao e no topo, e
+  `winner`, `recommended` e `ranking` no topo. O modelo nao tem onde escrever
+  veredito, e o veredito devolvido e sempre o do motor.
+- O `safety` de cada explicacao passa pelo piso do veredito do produto daquele
+  CODIGO. O modelo dizendo `normal` nos dois nao derruba o `caution` de nenhum
+  (C6t).
+- **C5t, como o auditor vai fazer:** o modelo devolve as explicacoes em ordem
+  trocada - e, num segundo teste, com o texto de um escrito como se fosse do
+  outro. Cada texto cai no produto do seu codigo; a tela, renderizada de
+  verdade, mostra em cada coluna o veredito do motor para aquele produto. O
+  mutante Y3 (amarracao pela posicao) morre no C5t; o Y4 (schema aceita campo
+  extra na explicacao) morre no C7t; o Y6 (piso nao imposto na explicacao) morre
+  no C6t.
+- Dado da Open Food Facts dos DOIS produtos fica fora do `system`: nome, marca e
+  ingredientes vao no bloco de dados da mensagem do usuario (C7t confere os
+  dois). O nivel de alerta nao vai ao modelo.
+
+## 6.1 - dois
+
+Implementado com exatamente dois, como o prompt mandou. A API recusa um, tres e
+nenhum. Nenhum terceiro foi implementado.
+
+## 6.2 - de onde vem os codigos: tres entradas, um caminho
+
+A tela tem dois campos e tres jeitos de preenche-los: digitando; "Escanear" (a
+leitura da camera vai para o primeiro campo vazio, e com os dois cheios a
+comparacao roda sozinha); e "Meus produtos", com o historico e os favoritos da
+pessoa como botoes. Da tela de um produto, "Comparar com outro produto" abre a
+comparacao com ele no primeiro campo.
+
+Justificativa: sao as tres situacoes reais - a embalagem na mao (camera), o
+codigo lido no papel (digitacao) e o produto que a pessoa ja consultou e quer pôr
+ao lado de outro (historico e favoritos). Nenhuma delas pede um caminho novo.
+
+**Um caminho so.** As tres terminam em `consultarDoisProdutos`, que e
+`prepararCodigo` + a busca de `consultarProdutoPorCodigo`, duas vezes - a mesma
+conferencia de digito de `shared/barcode.js`, a mesma canonicalizacao UPC-A ->
+EAN-13, codigo nao-EAN intacto, a mesma busca de `openFoodFactsService` com a
+retentativa que ja estava la. `consultarProdutoPorCodigo` foi reescrito sobre
+essas duas partes sem mudar de comportamento: os 18 testes da v0.7.3 continuam
+verdes, e a ancora do mutante P3b continua no mesmo lugar. O backend confere os
+dois codigos de novo, pelo mesmo `productCodeSchema` do historico. O C16 varre
+`src/`, `backend/src/` e `shared/` e prova que so
+`src/services/openFoodFactsService.js` cita a Open Food Facts e faz requisicao,
+e que as duas buscas chamam a busca injetada exatamente duas vezes, uma por
+codigo.
+
+## 6.4 - codigos iguais: recusados
+
+"Esses dois códigos são do mesmo produto. Escolha outro para comparar." - no
+aparelho, antes de qualquer busca, e na API (`400`). A identidade e a forma
+canonica: UPC-A e EAN-13 do mesmo produto sao iguais, e a leitura da camera
+tambem (C11).
+
+Justificativa: nao e defeito de seguranca, mas a resposta seriam duas colunas
+identicas, e quase sempre e a mesma embalagem lida duas vezes. Dizer isso ajuda
+mais do que mostrar a repeticao, e nao custa busca nenhuma.
+
+## 6.5 - produto nao encontrado: o que veio aparece, e o que faltou e dito
+
+Se um dos dois nao for encontrado - ou a busca falhar por rede -, a tela mostra
+o encontrado na sua coluna, com o seu veredito, e diz na outra o que faltou ("Não
+encontrei o produto X na Open Food Facts." / "Não consegui buscar o produto X
+agora. Verifique sua internet."). Nao ha tabela de diferencas. A API so compara
+par completo: produto faltando e `400`.
+
+Justificativa: falhar inteira jogaria fora o produto que veio - justamente o que
+a pessoa tem na mao -, e mostrar "diferencas" contra nada inventaria ausencia,
+que e o defeito que a 6.3 proibe. O C12 cobre produto nao encontrado e falha de
+rede, a recusa da API ao par incompleto, e renderiza a tela parcial: o produto
+encontrado aparece, o que faltou e dito, e nao ha "Diferenças".
+
+O veredito do produto que veio, nessa tela, e calculado no aparelho, pelo mesmo
+modulo compartilhado e com o perfil do aparelho - a API nao aceita par
+incompleto. Descrito em "Observacoes".
+
+## 7 - custo e limites
+
+**O que cobria a busca de produto: nada do backend.** A busca por codigo roda no
+navegador, direto na Open Food Facts, e nenhum limitador deste servidor a ve -
+antes desta versao e agora. A comparacao nao muda isso: as duas buscas continuam
+no navegador, pelo mesmo caminho e com a mesma retentativa; o que chega ao
+servidor e o par ja encontrado. Escrito no `rateLimit.js`.
+
+A rota de comparacao ganhou teto proprio, composto usuario E IP pela mesma
+fabrica da v0.7.2 (usuario primeiro; sem sessao, o balde de usuario usa o IP):
+
+```text
+POST /api/compare           30 / 10 min por usuario   e   300 / 10 min por IP
+POST /api/compare/explain   os mesmos dois, e o balde do assistente (20 / 10 min por IP)
+```
+
+O raciocinio, declarado no codigo:
+
+- **30 por usuario:** na gondola, dois ou tres pares por item da lista, com
+  alguma indecisao e um codigo errado no meio - uns 10 pares em 10 minutos, com
+  folga para refazer cada um duas vezes. Ninguem compara 30 pares olhando a
+  prateleira.
+- **300 por IP:** dez pessoas atras do mesmo endereco (familia, rede do mercado,
+  CGNAT de celular) no limite da propria cota; contem script que troca de conta.
+  A mesma razao 1:10 das colecoes.
+- **A explicacao divide o balde com o chat.** Um balde proprio deixaria somar 20
+  perguntas e mais N explicacoes na mesma janela, dobrando o gasto com IA. Com o
+  balde dividido, o teto de custo continua onde estava. O limitador do assistente
+  vem por ultimo, para que uma requisicao recusada pelo teto da comparacao nao
+  gaste a cota de IA.
+
+Nenhum limitador existente foi tocado - o `git diff` do `rateLimit.js` e so
+acrescimo -, e nao ha bypass: as constantes nao tem variavel de ambiente, e o C15
+prova as duas rotas montadas, o 31o pedido recusado com 429 e os cabecalhos 300 e
+20.
+
+## 8 - persistencia
+
+- Nenhuma tabela, nenhuma migration, nenhum historico de comparacoes.
+- **Comparar NAO grava os dois produtos no historico.** O historico registra o
+  que a pessoa abriu. Um par comparado de passagem - muitas vezes descartado na
+  hora, ou com um dos dois lido por engano - ocuparia o limite do historico com
+  produtos que ela nao escolheu ver, e empurraria para fora os que escolheu. Quem
+  quer guardar toca em "Abrir este produto", e o produto entra pelo caminho que
+  ja existe, com deduplicacao, limite e canonicalizacao.
+- Visitante nao grava nada; usuario tambem nao: a comparacao so le o perfil. O
+  C14 intercepta o pool do PostgreSQL e prova zero consultas para visitante, e
+  com o banco real prova que nenhuma linha muda, com ou sem sessao.
+- Nenhum veredito e congelado: cada comparacao recalcula os dois com o perfil
+  daquele momento.
+
+## Tratamento de dado ausente
+
+"Nao informado" e diferente de "nao contem", e o codigo carrega os dois estados
+separados ate a tela.
+
+```text
+produto sem texto de ingredientes, alergenicos ou tracos
+  allergenData             "not_informed"
+  allergens                []
+  allergyVerdict           status "not_evaluated", reason "no_allergen_data", sem piso
+  differences.allergens    o lado dele: "not_informed"
+  tela                     "Sem dados de alergênicos. Confira o rótulo físico."
+                           e "Não informado" na tabela
+
+nutriente que a base nao traz
+  value / a / b            null - informedNumber nunca devolve 0 para ausente
+  tela                     "Não informado"
+
+alergenico que um rotulo declara e o outro nao menciona
+  o outro lado             "not_detected" -> "Não aparece no rótulo"
+```
+
+Onde a ausencia NUNCA vira "nao contem": no veredito (nunca `clear` sem dado), na
+lista de alergenicos (vazia E marcada `not_informed`, para nao confundir "nada
+achado" com "nada informado"), nas diferencas, nos nutrientes, na tela e no que
+vai ao modelo - o system prompt diz que dado ausente e "nao informado". O zero
+DECLARADO continua 0. O C8t confere tudo isso na resposta do servico - a mesma
+que a rota devolve - e na tela renderizada ("Leite/lactose Tem Não informado",
+nunca "Não aparece no rótulo"); os mutantes Y5 (ausencia vira `not_detected`),
+Y5b (`null` vira 0) e Y5c (o veredito deixa de saber que nao ha dado) morrem
+nele. A comparacao no aparelho usa o mesmo modulo compartilhado
+(`shared/productComparison.js`), mas nao tem teste proprio de dado ausente.
+
+Para isso, `buildAllergyVerdict` ganhou um parametro opcional,
+`allergenDataAvailable`. So quem passa `false` explicitamente - a comparacao -
+entra no ramo novo. Sem o parametro, o veredito e o de antes, byte a byte: o
+gabarito de 20 combinacoes da v0.9.0 (S1) e os testes do veredito continuam
+verdes. O chat NAO passa o parametro - ver "Observacoes".
+
+## A1 - C1t a C16, R1 a R6
+
+Todos presentes e verdes na suite completa contra PostgreSQL real (A7). Nenhum
+em SKIP nessa execucao. Sem banco (A6), os 4 de integracao da comparacao saem
+como NAO EXECUTADO, e nao como PASS.
+
+```text
+unitarios (tests/comparison.test.js)
+C1t  C1t cada produto recebe veredito proprio, calculado independentemente
+C2t  C2t produto em conflito com produto limpo: o limpo nao herda safety e o em conflito nao e rebaixado
+C3t  C3t alerta maximo: o piso urgent vai ao produto certo, e so a ele
+C4t  C4t traco em um, declarado no outro: cada veredito com a sua origem
+C5t  C5t explicacoes em ordem trocada: cada uma cai no produto certo, pelo codigo
+     C5t texto trocado pelo modelo nao troca o veredito que a tela mostra
+C6t  C6t o modelo respondendo normal nao derruba o piso de nenhum dos dois
+C7t  C7t o modelo nao escreve, nao altera e nao reordena veredito
+     C7t os dados dos dois produtos ficam fora do system e nenhum campo elege vencedor
+C8t  C8t produto sem dado de alergenico: a ausencia nao vira 'nao contem' em lugar nenhum
+C9t  C9t digito verificador invalido em qualquer dos dois e recusado antes de qualquer busca
+C10  C10 UPC-A em um e EAN-13 no outro: os dois canonicalizados
+C11  C11 codigos iguais: recusados com mensagem clara, sem busca
+C12  C12 um produto nao encontrado: o que veio aparece, o que faltou e dito, e a API recusa par incompleto
+C13  C13 nenhum campo da requisicao escolhe de quem e o perfil
+C14  C14 visitante usa o perfil do request e nao toca o banco
+C15  C15 o limitador cobre as duas rotas: comparacao 30/300 por 10 min, explicacao no balde do assistente
+C16  C16 as duas buscas usam o openFoodFactsService, sem segundo cliente
+A4   A4 nenhuma comparacao de versao do projeto depende de ordem, so de igualdade
+     a tela mostra os dois sem eleger vencedor e sem orientacao
+
+com PostgreSQL real (tests/comparisonIntegration.test.js)
+C1t  C1t e C2t com o perfil do PostgreSQL: um veredito por produto, o limpo nao herda
+C3t  C3t com o nivel do PostgreSQL: urgent so no produto declarado de alergia em alerta maximo
+C13  C13 a sessao de B com o id de A no corpo compara com o perfil de B
+C14  C14 comparar nao grava nada - nem visitante, nem com sessao
+```
+
+Como os delicados provam o que dizem:
+
+- **C5t** monta o modelo devolvendo `[explicacao de B, explicacao de A]` e
+  confere cada texto no produto do seu codigo; o segundo C5t faz o modelo
+  escrever, no texto do produto limpo, "este tem leite", e renderiza a tela: a
+  coluna do limpo continua mostrando o veredito limpo do motor, e a do leite, o
+  conflito.
+- **C7t** tenta, uma de cada vez: `allergyVerdict` dentro de uma explicacao;
+  `allergyVerdict`, `winner`, `recommended` e `ranking` no topo; codigo
+  repetido; codigo de produto que nao esta na comparacao; e uma explicacao so -
+  todas `AI_SCHEMA_INVALID`. E confere que a ordem de `products` e a do pedido,
+  mesmo com o modelo devolvendo outra.
+- **C8t** compara um produto sem dado com um que tem e exige, no lado sem dado:
+  `not_informed`, lista vazia, `not_evaluated`/`no_allergen_data` e nenhum
+  alerta; `not_informed` - nunca `not_detected` - em toda linha das diferencas;
+  `null` em todo nutriente; e, na tela, "Sem dados de alergênicos" sem "Sem
+  conflito". O zero declarado de outro produto continua 0.
+- **C13** de integracao: a sessao de B, com `userId`, `user_id`, `user.id` de A e
+  `guestAllergies` no corpo, compara com o perfil de B.
+- **C14** sem banco intercepta `pg.Pool.prototype.query` e `connect` e exige zero
+  chamadas para visitante; com banco, conta as linhas de cinco tabelas antes e
+  depois, com e sem sessao.
+
+R1 a R6 - regressao, verdes na mesma execucao (107 testes):
+
+```text
+R1  C1            T1 exploit C1: modelo negando conflito nao entrega falso seguro
+R2  severidade    S1, S2, S3, S4 - os quatro casos da matriz - e S5 (unitario e com
+                  o banco): o modelo respondendo normal nao derruba o piso (6)
+R3  isolamento    I1, I2, I3, I4 e V1 (estaticos e contra o banco), S16 (11)
+R4  digito        M1 (5), M3 (3), M9 (2); canonicalizacao N1 a N1g (14);
+                  tetos R1, R2, R5, R6, R7 e R11 (10; 403 de 3000 por IP)
+R5  exportacao    E1 a E8 (14), exclusao D1 a D9 (13), nivel na exportacao e na
+                  exclusao S14 e S15 (2)
+R6  handler       O2a a O2e (11), P5 (4); fail-closed P9 (6) e MODO (2);
+                  verify:deploy somente leitura P13 (3)
+```
+
+## A2 - validacao por mutacao
+
+Rodada completa, com banco, sobre o codigo entregue:
+
+```text
+RUN_DB_INTEGRATION_TESTS=true DATABASE_URL=<PostgreSQL LOCAL> DATABASE_SSL=false \
+  node scripts/mutation-check.js --com-banco
+```
+
+```text
+mortas 109 | nao executadas 0 | problemas 1 | linha de base: antes verde, depois verde
+REPROVADO: ha teste que nao detecta o defeito que deveria detectar.
+=== EXIT: 1 ===
+```
+
+**110 mutantes: 109 mortos, 1 sobrevivente (W1, o equivalente da v0.8.0), 0 nao
+executados, 0 inaplicaveis.** A linha de base - as 16 suites sem mutacao,
+incluidas as duas novas da comparacao - estava verde antes e depois. **Os 14
+mutantes novos morreram todos.** O script sai com codigo 1 por causa do W1, e
+isso fica registrado como esta.
+
+### Os mutantes pedidos pelo prompt (C2t, C5t, C6t, C7t, C8t)
+
+```text
+pedido pelo prompt                                   mutante  teste que o pegou   resultado
+o veredito de A passa a ser reaproveitado para B     Y1       C2t                 MORTA
+o piso passa a ser calculado uma vez para os dois    Y2       C2t                 MORTA
+a amarracao passa a confiar na ordem do modelo       Y3       C5t                 MORTA
+campo de veredito vindo do modelo passa a ser aceito Y4       C7t                 MORTA
+ausencia vira "nao contem"                           Y5       C8t                 MORTA
+ausencia vira zero                                   Y5b      C8t                 MORTA
+o veredito deixa de saber que nao ha dado            Y5c      C8t                 MORTA
+o piso deixa de ser imposto na explicacao (C6t)      Y6       C6t                 MORTA
+```
+
+O que cada um injeta:
+
+- **Y1** - `shared/productComparison.js`: o lado B recebe
+  `allergyVerdict: ladoA.allergyVerdict`.
+- **Y2** - `comparisonService.js`: `aplicarPisoPorProduto` passa a usar, para os
+  dois, o primeiro veredito com piso da comparacao - o "piso da comparacao".
+- **Y3** - `comparisonService.js`: a explicacao de cada produto passa a ser
+  `resposta.explanations[indice do produto]`, a posicao na lista do modelo.
+- **Y4** - `comparisonPrompt.js`: o item de explicacao troca `.strict()` por
+  `.passthrough()` e aceita `allergyVerdict`. Mesmo aceito, o campo nao chegaria
+  ao cliente - a amarracao so le `text` e `safety` -, mas o contrato manda
+  recusar, e o C7t exige a recusa.
+- **Y5** - `productComparison.js`: o lado sem dado deixa de ser `not_informed` e
+  vira `not_detected` ("nao aparece no rotulo").
+- **Y5b** - `informedNumber` devolve 0 para valor ausente.
+- **Y5c** - a comparacao passa `allergenDataAvailable: true` sempre: o produto sem
+  dado volta a sair `clear`.
+- **Y6** - `comparisonService.js`: a explicacao deixa de passar por
+  `finalizeAssistantResponse`, e o `safety` do modelo vale.
+
+### Os outros seis mutantes novos
+
+```text
+Y7   C9t  codigo invalido em um dos dois deixa de barrar a busca          MORTA
+Y8   C11  codigos iguais deixam de ser recusados no aparelho             MORTA
+Y8b  C11  codigos iguais deixam de ser recusados pela API                MORTA
+Y9   A11  o gate perde o requisito productComparison                     MORTA
+Y10  C13  a rota da comparacao passa a aceitar userId do corpo           MORTA   (com banco)
+Y11  C15  a rota da comparacao perde o limitador                         MORTA
+```
+
+(Y1 a Y11, mais Y5b, Y5c e Y8b: 14 mutantes.)
+
+### Tres mutantes antigos ajustados - sem mudar o defeito
+
+- **U8** (v0.8.0, "o orcamento do gate deixa de mostrar o teto por IP") mirava a
+  linha `const TETOS_POR_IP = { colecoes: 3000, exportacao: 20 };`, que ganhou o
+  balde da comparacao. A ancora foi refeita para a linha nova; o defeito injetado
+  e o mesmo (`const TETOS_POR_IP = {};`), e o teste que o pega e o mesmo. MORTA.
+- **W11** (v0.8.0, "o gate perde accountDeletion") e **X9** (v0.9.0, "o gate
+  perde severityVerdict") sao os mesmos mutantes; o teste que os pega foi
+  renomeado de "exatamente 21 requisitos" para "exatamente 22". MORTAS.
+
+### O sobrevivente: W1, o mesmo da v0.8.0 e da v0.9.0
+
+O W1 faz o repositorio da exportacao devolver a linha inteira de `users`, mas o
+servico monta o arquivo campo a campo - a exportacao nao muda, e o teste esta
+certo em passar. E equivalente, foi descrito na v0.8.0 com a demonstracao de que
+a suite estatica (`nunca usa SELECT *`) o pega, e esta versao nao mexeu nele nem
+no `mutation-check.js` por causa dele.
+
+### A rodada inteira
+
+Linha de base:
+
+```text
+[linha de base - antes] 16 suite(s), sem mutacao
+  VERDE    tests/productionHardening.test.js
+  VERDE    tests/verifyDeploy.test.js
+  VERDE    tests/renderSync.test.js
+  VERDE    tests/bodyParseError.test.js
+  VERDE    tests/productLookup.test.js
+  VERDE    tests/migrate.test.js
+  VERDE    tests/doctor.test.js
+  VERDE    tests/e2eGate.test.js
+  VERDE    tests/accountIntegration.test.js
+  VERDE    tests/barcode.test.js
+  VERDE    tests/collectionsIntegration.test.js
+  VERDE    tests/rateLimit.test.js
+  VERDE    tests/alertLevel.test.js
+  VERDE    tests/alertLevelIntegration.test.js
+  VERDE    tests/comparison.test.js
+  VERDE    tests/comparisonIntegration.test.js
+```
+
+```text
+T1  P2   MORTA                  "P2 producao sem FRONTEND_ORIGIN nao sobe, e diz qual falta" falhou, como deveria
+T1b  P2   MORTA                  "P2 sem FRONTEND_ORIGIN, nem o createApp direto cai no default de localhost" falhou, como deveria
+T2  P5   MORTA                  "P5 erro do driver do banco nao chega ao cliente" falhou, como deveria
+T2b  P5   MORTA                  "P5 o detalhe do erro vai para o log do servidor" falhou, como deveria
+T3  P9   MORTA                  "P9 cada variavel obrigatoria ausente impede a subida, e a mensagem diz qual" falhou, como deveria
+T3b  P9   MORTA                  "P9 valor booleano nao reconhecido nao cai em default silencioso" falhou, como deveria
+T4  P12  MORTA                  "P12 versao no ar diferente da do repositorio reprova o D1" falhou, como deveria
+T5  P13  MORTA                  "P13 o registro de requisicoes do verify:deploy nao tem escrita" falhou, como deveria
+T5b  P13  MORTA                  "P13 contra o roteador REAL, nenhuma rota de escrita e alcancada" falhou, como deveria
+T6  P3   MORTA                  "P3 CORS devolve a origem configurada, nunca a do request" falhou, como deveria
+T7  P4   MORTA                  "P4 com trust proxy, req.ip segue o X-Forwarded-For e o balde acompanha" falhou, como deveria
+T8  P11  MORTA                  "P11 NOT_EXECUTED nao conta como PASS no agregado" falhou, como deveria
+T9  P11  MORTA                  "P11 o comando de verdade sai com codigo 1 quando um subgate falha" falhou, como deveria
+V1  S1/S4 MORTA                  "S1 render.yaml contem todas as obrigatorias de VARIAVEIS_OBRIGATORIAS_EM_PRODUCAO" falhou, como deveria
+V1b  S2   MORTA                  "S2 render.yaml nao declara variavel que o codigo nao le" falhou, como deveria
+V1c  S3   MORTA                  "S3 nenhuma credencial com valor literal no render.yaml" falhou, como deveria
+V2  O2a  MORTA                  "O2a JSON malformado responde 400, nao 500 - a medicao do auditor" falhou, como deveria
+V3  O2d  MORTA                  "O2d erro de biblioteca com statusCode arbitrario nao escolhe o status" falhou, como deveria
+V3b  O2d  MORTA                  "O2d copiar o type do body-parser nao basta para ganhar 400" falhou, como deveria
+V4  R7   MORTA                  "P13 o registro de requisicoes do verify:deploy nao tem escrita" falhou, como deveria
+U1  C2   MORTA                  "C2 a camera nunca transforma um codigo em outro" falhou, como deveria
+U2  C2   MORTA                  "C2 o App usa a leitura segura e nunca manda leitura da camera para a busca por nome" falhou, como deveria
+U3  C2   MORTA                  "C2 o App usa a leitura segura e nunca manda leitura da camera para a busca por nome" falhou, como deveria
+U4  O2e  MORTA                  "O2e corpo grande demais responde 413 fixo, sem a mensagem do leitor" falhou, como deveria
+U4b  O2e  MORTA                  "O2e copiar name, type e status do corpo grande nao basta para ganhar 413" falhou, como deveria
+U5  MODO MORTA                  "MODO NODE_ENV digitado errado nao sobe, e diz qual variavel" falhou, como deveria
+U5b  MODO MORTA                  "MODO NODE_ENV digitado errado nao sobe, e diz qual variavel" falhou, como deveria
+U6  MIG  MORTA                  "MIG migration que nao alcanca o banco falha dizendo por que" falhou, como deveria
+U7  MIG  MORTA                  "o doctor conta as mesmas migrations que o runner aplica, .sql e .js" falhou, como deveria
+U8  ORC  MORTA                  "o orcamento do gate usa os mesmos tetos do limitador, inclusive o por IP" falhou, como deveria
+W1  E2   MUTACAO SOBREVIVEU     a suite passou com o defeito aplicado
+W1b  E2   MORTA                  "E2 a exportacao nao contem o password_hash nem o salt reais - pelo valor" falhou, como deveria
+W2  E4   MORTA                  "E4 a exportacao de A nao contem nada de B, com B populado" falhou, como deveria
+W2b  E4   MORTA                  "E4 a exportacao de A nao contem nada de B, com B populado" falhou, como deveria
+W3  E5   MORTA                  "E5 userId no corpo, na query ou em cabecalho nao muda quem e exportado" falhou, como deveria
+W3b  E5   MORTA                  "E5 userId no corpo, na query ou em cabecalho nao muda quem e exportado" falhou, como deveria
+W4  D2   MORTA                  "D2 exclusao com senha errada nao remove nada" falhou, como deveria
+W5  D4   MORTA                  "D4 o schema montado SO pelas migrations tem ON DELETE CASCADE em toda FK para users" falhou, como deveria
+W5b  D4   MORTA                  "D4 o schema montado SO pelas migrations tem ON DELETE CASCADE em toda FK para users" falhou, como deveria
+W6  D8   MORTA                  "D8 falha simulada no meio da exclusao deixa o estado anterior intacto" falhou, como deveria
+W7  E8   MORTA                  "E8 a rota real recusa a exportacao acima do teto do usuario" falhou, como deveria
+W8  D9   MORTA                  "D9 a tentativa com senha errada gasta o mesmo balde do login" falhou, como deveria
+W9  D1   MORTA                  "D1 exclusao com a senha correta remove a conta e limpa o cookie" falhou, como deveria
+W10  E7   MORTA                  "E7 o arquivo nao leva e-mail nem nome, e a resposta nao pode ir para cache" falhou, como deveria
+W10b  E7   MORTA                  "E7 o arquivo nao leva e-mail nem nome, e a resposta nao pode ir para cache" falhou, como deveria
+W11  A11  MORTA                  "A11: o modo strict tem exatamente 22 requisitos, os 21 da v0.9.0 mais productComparison" falhou, como deveria
+S1  N1a  MORTA                  "N1 o schema canonicaliza UPC-A para EAN-13" falhou, como deveria
+S1b  N1a  MORTA                  "N1a o mesmo produto em UPC-A e EAN-13 vira UMA linha canonica" falhou, como deveria
+S1c  N1c  MORTA                  "N1c requisicao DIRETA ao backend grava a forma canonica" falhou, como deveria
+S2  N1e  MORTA                  "N1e o schema nao altera EAN-13 nem EAN-8" falhou, como deveria
+S2b  N1d  MORTA                  "N1d codigo nao-EAN passa intacto pela canonicalizacao" falhou, como deveria
+S3  N1g  MORTA                  "N1g a migration funde as duas formas pela regra declarada" falhou, como deveria
+S4  N1g  MORTA                  "N1g a migration e idempotente e nao toca codigo nao-EAN" falhou, como deveria
+S5  R2   MORTA                  "N1 a canonicalizacao nao afrouxa a conferencia do digito" falhou, como deveria
+S6  N1   MORTA                  "N1 a canonicalizacao usa shared/barcode.js, sem copia local" falhou, como deveria
+P1  M1   MORTA                  "M1 codigos com digito verificador errado sao recusados pelo motivo certo" falhou, como deveria
+P1b  M1   MORTA                  "M1 codigos validos de EAN-13, EAN-8 e UPC-A sao aceitos" falhou, como deveria
+P2  M3   MORTA                  "M3 o backend recusa productCode com digito verificador invalido" falhou, como deveria
+P2b  M3   MORTA                  "M3 a regra do backend e estreita e nao quebra cadastro legitimo" falhou, como deveria
+P3  M4   MORTA                  "o caminho manual nao monta o resultado por conta propria" falhou, como deveria
+P3b  M4   MORTA                  "M2 codigo invalido nao chega a rede" falhou, como deveria
+P4  M5   MORTA                  "M5 o piso de risco vale no caminho manual" falhou, como deveria
+P5  M9   MORTA                  "M9 nao existe segunda implementacao do digito verificador" falhou, como deveria
+P5b  M9   MORTA                  "M9 backend e frontend usam a MESMA implementacao de shared/" falhou, como deveria
+P6  M7   MORTA                  "M7 UPC-A vira EAN-13 com zero a esquerda, e o produto e o mesmo" falhou, como deveria
+P7  M6   MORTA                  "M6 cada motivo de recusa tem mensagem propria" falhou, como deveria
+P8  M8   MORTA                  "M8 nenhum outro caractere e removido em silencio" falhou, como deveria
+P9  M10  MORTA                  "M10 o backend recusa gravar codigo com digito verificador invalido" falhou, como deveria
+N1  R1/R3 MORTA                  "R1 usuario dentro do teto mas IP estourado recebe 429" falhou, como deveria
+N1b  R3   MORTA                  "R3 multiplas contas do mesmo IP nao ultrapassam o teto por IP" falhou, como deveria
+N2  R2   MORTA                  "R2 IP dentro do teto mas usuario estourado recebe 429" falhou, como deveria
+N2b  R4   MORTA                  "R4 dois usuarios atras do MESMO IP mantem cotas separadas" falhou, como deveria
+N3  R4   MORTA                  "R4 a requisicao recusada pelo teto de usuario nao consome orcamento do IP" falhou, como deveria
+N4  R5   MORTA                  "R5 dados forjados no request nao conseguem balde de IP novo" falhou, como deveria
+N5  R5   MORTA                  "R5 um bloco IPv6 /64 nao vira infinitos baldes" falhou, como deveria
+M1  R6   MORTA                  "R6 os tres tetos por rota seguem nos valores declarados" falhou, como deveria
+M2  R7   MORTA                  "R7 o teto por IP esta no valor medido" falhou, como deveria
+M3  Q3   MORTA                  "Q3 nenhuma variavel de ambiente desliga os limitadores" falhou, como deveria
+M3b  Q4   MORTA                  "Q4 nenhum dos limitadores tem opcao de pular requisicao" falhou, como deveria
+M4  Q2   MORTA                  "Q2 em producao o teto por usuario recusa na requisicao seguinte ao teto" falhou, como deveria
+M6  R9   MORTA                  "I1 usuario A nao le historico nem favorito de B" falhou, como deveria
+M7  R9   MORTA                  "I2 usuario B nao remove item de A" falhou, como deveria
+X1  S2   MORTA                  "S2 alerta maximo + conflito declarado: piso urgent" falhou, como deveria
+X2  S3   MORTA                  "S3 alerta maximo + traco: conflito no veredito, piso caution" falhou, como deveria
+X3  S5   MORTA                  "S5 o modelo respondendo normal nao derruba o piso em nenhum dos casos" falhou, como deveria
+X4  S6   MORTA                  "S6 o modelo nao escreve nem influencia o nivel: campo de nivel vindo dele derruba a resposta" falhou, como deveria
+X5  S12  MORTA                  "S12 o banco recusa nivel invalido inserido direto em SQL - no banco e no schema das migrations" falhou, como deveria
+X6  S13  MORTA                  "S13 nenhuma tabela de colecao tem onde guardar nivel ou veredito - no banco e no schema das migrations" falhou, como deveria
+X6b  S13  MORTA                  "S13 nivel nao congelado: o item salvo nao muda e a leitura seguinte reflete o nivel novo" falhou, como deveria
+X7  S17  MORTA                  "S17 o log da tentativa de minimizacao e o mesmo com alerta padrao ou maximo" falhou, como deveria
+X8  S18  MORTA                  "S18 o payload enviado a Anthropic nao ganhou canal novo: o nivel nao vai nem no allergySnapshot" falhou, como deveria
+X9  A11  MORTA                  "A11: o modo strict tem exatamente 22 requisitos, os 21 da v0.9.0 mais productComparison" falhou, como deveria
+X10  S9   MORTA                  "S9 nivel para alergia ausente do perfil e recusado pela validacao" falhou, como deveria
+X11  S1   MORTA                  "S1 nivel padrao + conflito declarado: piso caution, identico a v0.8.0" falhou, como deveria
+X12  S8   MORTA                  "S8 nivel desconhecido e recusado pela validacao" falhou, como deveria
+X13  S16  MORTA                  "S16 o nivel de A nao e visivel nem alteravel por B" falhou, como deveria
+Y1  C2t  MORTA                  "C2t produto em conflito com produto limpo: o limpo nao herda safety e o em conflito nao e rebaixado" falhou, como deveria
+Y2  C2t  MORTA                  "C2t produto em conflito com produto limpo: o limpo nao herda safety e o em conflito nao e rebaixado" falhou, como deveria
+Y3  C5t  MORTA                  "C5t explicacoes em ordem trocada: cada uma cai no produto certo, pelo codigo" falhou, como deveria
+Y4  C7t  MORTA                  "C7t o modelo nao escreve, nao altera e nao reordena veredito" falhou, como deveria
+Y5  C8t  MORTA                  "C8t produto sem dado de alergenico: a ausencia nao vira 'nao contem' em lugar nenhum" falhou, como deveria
+Y5b  C8t  MORTA                  "C8t produto sem dado de alergenico: a ausencia nao vira 'nao contem' em lugar nenhum" falhou, como deveria
+Y5c  C8t  MORTA                  "C8t produto sem dado de alergenico: a ausencia nao vira 'nao contem' em lugar nenhum" falhou, como deveria
+Y6  C6t  MORTA                  "C6t o modelo respondendo normal nao derruba o piso de nenhum dos dois" falhou, como deveria
+Y7  C9t  MORTA                  "C9t digito verificador invalido em qualquer dos dois e recusado antes de qualquer busca" falhou, como deveria
+Y8  C11  MORTA                  "C11 codigos iguais: recusados com mensagem clara, sem busca" falhou, como deveria
+Y8b  C11  MORTA                  "C11 codigos iguais: recusados com mensagem clara, sem busca" falhou, como deveria
+Y9  A11  MORTA                  "A11: o modo strict tem exatamente 22 requisitos, os 21 da v0.9.0 mais productComparison" falhou, como deveria
+Y10  C13  MORTA                  "C13 a sessao de B com o id de A no corpo compara com o perfil de B" falhou, como deveria
+Y11  C15  MORTA                  "C15 o limitador cobre as duas rotas: comparacao 30/300 por 10 min, explicacao no balde do assistente" falhou, como deveria
+mortas 109 | nao executadas 0 | problemas 1 | linha de base: antes verde, depois verde
+```
+
+## A4 - a ordem semver de 0.10.0
+
+Em texto, `"0.10.0" < "0.9.0"` e verdadeiro; em semver, 0.10.0 vem depois. O
+projeto nao ordena versao em lugar nenhum:
+
+- A unica comparacao de versao e `compararVersoes` (`scripts/version-check.js`),
+  usada pelo D1 do `verify:deploy`: ela compara por IGUALDADE (`local !==
+  remota`). 0.10.0 contra 0.9.0 reprova, 0.10.0 contra 0.10.0 passa - em qualquer
+  ordem.
+- Varredura recursiva de `scripts/`, `backend/`, `src/` e `shared/` (fora
+  `node_modules`) por `version <`, `> version`, `.version` comparado,
+  `localeCompare` de versao, `semver` e `sort` de versao: nenhuma ocorrencia alem
+  do `compararVersoes`. Os `sort()` que existem ordenam nomes de variavel e nomes
+  de migration (`001_` a `004_`, com zeros a esquerda), nao versoes.
+- O teste A4 trava as duas coisas: a igualdade e a ausencia de ordenacao nos
+  arquivos do primeiro nivel dessas pastas.
+- `/api/health` le a versao do `package.json` e a devolve como texto; o E2E e o
+  `verify:deploy` simulado leram "0.10.0" de um processo real.
+
+**Uma armadilha que existe, achada no bump:** a dependencia
+`@zxing/text-encoding` do frontend esta na versao `0.9.0`. Trocar as cegas, no
+`package-lock.json`, todo campo de versao com o valor 0.9.0 teria mudado a
+versao de uma dependencia. O bump desta versao foi ancorado no nome do pacote; a dependencia
+continua `0.9.0` (conferido na A15).
+
+## A5 a A9
+
+```text
+A5  npm run build                          sucesso
+A6  npm --prefix backend test              409 testes, 334 pass, 0 fail, 75 skipped
+                                           (72 exigem PostgreSQL, 1 a IA real,
+                                           2 a Open Food Facts real - todos
+                                           declarados NAO EXECUTADO, nenhum PASS)
+A7  suite contra PostgreSQL real (local)   409 testes, 406 pass, 0 fail, 3 skipped
+                                           (1 IA real, 2 Open Food Facts real)
+A8  npm audit --audit-level=moderate       frontend: found 0 vulnerabilities
+    npm --prefix backend audit (moderate)  backend:  found 0 vulnerabilities
+A9  npm run verify:release                 exit 0 - build, testes, os dois audits e
+                                           "secret scan - 0 real secrets" (na
+                                           execucao final; ver abaixo)
+```
+
+O A7 rodou com `RUN_DB_INTEGRATION_TESTS=true` contra o PostgreSQL LOCAL (17,
+porta 5433), com `DATABASE_URL` definida no comando - nunca contra o banco de
+producao. Gastos da suite contra os tetos por IP, medidos na propria execucao:
+`[R11] 403 de 3000` e `[exportacao] 17 de 20`.
+
+**O `verify:release` nao passou de primeira - e o registro fica aqui:**
+
+```text
+antes             T9c  FAIL  ao montar este relatorio, o A4 citava o campo de versao com
+                             0.9.0 em forma de JSON, dentro do bloco desta versao. Pego
+                             pelas suites de documento ANTES do verify:release; reescrito
+                             em texto. O teste nao foi tocado.
+verify:release 1  FAIL  build OK; testes 409 / 334 / 0 fail / 75 skipped; o npm audit nao
+                        resolveu registry.npmjs.org (getaddrinfo ENOENT). A suite levou
+                        30 min - nenhum teste passou de 7 s; o tempo ficou fora dos
+                        testes, e a causa NAO foi comprovada.
+verify:release 2  PASS  exit 0, a mesma arvore; a suite em 98 s
+verify:release 3  PASS  exit 0 - a arvore exata que foi para o ZIP, com este registro
+```
+
+A falha 1 e de ambiente, conferida antes de repetir: logo depois, os nomes
+resolviam e o `npm audit` sozinho respondia "found 0 vulnerabilities". E a mesma
+familia das falhas de rede da v0.9.0.
+
+## A10 - `verify:e2e`
+
+**PASS, exit code 0, na primeira execucao**, com PostgreSQL real e Claude real -
+2 chamadas pagas. Os 22 requisitos em `PASSED`, `ok: true`. A saida literal, a
+tabela de subgates, a contagem por balde e o `E2E_LAST_RUN.json` integral estao
+no `E2E_REPORT.md`.
+
+Nao ha migration nova: o doctor leu "4/4 applied", e o schema do banco do gate
+nao mudou nesta versao.
+
+O subgate novo:
+
+```text
+[OK] product comparison - um veredito por produto, perfil do banco; o limpo nao herda; explicacao amarrada pelo codigo
+```
+
+Ele faz as duas buscas pelo caminho de sempre (com a busca externa injetada),
+compara pela API REAL com o perfil do PostgreSQL - leite padrao e amendoim em
+alerta maximo -, exige que o veredito de cada produto seja igual ao do produto
+calculado sozinho, que o `urgent` va so a pacoca, que codigo invalido e codigos
+iguais deem 400, e que um modelo SIMULADO que troca as explicacoes e diz
+`normal` nao mude nada do que cada produto recebe.
+
+Contagem por balde:
+
+```text
+balde        usado   teto/usuario     teto/IP
+assistente      2             20           -
+auth            7             40           -
+colecoes       17            300        3000
+comparacao      4             30         300
+exportacao      1              5          20
+```
+
+## A11 - os 21 requisitos antigos continuam exigidos; agora sao 22
+
+Prova por execucao, sobre o `E2E_LAST_RUN.json` desta versao: para cada
+requisito do modo strict, um relatorio com SO aquele requisito em
+`NOT_EXECUTED` tem de reprovar, e reprovar so por ele.
+
+```text
+requisitos no modo strict (flag da IA ligada): 22
+faltando no E2E_LAST_RUN.json desta versao: []
+
+requisito                origem   presente   NOT_EXECUTED sozinho reprova
+backendProcess           v0.9.0   sim        sim, e so ele
+database                 v0.9.0   sim        sim, e so ele
+migrations               v0.9.0   sim        sim, e so ele
+auth                     v0.9.0   sim        sim, e so ele
+sessionSchema            v0.9.0   sim        sim, e so ele
+multiDevice              v0.9.0   sim        sim, e so ele
+isolation                v0.9.0   sim        sim, e so ele
+logout                   v0.9.0   sim        sim, e so ele
+assistantAuthority       v0.9.0   sim        sim, e so ele
+deterministicEngine      v0.9.0   sim        sim, e so ele
+fallback                 v0.9.0   sim        sim, e so ele
+privacy                  v0.9.0   sim        sim, e so ele
+historySync              v0.9.0   sim        sim, e so ele
+favoritesSync            v0.9.0   sim        sim, e so ele
+verdictFreshness         v0.9.0   sim        sim, e so ele
+manualCodeLookup         v0.9.0   sim        sim, e so ele
+accountExport            v0.9.0   sim        sim, e so ele
+accountDeletion          v0.9.0   sim        sim, e so ele
+severityVerdict          v0.9.0   sim        sim, e so ele
+productComparison        v0.10.0  sim        sim, e so ele
+anthropicReal            v0.9.0   sim        sim, e so ele
+assistantAuthenticated   v0.9.0   sim        sim, e so ele
+
+os 21 da v0.9.0 presentes: 21 de 21
+novos: ["productComparison"]
+sem a flag da IA: 20 requisitos; productComparison entre eles: sim
+```
+
+Os testes que travam isso na suite, verdes:
+
+```text
+A11: os 21 requisitos da v0.9.0 continuam exigidos, um a um
+A11: o modo strict tem exatamente 22 requisitos, os 21 da v0.9.0 mais productComparison
+A11: productComparison e requisito BASE e reprova sozinho          (inclusive "SKIPPED")
+A11: os 20 requisitos da v0.8.0 continuam exigidos, um a um
+A11: os 18 requisitos da v0.7.6 continuam exigidos, um a um
+A10: desde a v0.7.2 entraram so manualCodeLookup, os dois da v0.8.0, o da v0.9.0 e o da v0.10.0, nomeados
+D2: o conjunto de requisitos do modo strict e exatamente este
+```
+
+O teste da v0.9.0 que travava o total em "exatamente 21" foi substituido pelo de
+"exatamente 22", que nomeia o unico requisito novo - nao removido sem troca. O
+mutante Y9 (o gate perde `productComparison`), o X9 e o W11 provam que ele pega
+a perda. `productComparison` e BASE: depende de PostgreSQL e do motor, e o
+modelo do subgate e simulado - sem a flag da IA, o modo strict exige 20 (os 19 da
+v0.9.0 sem IA e ele); com a flag, os 22.
+
+## A12 - limpeza do banco depois do gate
+
+Residuo **0** em todos os padroes de teste - inclusive o novo,
+`comparacao-test-%` - e nenhuma linha orfa. Saida completa no `E2E_REPORT.md`.
+
+## A13 - `verify:deploy` inalterado e somente leitura
+
+`git diff` do `scripts/verify-deploy.js` contra a v0.9.0: vazio. As rotas novas
+sao `POST`, e o `verify:deploy` nao as toca; o P13 continua verde.
+
+```text
+verify:deploy simulado (local, http)   FAIL, exit 1 - 7 PASS, D2 FAIL (sem TLS local)
+verify:deploy REAL (somente leitura)   FAIL, exit 1 - 7 PASS, D1 FAIL
+                                       "repositorio declara 0.10.0 e o deploy anuncia 0.7.0"
+```
+
+Os dois FAIL sao os esperados. Os sete PASS do real medem a 0.7.0. No simulado, o
+D8 inspecionou os bundles novos, com a tela de comparacao: nenhum segredo.
+
+## A14 - varredura do nome antigo
+
+Fora de `node_modules`, `dist`, `.git` e `releases`, o nome antigo aparece so em
+`backend/tests/productName.test.js`, o teste que o procura, e nas secoes
+historicas do `AUDIT_REPORT.md` e do `CHANGELOG.md`. Os testes P1t estao verdes.
+
+## A15 - versao nos sete pontos
+
+```text
+package.json                             0.10.0
+backend/package.json                     0.10.0
+package-lock.json (raiz e "")            0.10.0 / 0.10.0
+backend/package-lock.json (raiz e "")    0.10.0 / 0.10.0
+/api/health de um processo real          D1 do alvo simulado: "ambos declaram 0.10.0"; E2E_LAST_RUN.json: 0.10.0
+README                                   # NutriScan v0.10.0
+CHANGELOG                                ## NutriScan v0.10.0 - 2026-10-16
+
+dependencia @zxing/text-encoding         0.9.0 - intocada, como deve
+```
+
+## A interface, verificada no navegador
+
+No navegador embutido do ambiente de desenvolvimento, como visitante, com a Open
+Food Facts REAL, contra o backend local - antes do trabalho do gate e do bump; o
+codigo da interface nao mudou depois disso:
+
+- Leite Moça (7891000100103) x Coca-Cola (5449000000996), com Leite/lactose no
+  perfil: a coluna do primeiro mostrou o conflito; a do segundo, nao. As
+  diferencas apareceram, e "Fibras" saiu como "Não informado".
+- Digito errado: a mensagem de recusa, sem busca.
+- O mesmo produto em UPC-A e EAN-13: "Esses dois códigos são do mesmo produto."
+- O produto 2000000001234, que existe na base sem nenhum dado: "Sem dados de
+  alergênicos. Confira o rótulo físico."
+- Um codigo valido que a base nao tem (7899999999012): a tela parcial - o
+  encontrado na sua coluna, o outro com "Não encontrei o produto".
+- "Explicar as diferenças" sem chave de IA: "O assistente não está disponível
+  agora. Os fatos acima continuam valendo."
+- Em 320 px: sem rolagem lateral; a menor fonte, 14 px, so no rotulo
+  "Primeiro"/"Segundo" (`.eyebrow`, o token do design).
+- No console, so status de rede esperados.
+
+## Observacoes descritas e NAO corrigidas - para decisao
+
+Fora das secoes 6, 7 e 8. Descritas, como manda a secao 17.
+
+1. **A explicacao contra o modelo REAL nao foi exercitada.** O JSON Schema da
+   comparacao foi conferido contra a documentacao de Structured Outputs
+   (platform.claude.com/docs/en/build-with-claude/structured-outputs, acessada
+   em 2026-10-16): objetos com `additionalProperties: false` (obrigatorio la),
+   array de objetos (os exemplos da pagina usam), `enum` de texto e `required`
+   sao suportados; `minItems` so aceita 0 ou 1, e `maxItems`, `minLength` e
+   `maxLength` nao sao - o schema nao usa nenhum deles, e quem exige dois itens
+   e o Zod, depois. A pagina avisa que `enum` pode voltar com outra
+   capitalizacao; o Zod recusaria com `AI_SCHEMA_INVALID`, como no chat. Mas
+   nenhuma chamada paga foi feita com este schema: o gate a exercita com modelo
+   simulado, e o prompt nao pediu uma chamada real a mais. Se a API recusar o schema, o botao "Explicar as
+   diferenças" responde "Não consegui a explicação agora" e a comparacao
+   continua valendo. Proposta, nao implementada: uma chamada real unica, ou um
+   terceiro passo pago no gate.
+2. **O chat diz "sem conflito" para produto sem dado de alergenico.** Conferido
+   por execucao nesta versao: `answerAssistantChat` com um produto sem
+   ingrediente, sem alergenico e sem traco, e Leite no perfil, devolve
+   `allergyVerdict.status: "clear"`. E anterior a v0.10.0. A comparacao nao
+   herdou isso (usa `no_allergen_data`); o chat nao foi mudado, porque mexer no
+   veredito do chat esta fora das secoes 6 a 8. Correcao possivel: o chat passar
+   `allergenDataAvailable` como a comparacao.
+3. **Orientacao de conduta que JA EXISTIA no produto e na documentacao**,
+   anterior a esta versao e ja descrita na v0.9.0:
+
+   ```text
+   backend/src/ai/assistantService.js:219     resposta local de urgencia: "...procure
+                                              atendimento de emergencia agora."
+   backend/src/ai/assistantPrompt.js:48-49    system prompt: "oriente busca imediata de
+                                              atendimento de emergencia"
+   src/pages/Assistant/AssistantPage.jsx:35   aviso da tela: "Em caso de reacao
+                                              alergica, procure atendimento."
+   src/services/assistantService.js:321       fallback local: "...procure emergencia agora."
+   src/services/assistantService.js:457       fallback local, texto de alergia
+   docs/AI_ASSISTANT.md, "Limites Medicos"    "deve orientar atendimento imediato"
+   ```
+
+   Nenhum texto NOVO desta versao orienta conduta: o system prompt da comparacao
+   proibe orientacao medica e nutricional, e um teste renderiza a tela e reprova
+   vocabulario de escolha e de conduta.
+4. **A tela parcial calcula no aparelho.** Com um produto faltando, a API recusa
+   o par, entao o veredito do produto encontrado sai do mesmo modulo
+   compartilhado, no aparelho, com o perfil que o aparelho tem - para quem tem
+   conta, o perfil carregado do servidor no login. Uma alergia mudada em outro
+   aparelho depois disso so chega a essa tela no proximo carregamento do perfil.
+   O mesmo vale para a comparacao no aparelho quando o servidor esta fora do ar,
+   que a tela anuncia.
+5. **Ordenacao neutra:** nao implementada, como a 5.1 mandou. Nao a julgo
+   necessaria - a ordem da pessoa ja e neutra.
+6. **Herdado, ainda aberto:** o visitante nao tem nivel de alerta (v0.9.0); a
+   tela Conta rola de lado em 320 px (a grade do `styles.css` de design); e o log
+   de erro interno grava o objeto de erro inteiro.
+
+## O que esta versao NAO prova
+
+- **A camera em hardware real: NAO EXECUTADO.**
+- **O deploy real da 0.10.0: NAO EXECUTADO.** Nada foi publicado; no ar esta a
+  0.7.0. Nada mudou no banco de producao alem das contas descartaveis que o gate
+  cria e apaga.
+- **HTTPS da 0.10.0: NAO COMPROVADO** - o alvo simulado nao tem TLS.
+- **A explicacao da comparacao contra o modelo real: NAO EXECUTADO** - ver
+  "Observacoes", item 1.
+- **A tela em aparelho real: NAO EXECUTADO.** A verificacao foi no navegador
+  embutido; a largura de 320 px foi emulada.
+- **Adequacao clinica e conformidade juridica: nao declaradas**, e nao sao algo
+  que teste prove.
+
+## Historico de auditorias anteriores
+
+## Auditoria da v0.9.0 - 2026-10-16
 
 ## Escopo
 
@@ -723,8 +1575,6 @@ Fora das secoes 6, 7 e 8. Descritas, como manda a secao 17.
 - **A causa da segunda execucao do E2E: NAO COMPROVADA.**
 - **Adequacao clinica e conformidade juridica: nao declaradas**, e nao sao algo
   que teste prove.
-
-## Historico de auditorias anteriores
 
 ## Auditoria da v0.8.0 - 2026-10-12
 

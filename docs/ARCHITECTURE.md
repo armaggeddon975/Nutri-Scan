@@ -1,4 +1,4 @@
-# Arquitetura NutriScan v0.9.0
+# Arquitetura NutriScan v0.10.0
 
 ## Visao geral
 
@@ -178,7 +178,14 @@ colecoes     300 / 10 min   por USUARIO controle primario de escrita
 colecoes    3000 / 10 min   por IP      contencao de abuso multiconta
 exportacao     5 / 24 h     por USUARIO uso legitimo e raro (v0.8.0)
 exportacao    20 / 24 h     por IP      contencao de abuso multiconta
+comparacao    30 / 10 min   por USUARIO uso na gondola, com folga (v0.10.0)
+comparacao   300 / 10 min   por IP      contencao de abuso multiconta
 ```
+
+A comparacao tambem usa a mesma fabrica, com baldes proprios. A explicacao da
+comparacao (`POST /api/compare/explain`) passa ainda pelo balde do assistente:
+o teto de chamadas de IA e um so para o chat e para ela. A busca de produto roda
+no navegador, direto na Open Food Facts, e nenhum limitador do backend a cobre.
 
 A exportacao usa a mesma fabrica das colecoes, com baldes proprios. A exclusao
 de conta (`DELETE /api/account`) confere senha e por isso passa pelo de auth.
@@ -301,6 +308,35 @@ O nivel e lido do PostgreSQL junto com as alergias e passado ao veredito, que e
 montado antes da chamada de IA. Ele nao entra no `allergySnapshot` enviado ao
 modelo. O frontend usa o mesmo motor, com o nivel do perfil, no veredito local e
 nas etiquetas da tela do produto. Decisoes em `docs/NIVEL_DE_ALERTA.md`.
+
+## Comparacao de dois produtos (v0.10.0)
+
+```text
+src/services/productLookup.js   consultarDoisProdutos: prepararCodigo x2, iguais?, busca x2
+shared/productComparison.js     compareProducts: um veredito por produto + diferencas
+POST /api/compare               perfil da sessao, motor x2, piso produto a produto
+POST /api/compare/explain       o mesmo + uma chamada ao modelo, amarrada por codigo
+```
+
+As duas buscas acontecem no navegador, pelo caminho de um produto chamado duas
+vezes - mesma conferencia de digito, mesma canonicalizacao, mesmo
+`openFoodFactsService`. O backend recebe o par ja encontrado, como dado nao
+confiavel, confere os codigos de novo e reduz cada produto ao contexto
+controlado do assistente.
+
+`compareProducts` chama `analyzeComparedProduct` uma vez para cada produto, e
+cada chamada monta o veredito com `buildAllergyVerdict`. Nao existe veredito da
+comparacao. O piso de risco e imposto produto a produto: sem modelo, por
+`applyAllergyAuthority`; com modelo, por `finalizeAssistantResponse`, o mesmo do
+chat, chamado uma vez por produto com o veredito DAQUELE produto.
+
+O modelo devolve uma explicacao por `productCode`. `amarrarExplicacoes` exige
+cada codigo da comparacao exatamente uma vez e nenhum outro; o servidor poe cada
+explicacao no produto pelo codigo, nunca pela posicao.
+
+Produto sem texto de ingredientes, alergenicos ou tracos sai com `allergenData:
+"not_informed"` e veredito `not_evaluated` / `no_allergen_data`; nutriente
+ausente sai `null`. Nada e gravado. Decisoes em `docs/COMPARACAO.md`.
 
 ## Alergias por perfil
 

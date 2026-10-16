@@ -14,11 +14,14 @@ import { analyzeProductAllergens } from "../shared/allergenEngine.js";
 import { CONFLICT_MINIMUM_SAFETY, buildAllergyVerdict } from "../shared/allergyVerdict.js";
 import {
   CODIGO_INVALIDO,
+  DOIS_ENCONTRADOS,
   ENCONTRADO,
   ORIGEM_CAMERA,
   ORIGEM_MANUAL,
+  consultarDoisProdutos,
   consultarProdutoPorCodigo,
 } from "../src/services/productLookup.js";
+import { analyzeComparedProduct } from "../shared/productComparison.js";
 import { decideAssistantFallback } from "../src/services/assistantFallback.js";
 
 const MAX_ANTHROPIC_CALLS = 2;
@@ -95,7 +98,7 @@ function backendModuleUrl(...segments) {
 // nessa suite todos os clientes saem do mesmo IP. Entao a suite conta o que
 // gasta e recusa passar se chegar perto do teto. Perto, e nao no teto: a
 // margem existe para que um teste novo nao descubra o limite do jeito ruim.
-const TETOS = { auth: 40, assistente: 20, colecoes: 300, exportacao: 5 };
+const TETOS = { auth: 40, assistente: 20, colecoes: 300, exportacao: 5, comparacao: 30 };
 const MARGEM = 0.5; // nenhum balde pode passar de metade do seu teto
 
 // Colecoes tem DOIS tetos desde a v0.7.2: 300 por usuario e 3000 por IP. `teto`
@@ -103,7 +106,7 @@ const MARGEM = 0.5; // nenhum balde pode passar de metade do seu teto
 // nao mostrava o por IP, e quem lia "teto 300" podia achar que era o unico.
 // Toda a suite sai do mesmo IP, entao o gasto por IP e o mesmo numero.
 // A exportacao (v0.8.0) tem o mesmo desenho: 5 por usuario e 20 por IP, por dia.
-const TETOS_POR_IP = { colecoes: 3000, exportacao: 20 };
+const TETOS_POR_IP = { colecoes: 3000, exportacao: 20, comparacao: 300 };
 
 function tetoPorIpDe(balde, usado) {
   const tetoPorIp = TETOS_POR_IP[balde];
@@ -123,6 +126,10 @@ function baldeDa(pathname, method, cliente) {
   if (metodo === "DELETE" && rota === "/account") return "auth";
   if (metodo === "POST" && rota === "/assistant/chat") return "assistente";
   if (metodo === "GET" && rota === "/account/export") return "exportacao";
+  // Comparacao (v0.10.0): balde proprio. A explicacao (/compare/explain) gasta
+  // tambem o do assistente, mas o gate nao a chama por HTTP: ela e exercitada
+  // dentro do processo, com modelo simulado, sem chamada paga.
+  if (metodo === "POST" && rota.startsWith("/compare")) return "comparacao";
 
   // Colecoes conta por usuario. Separar por cliente pareceria mais preciso e
   // seria errado: `clientB` faz login com o e-mail de A, entao dois clientes
@@ -336,6 +343,7 @@ async function main() {
   const { env } = await import(backendModuleUrl("config", "env.js"));
   const { closePool } = await import(backendModuleUrl("database", "pool.js"));
   const { answerAssistantChat } = await import(backendModuleUrl("ai", "assistantService.js"));
+  const { explicarComparacao } = await import(backendModuleUrl("services", "comparisonService.js"));
   const { buildAllergySnapshot, buildAssistantProductContext } = await import(
     backendModuleUrl("ai", "contextBuilder.js")
   );
@@ -387,6 +395,7 @@ async function main() {
     accountExport: "NOT_EXECUTED",
     accountDeletion: "NOT_EXECUTED",
     severityVerdict: "NOT_EXECUTED",
+    productComparison: "NOT_EXECUTED",
     logout: "NOT_EXECUTED",
     deterministicEngine: "NOT_EXECUTED",
     assistantGuest: "NOT_EXECUTED",
@@ -1081,6 +1090,140 @@ async function main() {
             "OK",
             "severity verdict",
             "alerta maximo: urgent no declarado, caution no traco; padrao igual a v0.8.0; modelo negando nao derruba o piso",
+          );
+        }
+
+        // ------------------------------------------------------------------
+        // v0.10.0 - productComparison: dois produtos, um veredito por produto.
+        //
+        // As duas buscas vao pelo caminho de sempre (`consultarDoisProdutos`),
+        // com a busca externa injetada para nao depender da Open Food Facts estar
+        // no ar. A comparacao vai pela API REAL, com a sessao de A - o perfil sai
+        // do PostgreSQL (leite padrao e amendoim em alerta maximo, gravados pelo
+        // subgate anterior). A explicacao roda no processo, com um modelo
+        // SIMULADO que troca a ordem das explicacoes e nega o conflito: nenhuma
+        // chamada paga.
+        // ------------------------------------------------------------------
+        {
+          const COD_LEITE = "7891000100103";
+          const COD_PACOCA = "5449000000996";
+          const produtos = {
+            [COD_LEITE]: { product_name: "Leite E2E comparacao", ingredients_text: "leite integral, acucar" },
+            [CODIGO_MANUAL_CANONICO]: { product_name: "Biscoito E2E comparacao", ingredients_text: "farinha de arroz, sal" },
+            [COD_PACOCA]: { product_name: "Pacoca E2E comparacao", ingredients_text: "amendoim torrado, acucar" },
+          };
+          const buscas = [];
+          const buscarFalso = async (codigo) => {
+            buscas.push(codigo);
+            return produtos[codigo] ?? null;
+          };
+
+          // 1. Codigo invalido em qualquer dos dois: nenhuma busca.
+          const recusada = await consultarDoisProdutos(
+            { entrada: COD_LEITE },
+            { entrada: CODIGO_MANUAL_INVALIDO },
+            { buscar: buscarFalso },
+          );
+          assert(recusada.estado === CODIGO_INVALIDO && buscas.length === 0, "codigo invalido na comparacao chegou a busca");
+
+          // 2. UPC-A num e EAN-13 no outro: os dois canonicalizados.
+          const consulta = await consultarDoisProdutos(
+            { entrada: COD_LEITE },
+            { entrada: CODIGO_MANUAL_UPCA },
+            { buscar: buscarFalso },
+          );
+          assert(consulta.estado === DOIS_ENCONTRADOS, `a comparacao nao encontrou os dois: ${consulta.estado}`);
+          assert(consulta.b.codigo === CODIGO_MANUAL_CANONICO, `o UPC-A nao foi canonicalizado: ${consulta.b.codigo}`);
+
+          const par = (codigoA, codigoB) => ({
+            products: [
+              { code: codigoA, product: buildAssistantProductContext(produtos[codigoA]) },
+              { code: codigoB, product: buildAssistantProductContext(produtos[codigoB]) },
+            ],
+            // Ignorado com sessao: o perfil e o do banco.
+            guestAllergies: ["soy"],
+            userId: "outra-pessoa",
+          });
+
+          // 3. API real, perfil do PostgreSQL: o limpo nao herda nada do outro.
+          const perfilDoBanco = (await clientA.request("/profile")).data.user;
+          const perfil = {
+            profileAllergies: perfilDoBanco.allergies,
+            alertLevels: perfilDoBanco.alertLevels,
+            profileSource: "postgresql",
+          };
+          const comparada = await clientA.request("/compare", { method: "POST", body: par(COD_LEITE, CODIGO_MANUAL_CANONICO) });
+          assert(comparada.response.status === 200, `comparacao deve retornar 200 (${comparada.response.status})`);
+          assert(comparada.data.comparison.profileSource === "postgresql", "a comparacao nao usou o perfil do banco");
+          const [leite, limpo] = comparada.data.comparison.products;
+          assert(leite.code === COD_LEITE && limpo.code === CODIGO_MANUAL_CANONICO, "a ordem dos produtos mudou");
+          for (const [produto, origem] of [[leite, produtos[COD_LEITE]], [limpo, produtos[CODIGO_MANUAL_CANONICO]]]) {
+            const { safetyFloorApplied: _ignorado, ...veredito } = produto.allergyVerdict;
+            const sozinho = analyzeComparedProduct(buildAssistantProductContext(origem), perfil).allergyVerdict;
+            assert(
+              JSON.stringify(veredito) === JSON.stringify(sozinho),
+              `o veredito de ${produto.code} nao e o do produto calculado sozinho`,
+            );
+          }
+          assert(leite.allergyVerdict.status === "conflict" && leite.safety === "caution", "o produto em conflito foi rebaixado");
+          assert(limpo.allergyVerdict.status === "clear" && limpo.safety === "normal", "o produto limpo herdou o safety do outro");
+
+          // 4. Alerta maximo: urgent so no produto certo.
+          const estrita = await clientA.request("/compare", { method: "POST", body: par(COD_PACOCA, CODIGO_MANUAL_CANONICO) });
+          const [pacoca, limpoDeNovo] = estrita.data.comparison.products;
+          assert(pacoca.safety === "urgent", `o amendoim em alerta maximo nao recebeu urgent: ${pacoca.safety}`);
+          assert(limpoDeNovo.safety === "normal", "o produto limpo herdou o urgent do vizinho");
+
+          // 5. A API recusa codigo invalido e codigos iguais.
+          const invalida = await clientA.request("/compare", {
+            method: "POST",
+            body: { products: [{ code: CODIGO_MANUAL_INVALIDO, product: produtos[COD_LEITE] }, { code: COD_LEITE, product: produtos[COD_LEITE] }] },
+          });
+          assert(invalida.response.status === 400, `codigo invalido na API deu ${invalida.response.status}`);
+          const iguais = await clientA.request("/compare", {
+            method: "POST",
+            body: { products: [{ code: CODIGO_MANUAL_UPCA, product: produtos[CODIGO_MANUAL_CANONICO] }, { code: CODIGO_MANUAL_CANONICO, product: produtos[CODIGO_MANUAL_CANONICO] }] },
+          });
+          assert(iguais.response.status === 400, `codigos iguais na API deram ${iguais.response.status}`);
+
+          // 6. Explicacao com o modelo trocando a ordem e dizendo "normal".
+          const modeloQueTroca = {
+            messages: {
+              create: async () => ({
+                stop_reason: "end_turn",
+                content: [
+                  {
+                    type: "text",
+                    text: JSON.stringify({
+                      explanations: [
+                        { productCode: CODIGO_MANUAL_CANONICO, text: "TEXTO-DO-LIMPO", safety: "normal" },
+                        { productCode: COD_LEITE, text: "TEXTO-DO-LEITE", safety: "normal" },
+                      ],
+                      category: "allergy",
+                      usedProductContext: true,
+                    }),
+                  },
+                ],
+              }),
+            },
+          };
+          const explicada = await explicarComparacao(
+            { user: { id: register.data.user.id } },
+            par(COD_LEITE, CODIGO_MANUAL_CANONICO),
+            modeloQueTroca,
+            { logger: { warn: () => {} } },
+          );
+          const [leiteExplicado, limpoExplicado] = explicada.comparison.products;
+          assert(leiteExplicado.explanation === "TEXTO-DO-LEITE", "a explicacao do leite foi parar em outro produto");
+          assert(limpoExplicado.explanation === "TEXTO-DO-LIMPO", "a explicacao do limpo foi parar em outro produto");
+          assert(leiteExplicado.safety === "caution", "o modelo dizendo normal derrubou o piso do leite");
+          assert(limpoExplicado.safety === "normal", "o produto limpo herdou o piso do leite na explicacao");
+
+          report.productComparison = "PASSED";
+          log(
+            "OK",
+            "product comparison",
+            "um veredito por produto, perfil do banco; o limpo nao herda; explicacao amarrada pelo codigo",
           );
         }
 

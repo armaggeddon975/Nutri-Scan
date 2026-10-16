@@ -1,4 +1,4 @@
-# API NutriScan v0.9.0
+# API NutriScan v0.10.0
 
 Base local: `http://localhost:3000/api`
 
@@ -18,7 +18,7 @@ Exemplo:
   "status": "ok",
   "database": "not_configured",
   "ai": "not_configured",
-  "version": "0.9.0"
+  "version": "0.10.0"
 }
 ```
 
@@ -590,6 +590,188 @@ confirmacao falhou. Nada e apagado.
 **Limite: o de autenticacao** - 40 por 15 minutos por IP, o mesmo balde do
 login. Cada tentativa confere uma senha, entao conta como tentativa de senha; o
 limitador roda antes da autenticacao, e toda tentativa conta.
+
+## Comparacao de produtos (v0.10.0)
+
+Duas rotas. Nenhuma busca produto: as duas buscas acontecem no navegador, pelo
+caminho de sempre, e o que chega aqui e o par ja encontrado - dado nao
+confiavel. Nenhuma das duas grava nada, com ou sem sessao. As decisoes estao em
+[COMPARACAO.md](COMPARACAO.md).
+
+**O perfil.** Com sessao, alergias e nivel de alerta vem do PostgreSQL, do dono
+da sessao; `userId`, `user_id` e `user` no corpo sao descartados, e
+`guestAllergies` e ignorado. Sem sessao, vale `guestAllergies`, como no
+assistente.
+
+**Nao ha vencedor.** Nenhum campo da resposta escolhe, recomenda ou ordena os
+produtos. A ordem de `products` e a do pedido.
+
+### `POST /api/compare`
+
+Request:
+
+```json
+{
+  "products": [
+    { "code": "7891000100103", "product": { "product_name": "Leite condensado", "ingredients_text": "leite integral, acucar", "nutriments": { "energy-kcal_100g": 321 } } },
+    { "code": "036000291452", "product": { "product_name": "Biscoito de arroz", "ingredients_text": "farinha de arroz, sal" } }
+  ],
+  "guestAllergies": ["milk"]
+}
+```
+
+- `products`: exatamente dois. `code` passa pela mesma validacao de
+  `productCode` do historico (digito verificador, UPC-A para EAN-13, codigo
+  nao-EAN intacto); `product` e o objeto da Open Food Facts, reduzido pelo
+  servidor ao contexto controlado do assistente.
+- `guestAllergies`: opcional, so para visitante.
+
+Response `200` (visitante com `milk`; listas de nutrientes encurtadas aqui):
+
+```json
+{
+  "comparison": {
+    "profileSource": "request",
+    "products": [
+      {
+        "slot": "a",
+        "code": "7891000100103",
+        "name": "Leite condensado",
+        "brand": "Marca A",
+        "allergenData": "informed",
+        "allergens": [{ "id": "milk", "label": "Leite/lactose", "state": "contains" }],
+        "nutrition": [
+          { "key": "energy-kcal", "label": "Energia", "unit": "kcal", "value": 321 },
+          { "key": "fiber", "label": "Fibras", "unit": "g", "value": null }
+        ],
+        "allergyVerdict": {
+          "status": "conflict",
+          "reason": null,
+          "source": "deterministic_engine",
+          "conflicts": [{ "id": "milk", "label": "Leite/lactose" }],
+          "traces": [],
+          "profileSource": "request",
+          "alert": "Este produto tem Leite/lactose, que está no seu perfil de alergias. Confira a embalagem física antes de consumir.",
+          "minimumSafety": "caution",
+          "safetyFloorApplied": true
+        },
+        "safety": "caution",
+        "explanation": null
+      },
+      {
+        "slot": "b",
+        "code": "0036000291452",
+        "name": "Biscoito de arroz",
+        "brand": "Marca B",
+        "allergenData": "informed",
+        "allergens": [{ "id": "rice", "label": "Arroz", "state": "contains" }],
+        "nutrition": [
+          { "key": "energy-kcal", "label": "Energia", "unit": "kcal", "value": 387 },
+          { "key": "fiber", "label": "Fibras", "unit": "g", "value": null }
+        ],
+        "allergyVerdict": {
+          "status": "clear",
+          "reason": null,
+          "source": "deterministic_engine",
+          "conflicts": [],
+          "traces": [],
+          "profileSource": "request",
+          "alert": "",
+          "minimumSafety": null,
+          "safetyFloorApplied": false
+        },
+        "safety": "normal",
+        "explanation": null
+      }
+    ],
+    "differences": {
+      "allergens": [
+        { "id": "milk", "label": "Leite/lactose", "a": "contains", "b": "not_detected" },
+        { "id": "rice", "label": "Arroz", "a": "not_detected", "b": "contains" }
+      ],
+      "nutrition": [
+        { "key": "energy-kcal", "label": "Energia", "unit": "kcal", "a": 321, "b": 387 }
+      ]
+    }
+  },
+  "explanation": { "status": "not_requested" }
+}
+```
+
+Os campos:
+
+```text
+products[].slot            "a" ou "b" - a posicao do pedido, nada mais
+products[].code            a forma canonica (o UPC-A acima virou EAN-13)
+products[].allergenData    "informed" ou "not_informed" (rotulo sem texto de
+                           ingredientes, alergenicos ou tracos)
+products[].allergens       todo alergenico que o motor achou no rotulo, com
+                           state "contains" ou "traces"; vazio sem dado
+products[].nutrition       por 100 g; value null quando a base nao traz - nunca 0
+products[].allergyVerdict  o veredito DESTE produto, do motor. Sem dado de
+                           alergenico: status "not_evaluated", reason
+                           "no_allergen_data", sem piso
+products[].safety          o piso deste produto, imposto produto a produto
+products[].explanation     null nesta rota
+differences.allergens      so os alergenicos cujo estado difere; cada lado
+                           "contains", "traces", "not_detected" ou
+                           "not_informed"
+differences.nutrition      os nutrientes que pelo menos um dos dois informa;
+                           o lado sem dado vem null
+```
+
+`not_detected` quer dizer "nao aparece no rotulo deste produto". `not_informed`
+quer dizer "este produto nao tem dado de alergenico". Nenhum dos dois quer
+dizer "nao contem".
+
+Erros:
+
+```text
+400  VALIDATION_ERROR   "A comparação precisa de exatamente dois produtos."
+                        "A comparação precisa dos dois produtos encontrados."
+                        "Esses dois códigos são do mesmo produto. Escolha outro para comparar."
+                        digito verificador invalido em qualquer dos dois
+429  (limitador)        30 por 10 min por usuario ou 300 por 10 min por IP
+```
+
+### `POST /api/compare/explain`
+
+O mesmo corpo de `POST /api/compare`. Chama o modelo UMA vez para os dois
+produtos e devolve a comparacao inteira de novo, com o veredito de cada um
+recalculado e `explanation` preenchido:
+
+```json
+{
+  "comparison": {
+    "profileSource": "request",
+    "products": [
+      { "slot": "a", "code": "7891000100103", "safety": "caution", "explanation": "texto do modelo sobre ESTE produto", "...": "..." },
+      { "slot": "b", "code": "0036000291452", "safety": "normal", "explanation": "texto do modelo sobre ESTE produto", "...": "..." }
+    ],
+    "differences": { "...": "..." }
+  },
+  "explanation": { "status": "ok", "source": "anthropic", "category": "allergy" }
+}
+```
+
+- O modelo devolve uma explicacao por `productCode`. O servidor poe cada uma no
+  produto pelo CODIGO, nunca pela ordem da lista; codigo repetido, faltando ou
+  estranho a comparacao recusa a resposta inteira.
+- `allergyVerdict` e `safety` continuam sendo do motor: o piso de cada produto
+  e imposto depois da resposta do modelo, e chave fora do contrato na resposta
+  dele (`allergyVerdict`, `winner`, `ranking`...) derruba a resposta.
+- O nivel de alerta nao e enviado ao modelo.
+
+Erros, alem dos de `POST /api/compare`:
+
+```text
+429  (limitador)        tambem o balde do assistente: 20 por 10 min por IP, o mesmo do chat
+503  AI_NOT_CONFIGURED  sem chave de IA no servidor
+502  AI_SCHEMA_INVALID  resposta do modelo fora do contrato, ou explicacao com
+                        codigo repetido, faltando ou estranho
+```
+
+Os demais codigos `AI_*` sao os do assistente.
 
 ## Erros
 

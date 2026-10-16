@@ -82,7 +82,10 @@ export function extractTextContent(content) {
     .trim();
 }
 
-export function parseStructuredResponse(response) {
+// `schema` (v0.10.0): o chat usa o seu; a explicacao da comparacao, o dela. As
+// regras de `stop_reason`, texto vazio e JSON invalido sao as MESMAS para os
+// dois - fail-closed num lugar so.
+export function parseStructuredResponse(response, schema = assistantResponseSchema) {
   const stopReason = response?.stop_reason;
 
   if (stopReason === "refusal") {
@@ -110,7 +113,7 @@ export function parseStructuredResponse(response) {
     throw safeAssistantError("AI_BAD_RESPONSE", "Assistente inteligente retornou JSON invalido.", 502);
   }
 
-  const validation = assistantResponseSchema.safeParse(parsed);
+  const validation = schema.safeParse(parsed);
   if (!validation.success) {
     throw safeAssistantError("AI_SCHEMA_INVALID", "Assistente inteligente retornou estrutura invalida.", 502);
   }

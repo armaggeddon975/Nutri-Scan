@@ -1,4 +1,4 @@
-import { Barcode, CircleGauge, Heart, Utensils } from "lucide-react";
+import { Barcode, CircleGauge, Heart, Scale, Utensils } from "lucide-react";
 
 import { formatTag } from "../../utils/formatting";
 import { getIngredients, getProductName } from "../../utils/product";
@@ -14,6 +14,7 @@ export function ProductAnalysis({
   onSelectProduct,
   isFavorite = false,
   onToggleFavorite,
+  onCompare,
 }) {
   if (!product) {
     return (
@@ -54,6 +55,14 @@ export function ProductAnalysis({
               >
                 <Heart size={20} aria-hidden="true" />
                 {isFavorite ? "Nos favoritos" : "Favoritar"}
+              </button>
+            ) : null}
+            {/* Comparar (v0.10.0): so produto com codigo de barras - a comparacao
+                e entre dois codigos. Alimento da base local nao tem codigo. */}
+            {onCompare && product.code && !product.isLocal ? (
+              <button type="button" className="compare-button" onClick={onCompare}>
+                <Scale size={20} aria-hidden="true" />
+                Comparar com outro produto
               </button>
             ) : null}
             <div className="product-meta">

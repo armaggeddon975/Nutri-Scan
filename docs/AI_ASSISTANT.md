@@ -1,4 +1,4 @@
-# Nutri Assistente IA - v0.9.0
+# Nutri Assistente IA - v0.10.0
 
 ## Fluxo
 
@@ -309,6 +309,33 @@ auditavel em uma frase: nenhuma resposta com conflito declarado sai com safety
 Na interface, o bloco deterministico aparece acima do texto do modelo, e o
 estado exibido vem sempre de `verdict.status`. A UI nunca infere conflito do
 texto da resposta.
+
+## Explicacao da comparacao (v0.10.0)
+
+`POST /api/compare/explain` faz UMA chamada ao modelo para dois produtos, com o
+system prompt proprio da comparacao (`backend/src/ai/comparisonPrompt.js`) e o
+mesmo provedor, modelo, timeout e Structured Outputs do chat.
+
+- **O modelo explica; nao escolhe.** O system prompt pede uma explicacao por
+  produto e proibe escolher, ordenar ou recomendar. O schema da resposta nao tem
+  campo para isso.
+- **Os vereditos vao prontos.** Cada produto vai com o seu `allergySnapshot`,
+  o mesmo do chat. O nivel de alerta nao vai.
+- **Dado externo fora do `system`.** Nome, marca e ingredientes dos dois
+  produtos vao no bloco de dados da mensagem do usuario.
+- **Amarracao por codigo.** A resposta e `{ explanations: [{ productCode, text,
+  safety }] x2, category, usedProductContext }`, fechada em todos os niveis. O
+  servidor poe cada explicacao no produto pelo `productCode`, nunca pela ordem;
+  codigo repetido, faltando ou estranho, ou qualquer chave fora do contrato -
+  `allergyVerdict` inclusive -, derruba a resposta com `AI_SCHEMA_INVALID`.
+- **Piso por produto.** `finalizeAssistantResponse` roda uma vez para cada
+  produto, com o veredito DAQUELE produto. O modelo dizendo `normal` nao derruba
+  o piso de nenhum dos dois.
+- **Mesmo teto de custo.** A rota passa pelo balde do assistente, o mesmo do
+  chat.
+
+O JSON Schema enviado para Structured Outputs nao declara a quantidade de itens
+(`minItems`/`maxItems`); quem exige exatamente dois e o Zod, depois.
 
 ## Limites Medicos
 

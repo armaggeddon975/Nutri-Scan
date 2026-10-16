@@ -237,3 +237,54 @@ export function criarLimitadoresDeExportacao({
 }
 
 export const exportRateLimit = criarLimitadoresDeExportacao();
+
+// ---------------------------------------------------------------------------
+// COMPARACAO DE DOIS PRODUTOS (v0.10.0)
+// ---------------------------------------------------------------------------
+//
+// O QUE COBRIA A BUSCA DE PRODUTO ATE AQUI: NADA DO BACKEND. A busca por codigo
+// roda no navegador, direto na Open Food Facts (`src/services/productLookup.js`
+// e `openFoodFactsService.js`), e nenhum limitador deste servidor a ve. A
+// comparacao nao muda isso: as duas buscas continuam no navegador, pelo mesmo
+// caminho. O que chega aqui sao os dois produtos ja buscados.
+//
+// O que a rota custa ao servidor: rodar o motor duas vezes - barato - e, na
+// rota de explicacao, uma chamada ao modelo.
+//
+// QUANTAS COMPARACOES UMA PESSOA FAZ EM 10 MINUTOS?
+//
+// Na gondola, poucas: dois ou tres pares de produto por item da lista, com
+// alguma indecisao e um codigo digitado errado no meio.
+//
+//   por usuario   30 / 10 min    uns 10 pares com folga para refazer cada um
+//                                duas vezes. Ninguem compara 30 pares em 10
+//                                minutos olhando a prateleira.
+//   por IP       300 / 10 min    dez pessoas atras do mesmo endereco (familia,
+//                                rede do mercado, CGNAT de celular) no limite
+//                                da propria cota; contem script que troca de
+//                                conta.
+//
+// Mesmo desenho da v0.7.2 - usuario E IP, o mais restritivo vence, usuario
+// conferido primeiro -, pela mesma fabrica, com baldes proprios. Sem sessao, o
+// balde "por usuario" usa o IP (`collectionsRateLimitKey`).
+//
+// A EXPLICACAO POR IA PASSA TAMBEM PELO BALDE DO ASSISTENTE
+//
+// `POST /api/compare/explain` chama o modelo uma vez, como uma pergunta ao
+// assistente. Ela passa por `assistantRateLimit` - o MESMO balde do chat, 20
+// por 10 minutos por IP. Um balde proprio para ela deixaria um cliente somar 20
+// perguntas e mais N explicacoes na mesma janela, dobrando o gasto com IA. Com
+// o balde dividido, o teto de custo continua exatamente onde estava.
+export const TETO_COMPARACAO_POR_USUARIO = 30;
+export const TETO_COMPARACAO_POR_IP = 300;
+export const JANELA_COMPARACAO_MS = 10 * 60 * 1000;
+
+export function criarLimitadoresDeComparacao({
+  tetoPorUsuario = TETO_COMPARACAO_POR_USUARIO,
+  tetoPorIp = TETO_COMPARACAO_POR_IP,
+  janelaMs = JANELA_COMPARACAO_MS,
+} = {}) {
+  return criarLimitadoresDeColecoes({ tetoPorUsuario, tetoPorIp, janelaMs });
+}
+
+export const compareRateLimit = criarLimitadoresDeComparacao();

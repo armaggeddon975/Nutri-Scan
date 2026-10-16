@@ -56,6 +56,11 @@ const MIGRATION004 = "backend/migrations/004_nivel_de_alerta.sql";
 const ASSISTANT_PROMPT = "backend/src/ai/assistantPrompt.js";
 const ASSISTANT_SERVICE = "backend/src/ai/assistantService.js";
 const PROFILE_CONTROLLER = "backend/src/controllers/profileController.js";
+const COMPARACAO_SHARED = "shared/productComparison.js";
+const COMPARACAO_SERVICE = "backend/src/services/comparisonService.js";
+const COMPARACAO_PROMPT = "backend/src/ai/comparisonPrompt.js";
+const COMPARACAO_CONTROLLER = "backend/src/controllers/compareController.js";
+const COMPARACAO_ROTAS = "backend/src/routes/compareRoutes.js";
 
 const SUITE_BARCODE = "tests/barcode.test.js";
 const SUITE_LOOKUP = "tests/productLookup.test.js";
@@ -71,6 +76,8 @@ const SUITE_GATE = "tests/e2eGate.test.js";
 const SUITE_CONTA = "tests/accountIntegration.test.js";
 const SUITE_NIVEL = "tests/alertLevel.test.js";
 const SUITE_NIVEL_BANCO = "tests/alertLevelIntegration.test.js";
+const SUITE_COMPARACAO = "tests/comparison.test.js";
+const SUITE_COMPARACAO_BANCO = "tests/comparisonIntegration.test.js";
 
 const COMPOSICAO = "  return [porUsuario, porIp];";
 
@@ -414,7 +421,7 @@ const MUTACOES = [
     requisito: "ORC",
     descricao: "o orcamento do gate deixa de mostrar o teto por IP",
     arquivo: E2E_REAL,
-    de: "const TETOS_POR_IP = { colecoes: 3000, exportacao: 20 };",
+    de: "const TETOS_POR_IP = { colecoes: 3000, exportacao: 20, comparacao: 300 };",
     para: "const TETOS_POR_IP = {};",
     suite: SUITE_GATE,
     deveQuebrar: "o orcamento do gate usa os mesmos tetos do limitador, inclusive o por IP",
@@ -608,7 +615,7 @@ const MUTACOES = [
     de: '    ["accountDeletion", report.accountDeletion === "PASSED"],',
     para: "",
     suite: SUITE_GATE,
-    deveQuebrar: "A11: o modo strict tem exatamente 21 requisitos, os 20 da v0.8.0 mais severityVerdict",
+    deveQuebrar: "A11: o modo strict tem exatamente 22 requisitos, os 21 da v0.9.0 mais productComparison",
     banco: false,
   },
   {
@@ -1193,7 +1200,7 @@ const MUTACOES = [
     de: '    ["severityVerdict", report.severityVerdict === "PASSED"],\n',
     para: "",
     suite: SUITE_GATE,
-    deveQuebrar: "A11: o modo strict tem exatamente 21 requisitos, os 20 da v0.8.0 mais severityVerdict",
+    deveQuebrar: "A11: o modo strict tem exatamente 22 requisitos, os 21 da v0.9.0 mais productComparison",
     banco: false,
   },
   {
@@ -1242,6 +1249,168 @@ const MUTACOES = [
     suite: SUITE_NIVEL_BANCO,
     deveQuebrar: "S16 o nivel de A nao e visivel nem alteravel por B",
     banco: true,
+  },
+
+  // v0.10.0 - comparacao de dois produtos.
+  {
+    id: "Y1",
+    requisito: "C2t",
+    descricao: "o segundo produto passa a usar o veredito do primeiro",
+    arquivo: COMPARACAO_SHARED,
+    de: "  const ladoB = analyzeComparedProduct(entradaB.product, perfil);",
+    para: "  const ladoB = { ...analyzeComparedProduct(entradaB.product, perfil), allergyVerdict: ladoA.allergyVerdict };",
+    suite: SUITE_COMPARACAO,
+    deveQuebrar:
+      "C2t produto em conflito com produto limpo: o limpo nao herda safety e o em conflito nao e rebaixado",
+    banco: false,
+  },
+  {
+    id: "Y2",
+    requisito: "C2t",
+    descricao: "o piso passa a ser calculado uma vez para a comparacao inteira",
+    arquivo: COMPARACAO_SERVICE,
+    de: "    const final = finalizar(respostaPara(produto), produto.allergyVerdict);",
+    para:
+      "    const final = finalizar(\n" +
+      "      respostaPara(produto),\n" +
+      "      comparacao.products.find((p) => p.allergyVerdict.minimumSafety)?.allergyVerdict ?? produto.allergyVerdict,\n" +
+      "    );",
+    suite: SUITE_COMPARACAO,
+    deveQuebrar:
+      "C2t produto em conflito com produto limpo: o limpo nao herda safety e o em conflito nao e rebaixado",
+    banco: false,
+  },
+  {
+    id: "Y3",
+    requisito: "C5t",
+    descricao: "a explicacao passa a ser amarrada pela posicao na lista do modelo",
+    arquivo: COMPARACAO_SERVICE,
+    de: "      const explicacao = porCodigo.get(produto.code);",
+    para: "      const explicacao = resposta.explanations[comparacao.products.indexOf(produto)];",
+    suite: SUITE_COMPARACAO,
+    deveQuebrar: "C5t explicacoes em ordem trocada: cada uma cai no produto certo, pelo codigo",
+    banco: false,
+  },
+  {
+    id: "Y4",
+    requisito: "C7t",
+    descricao: "o schema da explicacao passa a aceitar campo extra, como allergyVerdict",
+    arquivo: COMPARACAO_PROMPT,
+    de: "          .strict(),\n      )\n      .length(2),",
+    para: "          .passthrough(),\n      )\n      .length(2),",
+    suite: SUITE_COMPARACAO,
+    deveQuebrar: "C7t o modelo nao escreve, nao altera e nao reordena veredito",
+    banco: false,
+  },
+  {
+    id: "Y5",
+    requisito: "C8t",
+    descricao: "produto sem dado de alergenico passa a mostrar 'nao aparece no rotulo'",
+    arquivo: COMPARACAO_SHARED,
+    de: "  if (lado.allergenData === ALLERGEN_DATA.notInformed) return ALLERGEN_STATE.notInformed;",
+    para: "  if (false) return ALLERGEN_STATE.notInformed;",
+    suite: SUITE_COMPARACAO,
+    deveQuebrar: "C8t produto sem dado de alergenico: a ausencia nao vira 'nao contem' em lugar nenhum",
+    banco: false,
+  },
+  {
+    id: "Y5b",
+    requisito: "C8t",
+    descricao: "nutriente nao informado passa a valer 0",
+    arquivo: COMPARACAO_SHARED,
+    de: "  if (valor === null || valor === undefined) return null;",
+    para: "  if (valor === null || valor === undefined) return 0;",
+    suite: SUITE_COMPARACAO,
+    deveQuebrar: "C8t produto sem dado de alergenico: a ausencia nao vira 'nao contem' em lugar nenhum",
+    banco: false,
+  },
+  {
+    id: "Y5c",
+    requisito: "C8t",
+    descricao: "o veredito deixa de saber que o produto nao tem dado de alergenico",
+    arquivo: COMPARACAO_SHARED,
+    de: "    allergenDataAvailable: informado,",
+    para: "    allergenDataAvailable: true,",
+    suite: SUITE_COMPARACAO,
+    deveQuebrar: "C8t produto sem dado de alergenico: a ausencia nao vira 'nao contem' em lugar nenhum",
+    banco: false,
+  },
+  {
+    id: "Y6",
+    requisito: "C6t",
+    descricao: "a explicacao deixa de passar pelo piso: o safety do modelo vale",
+    arquivo: COMPARACAO_SERVICE,
+    de: "    (respostaDoProduto, veredito) => finalizeAssistantResponse(respostaDoProduto, veredito, options),",
+    para: "    (respostaDoProduto, veredito) => ({ ...respostaDoProduto, allergyVerdict: veredito }),",
+    suite: SUITE_COMPARACAO,
+    deveQuebrar: "C6t o modelo respondendo normal nao derruba o piso de nenhum dos dois",
+    banco: false,
+  },
+  {
+    id: "Y7",
+    requisito: "C9t",
+    descricao: "codigo invalido em um dos dois deixa de barrar a busca",
+    arquivo: LOOKUP,
+    de: "  if (preparados.some((preparado) => preparado.estado === CODIGO_INVALIDO)) {",
+    para: "  if (false) {",
+    suite: SUITE_COMPARACAO,
+    deveQuebrar: "C9t digito verificador invalido em qualquer dos dois e recusado antes de qualquer busca",
+    banco: false,
+  },
+  {
+    id: "Y8",
+    requisito: "C11",
+    descricao: "codigos iguais deixam de ser recusados no aparelho",
+    arquivo: LOOKUP,
+    de: "  if (identidadeDoCodigo(preparados[0].codigo) === identidadeDoCodigo(preparados[1].codigo)) {",
+    para: "  if (false) {",
+    suite: SUITE_COMPARACAO,
+    deveQuebrar: "C11 codigos iguais: recusados com mensagem clara, sem busca",
+    banco: false,
+  },
+  {
+    id: "Y8b",
+    requisito: "C11",
+    descricao: "codigos iguais deixam de ser recusados pela API",
+    arquivo: VALIDACAO_BACKEND,
+    de: "    if (a?.code && a.code === b?.code) {",
+    para: "    if (false) {",
+    suite: SUITE_COMPARACAO,
+    deveQuebrar: "C11 codigos iguais: recusados com mensagem clara, sem busca",
+    banco: false,
+  },
+  {
+    id: "Y9",
+    requisito: "A11",
+    descricao: "o gate perde o requisito productComparison",
+    arquivo: E2E_GATE,
+    de: '    ["productComparison", report.productComparison === "PASSED"],\n',
+    para: "",
+    suite: SUITE_GATE,
+    deveQuebrar: "A11: o modo strict tem exatamente 22 requisitos, os 21 da v0.9.0 mais productComparison",
+    banco: false,
+  },
+  {
+    id: "Y10",
+    requisito: "C13",
+    descricao: "a rota da comparacao passa a aceitar userId do corpo",
+    arquivo: COMPARACAO_CONTROLLER,
+    de: "  res.json(await compararProdutos(req, req.body));",
+    para: "  res.json(await compararProdutos(req.body?.userId ? { user: { id: req.body.userId } } : req, req.body));",
+    suite: SUITE_COMPARACAO_BANCO,
+    deveQuebrar: "C13 a sessao de B com o id de A no corpo compara com o perfil de B",
+    banco: true,
+  },
+  {
+    id: "Y11",
+    requisito: "C15",
+    descricao: "a rota da comparacao perde o limitador",
+    arquivo: COMPARACAO_ROTAS,
+    de: 'compareRoutes.post("/", optionalAuth, compareRateLimit, comparar);',
+    para: 'compareRoutes.post("/", optionalAuth, comparar);',
+    suite: SUITE_COMPARACAO,
+    deveQuebrar: "C15 o limitador cobre as duas rotas: comparacao 30/300 por 10 min, explicacao no balde do assistente",
+    banco: false,
   },
 ];
 

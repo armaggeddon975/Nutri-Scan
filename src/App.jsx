@@ -25,6 +25,13 @@ import { AssistantPage } from "./pages/Assistant/AssistantPage";
 import { AccountPage } from "./pages/Account/AccountPage";
 import { GuidePage } from "./pages/Guide/GuidePage";
 import { CollectionsPage } from "./pages/Collections/CollectionsPage";
+import { ComparePage } from "./pages/Compare/ComparePage";
+import {
+  analisarUmNoAparelho,
+  compararNoAparelho,
+  compararNoServidor,
+  explicarNoServidor,
+} from "./services/compareService";
 import { askAiAssistant } from "./services/aiAssistantService";
 import { decideAssistantFallback, resolveAssistantSuccess } from "./services/assistantFallback";
 import { buildAllergyVerdict } from "../shared/allergyVerdict.js";
@@ -75,14 +82,39 @@ import { getProductName } from "./utils/product";
 import { validarCodigoDeBarras } from "../shared/barcode.js";
 import {
   CODIGO_INVALIDO,
-  ERRO_DE_REDE,
-  NAO_ENCONTRADO,
+  CODIGOS_IGUAIS,
+  ENCONTRADO,
+  consultarDoisProdutos,
   consultarProdutoPorCodigo,
+  ERRO_DE_REDE,
+  INCOMPLETO,
+  NAO_ENCONTRADO,
 } from "./services/productLookup";
 import { codigoLidoPelaCamera, isBarcodeQuery, normalizeText } from "./utils/text";
 import { hashPassword, hasSecureCrypto, legacyHashPassword } from "./utils/security";
 
-const VALID_PAGES = ["home", "consulta", "scan", "alergias", "chat", "guia", "meus", "conta"];
+const VALID_PAGES = ["home", "consulta", "scan", "alergias", "chat", "guia", "meus", "conta", "comparar"];
+
+// Comparacao (v0.10.0): estado vazio. A origem decide a conferencia do codigo,
+// como na busca de sempre: digitado e conferido; lido pela camera, nao.
+const COMPARACAO_VAZIA = {
+  entradaA: "",
+  origemA: "manual",
+  entradaB: "",
+  origemB: "manual",
+  carregando: false,
+  mensagem: null,
+  resultado: null,
+  parcial: null,
+  explicando: false,
+};
+
+// Codigo que ja veio de um produto encontrado (o aberto, ou um de Meus
+// produtos): se e EAN/UPC valido, vai como digitado e e conferido de novo; se
+// nao e - CODE_128, ITF -, vai como leitura de camera, que passa intacto.
+function origemDoCodigo(codigo) {
+  return validarCodigoDeBarras(codigo).valido ? "manual" : "camera";
+}
 
 function getPublicUser(user) {
   if (!user) return null;
@@ -176,6 +208,15 @@ function App() {
   const alertLevelsRef = useRef({});
   const confirmedAlertLevelsRef = useRef({});
   const [alertInviteSeen, setAlertInviteSeen] = useState(true);
+  const [comparacao, setComparacao] = useState(COMPARACAO_VAZIA);
+  const comparacaoRef = useRef(COMPARACAO_VAZIA);
+  // Os dois produtos da ultima comparacao completa: a explicacao manda estes,
+  // e nao o que estiver digitado no formulario.
+  const itensComparadosRef = useRef(null);
+  // Para onde vai a proxima leitura da camera: abrir o produto (o normal) ou
+  // preencher a comparacao.
+  const scannerDestinoRef = useRef("produto");
+  const receberLeituraParaCompararRef = useRef(() => {});
   const currentUserRef = useRef(null);
   const [authMode, setAuthMode] = useState("login");
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
@@ -694,6 +735,12 @@ function App() {
             setScannerState("idle");
             setTorch({ available: false, on: false });
 
+            if (scannerDestinoRef.current === "comparar") {
+              scannerDestinoRef.current = "produto";
+              receberLeituraParaCompararRef.current(confirmation.confirmed);
+              return;
+            }
+
             searchProduct(confirmation.confirmed, { origem: "camera" });
             return;
           }
@@ -1091,9 +1138,174 @@ function App() {
   };
 
   const navigateTo = (page) => {
+    if (page !== "scan") scannerDestinoRef.current = "produto";
     setActivePage(page);
     if (page !== activePage) window.history.pushState(null, "", `#${page}`);
   };
+
+  // ------------------------------------------------------------------
+  // Comparacao de dois produtos (v0.10.0)
+  // ------------------------------------------------------------------
+
+  useEffect(() => {
+    comparacaoRef.current = comparacao;
+  }, [comparacao]);
+
+  const abrirComparacao = () => {
+    const codigo = product?.code ? String(product.code) : "";
+    itensComparadosRef.current = null;
+    setComparacao({ ...COMPARACAO_VAZIA, entradaA: codigo, origemA: origemDoCodigo(codigo) });
+    navigateTo("comparar");
+  };
+
+  const mudarEntradaDaComparacao = (lado, valor) => {
+    setComparacao((atual) => ({
+      ...atual,
+      [lado === "a" ? "entradaA" : "entradaB"]: valor,
+      [lado === "a" ? "origemA" : "origemB"]: "manual",
+      mensagem: null,
+    }));
+  };
+
+  // Preenche o primeiro campo vazio - o segundo, quando o primeiro ja tem.
+  const preencherComparacao = (atual, codigo, origem) => {
+    const lado = atual.entradaA ? "b" : "a";
+    return {
+      ...atual,
+      [lado === "a" ? "entradaA" : "entradaB"]: codigo,
+      [lado === "a" ? "origemA" : "origemB"]: origem,
+      mensagem: null,
+    };
+  };
+
+  const executarComparacao = async ({ entradaA, origemA, entradaB, origemB }) => {
+    itensComparadosRef.current = null;
+    setComparacao((atual) => ({ ...atual, carregando: true, mensagem: null, resultado: null, parcial: null }));
+
+    // O MESMO caminho da busca de um produto, duas vezes. Os dois codigos sao
+    // conferidos antes de qualquer busca.
+    const consulta = await consultarDoisProdutos(
+      { entrada: entradaA, origem: origemA },
+      { entrada: entradaB, origem: origemB },
+    );
+
+    if (consulta.estado === CODIGO_INVALIDO) {
+      const lado = consulta.a.estado === CODIGO_INVALIDO ? "a" : "b";
+      setComparacao((atual) => ({
+        ...atual,
+        carregando: false,
+        mensagem: { type: "warning", text: `${lado === "a" ? "Primeiro" : "Segundo"} produto: ${consulta[lado].mensagem}` },
+      }));
+      return;
+    }
+
+    if (consulta.estado === CODIGOS_IGUAIS) {
+      setComparacao((atual) => ({
+        ...atual,
+        carregando: false,
+        mensagem: { type: "warning", text: "Esses dois códigos são do mesmo produto. Escolha outro para comparar." },
+      }));
+      return;
+    }
+
+    const perfilDoAparelho = {
+      profileAllergies: selectedAllergiesRef.current,
+      alertLevels: currentUserRef.current ? alertLevelsRef.current : {},
+    };
+
+    // Um dos dois nao veio: mostra o que veio, com o veredito dele, e diz o que
+    // faltou. Sem comparacao de diferencas - ela precisa dos dois.
+    if (consulta.estado === INCOMPLETO) {
+      const parcial = Object.fromEntries(
+        ["a", "b"].map((lado) => {
+          const resultado = consulta[lado];
+          return [
+            lado,
+            resultado.estado === ENCONTRADO
+              ? { produto: analisarUmNoAparelho({ codigo: resultado.codigo, produto: resultado.produto }, lado, perfilDoAparelho) }
+              : { consulta: resultado },
+          ];
+        }),
+      );
+      setComparacao((atual) => ({
+        ...atual,
+        carregando: false,
+        parcial,
+        mensagem: { type: "warning", text: "Falta um dos produtos. Veja abaixo o que foi encontrado." },
+      }));
+      return;
+    }
+
+    const itens = [
+      { codigo: consulta.a.codigo, produto: consulta.a.produto },
+      { codigo: consulta.b.codigo, produto: consulta.b.produto },
+    ];
+    itensComparadosRef.current = itens;
+
+    try {
+      const resposta = await compararNoServidor(itens, { guestAllergies: selectedAllergiesRef.current });
+      setComparacao((atual) => ({ ...atual, carregando: false, resultado: resposta.comparison }));
+    } catch (error) {
+      if (error.status === 400 || error.status === 429) {
+        itensComparadosRef.current = null;
+        setComparacao((atual) => ({ ...atual, carregando: false, mensagem: { type: "warning", text: error.message } }));
+        return;
+      }
+      // Sem servidor, o mesmo modulo compartilhado roda aqui.
+      setComparacao((atual) => ({
+        ...atual,
+        carregando: false,
+        resultado: compararNoAparelho(itens, perfilDoAparelho),
+        mensagem: { type: "warning", text: "Servidor fora do ar. A comparação foi feita no aparelho." },
+      }));
+    }
+  };
+
+  const escolherParaComparar = (codigo) => {
+    setComparacao((atual) => preencherComparacao(atual, codigo, origemDoCodigo(codigo)));
+  };
+
+  const escanearParaComparar = () => {
+    navigateTo("scan");
+    scannerDestinoRef.current = "comparar";
+    setStatus({ type: "ready", message: "Ligue a câmera e aponte para o produto que você quer comparar." });
+  };
+
+  receberLeituraParaCompararRef.current = (codigo) => {
+    const proximo = preencherComparacao(comparacaoRef.current, codigo, "camera");
+    setComparacao(proximo);
+    navigateTo("comparar");
+    if (proximo.entradaA && proximo.entradaB) executarComparacao(proximo);
+  };
+
+  const explicarComparacaoAtual = async () => {
+    const itens = itensComparadosRef.current;
+    if (!itens) return;
+    setComparacao((atual) => ({ ...atual, explicando: true, mensagem: null }));
+    try {
+      const resposta = await explicarNoServidor(itens, { guestAllergies: selectedAllergiesRef.current });
+      // O servidor devolve a comparacao inteira de novo, com o veredito de cada
+      // produto recalculado e a explicacao amarrada a ele pelo codigo.
+      setComparacao((atual) => ({ ...atual, explicando: false, resultado: resposta.comparison }));
+    } catch (error) {
+      const texto =
+        error.status === 429
+          ? "Muitas perguntas seguidas. Tente de novo em alguns minutos."
+          : error.status === 503
+            ? "O assistente não está disponível agora. Os fatos acima continuam valendo."
+            : "Não consegui a explicação agora. Os fatos acima continuam valendo.";
+      setComparacao((atual) => ({ ...atual, explicando: false, mensagem: { type: "warning", text: texto } }));
+    }
+  };
+
+  const abrirProdutoDaComparacao = (codigo) => {
+    navigateTo("consulta");
+    searchProduct(codigo, { origem: origemDoCodigo(codigo) });
+  };
+
+  const opcoesMeusProdutos = [...history, ...favorites]
+    .filter((item, indice, todos) => todos.findIndex((outro) => outro.productCode === item.productCode) === indice)
+    .map((item) => ({ codigo: item.productCode, nome: item.productName || item.productCode }));
 
   const searchAndOpen = (value) => {
     navigateTo("consulta");
@@ -1111,6 +1323,7 @@ function App() {
       onSelectProduct={selectProduct}
       isFavorite={Boolean(product?.code) && favoriteCodes.has(String(product.code))}
       onToggleFavorite={handleToggleFavorite}
+      onCompare={abrirComparacao}
     />
   );
 
@@ -1240,6 +1453,21 @@ function App() {
     }
 
     if (activePage === "guia") return <GuidePage />;
+
+    if (activePage === "comparar") {
+      return (
+        <ComparePage
+          comparacao={comparacao}
+          opcoesMeusProdutos={opcoesMeusProdutos}
+          onChangeEntrada={mudarEntradaDaComparacao}
+          onEscolher={escolherParaComparar}
+          onEscanear={escanearParaComparar}
+          onComparar={() => executarComparacao(comparacaoRef.current)}
+          onExplicar={explicarComparacaoAtual}
+          onAbrirProduto={abrirProdutoDaComparacao}
+        />
+      );
+    }
 
     return (
       <HomePage

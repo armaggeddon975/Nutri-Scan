@@ -159,6 +159,11 @@ export function buildStrictRequirements(report, { anthropicFlagEnabled = false }
     // proposito, para forcar a negacao do conflito; amarrar o requisito a flag
     // da Anthropic deixaria o gate aprovar sem nunca ter provado o piso.
     ["severityVerdict", report.severityVerdict === "PASSED"],
+
+    // v0.10.0 - comparacao de dois produtos. Requisito BASE: depende do
+    // PostgreSQL e do motor; o modelo do subgate e simulado, para forcar a troca
+    // das explicacoes e a negacao do conflito.
+    ["productComparison", report.productComparison === "PASSED"],
   ];
 
   if (anthropicFlagEnabled) {

@@ -162,6 +162,7 @@ export function buildAllergyVerdict({
   hasProductContext = false,
   profileSource = PROFILE_SOURCE.request,
   alertLevels = {},
+  allergenDataAvailable,
 } = {}) {
   const declaredRisks = profileRisks.filter((risk) => risk?.severity === "contains");
   const traceRisks = profileRisks.filter((risk) => risk?.severity === "traces");
@@ -185,6 +186,16 @@ export function buildAllergyVerdict({
   } else if (profileAllergies.length === 0) {
     status = VERDICT_STATUS.notEvaluated;
     reason = "no_profile_allergies";
+  } else if (allergenDataAvailable === false) {
+    // SEM DADO DE ALERGENICO NAO E "SEM CONFLITO" (v0.10.0)
+    //
+    // Produto sem ingrediente, sem lista de alergenicos e sem traco nao foi
+    // avaliado: o motor nao viu nada. Dizer `clear` ali seria tratar a ausencia
+    // de dado como "nao contem" - num app de alergia, a pior troca possivel.
+    // So entra quem passa `allergenDataAvailable: false` explicitamente (a
+    // comparacao); sem o campo, o comportamento e o de antes, byte a byte.
+    status = VERDICT_STATUS.notEvaluated;
+    reason = "no_allergen_data";
   } else if (conflicts.length > 0) {
     status = VERDICT_STATUS.conflict;
   } else if (traces.length > 0) {

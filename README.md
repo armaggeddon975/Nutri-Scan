@@ -1,4 +1,4 @@
-# NutriScan v0.9.0
+# NutriScan v0.10.0
 
 NutriScan e um app web para consultar alimentos por nome ou codigo de barras,
 ver tabela nutricional, identificar ingredientes sensiveis e conversar com um
@@ -33,6 +33,7 @@ Com isso, `{ traces: "milk" }` e tratado como traco, enquanto
 - Conta online com alergias sincronizadas via backend e PostgreSQL.
 - Exportar os proprios dados e excluir a propria conta, pela tela Conta (v0.8.0).
 - Alerta maximo por alergia: o aviso mais forte, inclusive para "pode conter" (v0.9.0).
+- Comparar dois produtos lado a lado, cada um com o proprio veredito (v0.10.0).
 
 ## Requisitos
 
@@ -330,6 +331,42 @@ informacao de seguranca errada em abril, quando a pessoa marca uma alergia nova.
 O veredito e sempre recalculado pelo motor deterministico na hora de exibir, com
 o perfil atual.
 
+## Comparar dois produtos (v0.10.0)
+
+Na gondola a pergunta costuma ser "qual destes dois?". A tela **Comparar** poe
+dois produtos lado a lado. Os codigos chegam digitados, pela camera ou
+escolhidos em Meus produtos; da tela de um produto, "Comparar com outro produto"
+ja abre a comparacao com ele.
+
+Para cada um dos dois:
+
+- nome e marca;
+- o veredito de alergia DESTE produto, calculado pelo motor para o perfil atual
+  - com a distincao entre declarado e traco, e entre alerta padrao e maximo;
+- a informacao nutricional que a base traz.
+
+E, entre eles, as diferencas, calculadas pelo app: alergenicos que aparecem num
+rotulo e nao no outro, e os nutrientes por 100 g.
+
+- **O app nao escolhe.** Nao ha "melhor opcao", "recomendado" nem ordem por
+  qualidade. A ordem e a que a pessoa escolheu, e as duas colunas sao iguais.
+- **Um veredito por produto.** O veredito de um nunca vem do outro, e o aviso de
+  um produto em conflito nao passa para o vizinho.
+- **"Nao informado" nao e "nao contem".** Produto sem dado de alergenico aparece
+  como "Sem dados de alergênicos. Confira o rótulo físico.", e nutriente que a
+  base nao traz aparece como "Não informado" - nunca como zero.
+- **A IA so explica.** "Explicar as diferenças" pede ao assistente uma
+  explicacao por produto. Ela aparece embaixo do veredito, e o app confere de
+  qual produto cada explicacao fala. O veredito continua sendo do motor.
+- **Nada e guardado.** Comparar nao grava a comparacao nem os produtos;
+  "Abrir este produto" abre o produto e o registra no historico, como sempre.
+- Codigos iguais sao recusados com aviso. Se um dos dois nao for encontrado, o
+  outro aparece, e a tela diz qual faltou.
+
+As decisoes - dois produtos em vez de N, por que o app nao elege vencedor, o que
+acontece com codigo repetido ou produto que falta - estao em
+[docs/COMPARACAO.md](docs/COMPARACAO.md).
+
 ## Alerta maximo por alergia (v0.9.0)
 
 Quem tem conta escolhe, em cada alergia marcada, se quer o **alerta maximo** -
@@ -409,7 +446,7 @@ escrito para quem publica: o que preencher no painel, como as migrations
 entram, como verificar o resultado e o que fazer quando um subgate falha. As
 decisoes de HTTPS, cookie e migrations tambem estao la.
 
-As versoes 0.7.1 a 0.9.0 ainda nao foram publicadas; o servico no ar roda a
+As versoes 0.7.1 a 0.10.0 ainda nao foram publicadas; o servico no ar roda a
 0.7.0.
 
 ### Variaveis obrigatorias em producao
@@ -540,7 +577,11 @@ auth          40 / 15 min   por IP          login, cadastro e exclusao de conta
 assistente    20 / 10 min   por IP
 colecoes     300 / 10 min   por USUARIO   e   3000 / 10 min por IP
 exportacao     5 / 24 h     por USUARIO   e     20 / 24 h   por IP
+comparacao    30 / 10 min   por USUARIO   e    300 / 10 min por IP    (v0.10.0)
 ```
+
+A explicacao da comparacao passa pelos dois da comparacao E pelo do assistente:
+ela divide com o chat o mesmo teto de chamadas de IA.
 
 As rotas de historico e favoritos passam pelos dois ultimos ao mesmo tempo:
 passar exige caber nos dois, e qualquer um deles recusando devolve 429.
@@ -577,6 +618,7 @@ como `sem proteinas do leite`. Se o rotulo tambem trouxer `leite`, `whey`,
 - [Deploy](docs/DEPLOY.md)
 - [Dados do titular: exportacao e exclusao](docs/DADOS_DO_TITULAR.md)
 - [Nivel de alerta por alergia](docs/NIVEL_DE_ALERTA.md)
+- [Comparacao de dois produtos](docs/COMPARACAO.md)
 - [Nutri Assistente IA](docs/AI_ASSISTANT.md)
 - [Relatorio de auditoria](AUDIT_REPORT.md)
 - [Relatorio E2E](E2E_REPORT.md)

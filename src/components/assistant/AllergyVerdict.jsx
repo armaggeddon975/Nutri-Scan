@@ -19,7 +19,12 @@ function riskText(risk) {
   return risk.alertLevel === "strict" ? `${base} · alerta máximo` : base;
 }
 
-export function AllergyVerdict({ verdict }) {
+// `origem` (v0.10.0): a comparacao usa o mesmo bloco sem texto do assistente
+// embaixo; ela passa a propria frase. O assistente continua com a de sempre.
+export function AllergyVerdict({
+  verdict,
+  origem = "Verificação do próprio app. O texto abaixo é a explicação do assistente.",
+}) {
   const presentation = PRESENTATION[verdict?.status];
   // "not_evaluated" (sem produto ou sem alergia no perfil) nao vira alerta:
   // o motor nao avaliou nada, e afirmar qualquer coisa ali seria invencao.
@@ -50,9 +55,7 @@ export function AllergyVerdict({ verdict }) {
         </p>
       )}
       {verdict.alert && <p className="allergy-verdict-alert">{verdict.alert}</p>}
-      <p className="allergy-verdict-origin">
-        Verificação do próprio app. O texto abaixo é a explicação do assistente.
-      </p>
+      <p className="allergy-verdict-origin">{origem}</p>
     </div>
   );
 }

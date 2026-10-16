@@ -1,9 +1,9 @@
-# Publicar o NutriScan - v0.9.0
+# Publicar o NutriScan - v0.10.0
 
 Este documento e para **quem vai publicar**, nao para quem escreveu o codigo.
 Siga na ordem. Nenhum passo pede para adivinhar.
 
-**Situacao hoje:** as versoes 0.7.1 a 0.9.0 nunca foram publicadas. O servico
+**Situacao hoje:** as versoes 0.7.1 a 0.10.0 nunca foram publicadas. O servico
 `nutriscan` no Render ainda roda a 0.7.0.
 
 Nenhum valor real de credencial aparece aqui. Onde houver `<...>`, troque pelo
@@ -368,6 +368,26 @@ Depois de publicar, para conferir a mao (com uma conta descartavel):
 
 O `verify:deploy` nao toca nisso: ele so le, e a rota de alergias grava.
 
+### Comparacao de dois produtos (v0.10.0)
+
+A v0.10.0 **nao traz migration** e **nao tem variavel nova**. As rotas
+`POST /api/compare` e `POST /api/compare/explain` sobem com o codigo. Sem chave
+de IA, a comparacao funciona e so o botao "Explicar as diferenças" responde que
+o assistente nao esta disponivel - os vereditos e as diferencas nao dependem da
+IA.
+
+Depois de publicar, para conferir a mao (sem conta, ou com uma descartavel):
+
+1. Em **Alergias**, marque Leite/lactose.
+2. Em **Comparar**, digite o codigo de um produto com leite e o de um produto
+   sem leite, e toque em **Comparar**.
+3. A coluna do produto com leite deve mostrar o conflito; a do outro, nao.
+4. Digite o mesmo codigo nos dois campos: a tela deve dizer "Esses dois códigos
+   são do mesmo produto."
+
+O `verify:deploy` nao toca nisso: ele so le, e as rotas de comparacao sao
+`POST`.
+
 ### Pontos de atencao conhecidos
 
 - **`NODE_ENV` digitado errado:** ate a v0.7.6 virava desenvolvimento, em
@@ -379,3 +399,5 @@ O `verify:deploy` nao toca nisso: ele so le, e a rota de alergias grava.
 - **Limite da exportacao:** 5 por dia por usuario e 20 por dia por IP. Quem
   testar a exportacao mais de cinco vezes no mesmo dia, com a mesma conta,
   recebe 429 ate a janela de 24 horas passar - e esperado.
+- **Limite da comparacao:** 30 por 10 minutos por usuario e 300 por IP. A
+  explicacao gasta tambem o limite do assistente (20 por 10 minutos por IP).
