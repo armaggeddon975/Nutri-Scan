@@ -1,4 +1,4 @@
-# API NutriScan v0.10.0
+# API NutriScan v0.11.0
 
 Base local: `http://localhost:3000/api`
 
@@ -18,7 +18,7 @@ Exemplo:
   "status": "ok",
   "database": "not_configured",
   "ai": "not_configured",
-  "version": "0.10.0"
+  "version": "0.11.0"
 }
 ```
 
@@ -772,6 +772,32 @@ Erros, alem dos de `POST /api/compare`:
 ```
 
 Os demais codigos `AI_*` sao os do assistente.
+
+## Uso sem rede (v0.11.0) - nenhuma rota nova
+
+A v0.11.0 nao muda nenhuma rota. O cliente passa a guardar no aparelho, para ler
+sem internet, parte do que algumas respostas ja trazem:
+
+```text
+GET /api/auth/me, login, cadastro,       id, nome, alergias e alertLevels do user
+PUT /api/profile/allergies               (nao o e-mail, nao o createdAt)
+GET /api/history, GET /api/favorites     as referencias dos itens
+a Open Food Facts                        os campos de produto que o motor e a tela leem
+```
+
+Nenhuma resposta da API passa a carregar dado novo por causa disso, e o cliente
+nunca guarda veredito. O aparelho trata as respostas assim:
+
+- `401` em `GET /api/auth/me`: a sessao acabou - o cache da conta sai do
+  aparelho.
+- sem resposta, timeout ou `5xx` em `GET /api/auth/me`: o app usa o perfil
+  guardado, marcado como tal.
+- `POST /api/auth/logout`: o cache da conta sai do aparelho, responda o
+  servidor ou nao.
+- `DELETE /api/account` com `200`: o cache da conta sai do aparelho.
+
+Sem rede, o cliente nao chama nenhuma rota de escrita, e nao guarda chamada para
+depois. As decisoes estao em [OFFLINE.md](OFFLINE.md).
 
 ## Erros
 

@@ -1,4 +1,4 @@
-# Arquitetura NutriScan v0.10.0
+# Arquitetura NutriScan v0.11.0
 
 ## Visao geral
 
@@ -337,6 +337,28 @@ explicacao no produto pelo codigo, nunca pela posicao.
 Produto sem texto de ingredientes, alergenicos ou tracos sai com `allergenData:
 "not_informed"` e veredito `not_evaluated` / `no_allergen_data`; nutriente
 ausente sai `null`. Nada e gravado. Decisoes em `docs/COMPARACAO.md`.
+
+## Leitura sem rede (v0.11.0)
+
+```text
+src/services/offlineCache.js     IndexedDB "nutriscan-offline": produtos, perfis,
+                                 colecoes, sessao - lista fechada de campos, por dono
+src/services/offlineLookup.js    consultarNoAparelho (prepararCodigo antes do cache),
+                                 avaliarNoAparelho (motor de shared/ + piso)
+src/services/offlineSession.js   recuperarSessao, sair, excluir, 401 - e a porta
+                                 unica de escrita: escreverComInternet
+```
+
+O cache e de LEITURA. Ele guarda o produto que a pessoa abriu com internet e o
+perfil que o servidor confirmou; nunca o veredito. Sem rede, o veredito e refeito
+em `avaliarNoAparelho`, com `analyzeProductAllergens`, `buildAllergyVerdict` e
+`applyAllergyAuthority` - os mesmos de sempre - e o perfil do momento.
+
+Cada registro tem dono (a conta ou o visitante), e o aparelho guarda uma conta
+por vez: confirmar uma conta apaga a de qualquer outra; sair, excluir ou ter a
+sessao recusada (401) apaga a da conta. Com rede, a rede manda: o app so le o
+aparelho quando o navegador esta offline, quando a internet falha ou depois de 6
+s sem resposta, sempre marcando a origem. Decisoes em `docs/OFFLINE.md`.
 
 ## Alergias por perfil
 

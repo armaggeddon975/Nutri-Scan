@@ -22,6 +22,11 @@ import {
   consultarProdutoPorCodigo,
 } from "../src/services/productLookup.js";
 import { analyzeComparedProduct } from "../shared/productComparison.js";
+import { IDBFactory } from "fake-indexeddb";
+import { VALID_ALLERGY_IDS } from "../shared/allergens.js";
+import { criarCacheOffline } from "../src/services/offlineCache.js";
+import { avaliarNoAparelho, consultarNoAparelho, guardarProdutoVisto, NO_APARELHO } from "../src/services/offlineLookup.js";
+import { aoConfirmarConta, aoSairDaConta, recuperarSessao } from "../src/services/offlineSession.js";
 import { decideAssistantFallback } from "../src/services/assistantFallback.js";
 
 const MAX_ANTHROPIC_CALLS = 2;
@@ -396,6 +401,7 @@ async function main() {
     accountDeletion: "NOT_EXECUTED",
     severityVerdict: "NOT_EXECUTED",
     productComparison: "NOT_EXECUTED",
+    offlineCache: "NOT_EXECUTED",
     logout: "NOT_EXECUTED",
     deterministicEngine: "NOT_EXECUTED",
     assistantGuest: "NOT_EXECUTED",
@@ -578,13 +584,15 @@ async function main() {
       // Identificador unico desta execucao, e na lista de limpeza mesmo assim -
       // se o subgate falhar antes de apagar, a limpeza apaga.
       const emailD = `nutriscan-e2e-d-${stamp}@example.test`;
+      // Conta E (v0.11.0): a do subgate offlineCache, que termina em logout.
+      const emailE = `nutriscan-e2e-e-${stamp}@example.test`;
       const password = `E2E-${stamp}-senha`;
       const clientA = new CookieClient("A", baseUrl);
       const clientB = new CookieClient("B", baseUrl);
       const clientIso = new CookieClient("ISO", baseUrl);
 
       try {
-        await cleanupUsers(db, [emailA, emailB, emailD]);
+        await cleanupUsers(db, [emailA, emailB, emailD, emailE]);
 
         const register = await clientA.request("/auth/register", {
           method: "POST",
@@ -1228,6 +1236,168 @@ async function main() {
         }
 
         // ------------------------------------------------------------------
+        // v0.11.0 - offlineCache: o que o cliente guarda para usar sem rede.
+        //
+        // O QUE ESTE SUBGATE PROVA: os modulos do CLIENTE (`offlineCache`,
+        // `offlineSession`, `offlineLookup`) alimentados pelas respostas do
+        // BACKEND REAL - o perfil vem do PostgreSQL, a sessao e um cookie de
+        // verdade, o logout e o da API. O que fica guardado contem o produto e o
+        // perfil; nao contem veredito, nem o cookie, nem o hash, o salt e o hash
+        // de sessao lidos do banco, nem a senha, nem o e-mail; e sai no logout.
+        //
+        // O QUE ELE NAO PROVA: o IndexedDB do navegador. Aqui o IndexedDB e o do
+        // `fake-indexeddb`, uma implementacao completa da API em Node. A
+        // persistencia no navegador de verdade e a ligacao com a tela ficam com a
+        // verificacao no navegador (AUDIT_REPORT).
+        // ------------------------------------------------------------------
+        {
+          const clientE = new CookieClient("E", baseUrl);
+          const registroE = await clientE.request("/auth/register", {
+            method: "POST",
+            body: { name: `e2e-e-${stamp}`, email: emailE, password, allergies: ["peanut"] },
+          });
+          assert(registroE.response.status === 201, `register da conta E deve retornar 201 (${registroE.response.status})`);
+          const idE = registroE.data.user.id;
+          const estrita = await clientE.request("/profile/allergies", {
+            method: "PUT",
+            body: { allergies: ["peanut"], alertLevels: { peanut: "strict" } },
+          });
+          assert(estrita.response.status === 200, "a conta E nao gravou o alerta maximo");
+
+          const fabrica = new IDBFactory();
+          const cache = criarCacheOffline({ indexedDB: fabrica, alergiasValidas: VALID_ALLERGY_IDS });
+          const meDeE = async () => {
+            const resposta = await clientE.request("/auth/me");
+            if (resposta.response.status !== 200) {
+              throw Object.assign(new Error("me recusado"), { status: resposta.response.status });
+            }
+            return resposta.data;
+          };
+
+          // 1. O servidor confirma a sessao: o perfil do PostgreSQL vai para o aparelho.
+          const confirmada = await recuperarSessao({ getMe: meDeE, cache });
+          assert(confirmada.tipo === "conta" && confirmada.user.id === idE, "a sessao real nao foi confirmada");
+
+          // 2. O produto aberto com internet e as listas reais.
+          const COD_OFFLINE = "7896000000019";
+          const produtoOffline = {
+            code: COD_OFFLINE,
+            product_name: "Pacoca E2E offline",
+            ingredients_text: "amendoim torrado, acucar",
+            nutriments: { "energy-kcal_100g": 520, salt_100g: 0.4 },
+          };
+          await guardarProdutoVisto(idE, produtoOffline, { cache });
+          const vistoE = await clientE.request("/history", {
+            method: "POST",
+            body: { productCode: COD_OFFLINE, productName: produtoOffline.product_name, productBrand: null, imageUrl: null },
+          });
+          assert(vistoE.response.status === 201, "a conta E nao gravou historico");
+          const historicoE = (await clientE.request("/history")).data.items;
+          const favoritosE = (await clientE.request("/favorites")).data.items;
+          await cache.guardarColecoes(idE, { historico: historicoE, favoritos: favoritosE });
+
+          // 3. O que ficou guardado, cru: toda loja, toda chave, todo valor.
+          const inspecionar = async () => {
+            const pedido = (requisicao) =>
+              new Promise((resolve, reject) => {
+                requisicao.onsuccess = () => resolve(requisicao.result);
+                requisicao.onerror = () => reject(requisicao.error);
+              });
+            const registros = [];
+            for (const { name } of await fabrica.databases()) {
+              const banco = await pedido(fabrica.open(name));
+              for (const loja of banco.objectStoreNames) {
+                const transacao = banco.transaction(loja, "readonly");
+                const chaves = await pedido(transacao.objectStore(loja).getAllKeys());
+                const valores = await pedido(transacao.objectStore(loja).getAll());
+                chaves.forEach((chave, i) => registros.push({ loja, chave, valor: valores[i] }));
+              }
+              banco.close();
+            }
+            return { registros, texto: JSON.stringify(registros) };
+          };
+          const chavesFora = (valor, saida = new Set()) => {
+            if (Array.isArray(valor)) valor.forEach((item) => chavesFora(item, saida));
+            else if (valor && typeof valor === "object") {
+              for (const [chave, item] of Object.entries(valor)) {
+                saida.add(chave);
+                // nome de nutriente nao e campo: "salt_100g" e o sal do rotulo
+                if (chave !== "nutriments") chavesFora(item, saida);
+              }
+            }
+            return saida;
+          };
+
+          const guardado = await inspecionar();
+          assert(guardado.texto.includes("Pacoca E2E offline") && guardado.texto.includes("amendoim torrado"), "o produto nao foi guardado");
+          assert(guardado.texto.includes("peanut") && guardado.texto.includes("strict"), "o perfil do PostgreSQL nao foi guardado");
+          for (const chave of chavesFora(guardado.registros.map((registro) => registro.valor))) {
+            assert(!/verdict|minimumSafety|conflicts|safety|password|hash|salt|token|cookie|api.?key|email/i.test(chave), `campo proibido no cache: ${chave}`);
+          }
+          const segredosE = await db.query(
+            `SELECT u.password_hash, u.password_salt, s.token_hash
+               FROM users u LEFT JOIN sessions s ON s.user_id = u.id
+              WHERE u.email = $1`,
+            [emailE],
+          );
+          assert(segredosE.rowCount > 0, "nao foi possivel ler o material de senha de E para conferir");
+          const sensiveisE = [
+            ...new Set(segredosE.rows.flatMap((linha) => [linha.password_hash, linha.password_salt, linha.token_hash])),
+            ...clientE.cookies.values(),
+            password,
+            emailE,
+          ].filter(Boolean);
+          for (const valor of sensiveisE) {
+            assert(!guardado.texto.includes(valor), "o cache guardou senha, hash, sessao, cookie ou e-mail");
+          }
+
+          // 4. Sem rede: o perfil do aparelho e o veredito refeito agora.
+          const semRede = async () => {
+            throw Object.assign(new Error("sem rede"), { status: 0 });
+          };
+          const doAparelho = await recuperarSessao({ getMe: semRede, cache });
+          assert(doAparelho.tipo === "aparelho" && doAparelho.perfil.id === idE, "sem rede, o perfil do aparelho nao veio");
+          const lido = await consultarNoAparelho(COD_OFFLINE, { dono: idE, cache });
+          assert(lido.estado === NO_APARELHO, `o produto guardado nao foi lido sem rede (${lido.estado})`);
+          const perfilDe = (perfil) => ({ profileAllergies: perfil.alergias, alertLevels: perfil.niveis });
+          assert(avaliarNoAparelho(lido.produto, perfilDe(doAparelho.perfil)).safety === "urgent", "sem rede, o alerta maximo nao deu urgent");
+
+          // 5. O perfil muda COM rede, pela API real: a leitura sem rede segue o novo.
+          const padrao = await clientE.request("/profile/allergies", {
+            method: "PUT",
+            body: { allergies: ["peanut"], alertLevels: {} },
+          });
+          assert(padrao.response.status === 200, "a conta E nao voltou ao alerta padrao");
+          await aoConfirmarConta(padrao.data.user, { cache });
+          const depoisDaMudanca = await recuperarSessao({ getMe: semRede, cache });
+          const relido = await consultarNoAparelho(COD_OFFLINE, { dono: idE, cache });
+          const refeito = avaliarNoAparelho(relido.produto, perfilDe(depoisDaMudanca.perfil));
+          assert(refeito.safety === "caution", `a leitura sem rede usou o perfil do momento do cache (${refeito.safety})`);
+
+          // 6. Logout REAL: o cache da conta sai do aparelho.
+          const saida = await aoSairDaConta({
+            sair: async () => {
+              const resposta = await clientE.request("/auth/logout", { method: "POST" });
+              if (resposta.response.status !== 200) throw new Error(`logout ${resposta.response.status}`);
+            },
+            cache,
+          });
+          assert(saida.servidorRespondeu, "o logout real nao respondeu");
+          assert((await clientE.request("/auth/me")).response.status === 401, "a sessao de E sobreviveu ao logout");
+          const depoisDoLogout = await inspecionar();
+          for (const vestigio of ["peanut", idE, COD_OFFLINE, "Pacoca E2E offline", `e2e-e-${stamp}`]) {
+            assert(!depoisDoLogout.texto.includes(vestigio), `o logout deixou vestigio no cache: ${vestigio}`);
+          }
+
+          report.offlineCache = "PASSED";
+          log(
+            "OK",
+            "offline cache",
+            "perfil do banco e produto guardados, sem veredito nem credencial; perfil novo refeito sem rede; logout real limpa",
+          );
+        }
+
+        // ------------------------------------------------------------------
         // v0.8.0 - direitos do titular: exportar e excluir.
         //
         // Dois subgates, e nao um: exportar e excluir sao promessas
@@ -1354,7 +1524,7 @@ async function main() {
         log("OK", "auth", "register, me, allergies, login, logout idempotente");
       } finally {
         // Cleanup roda mesmo em falha de login, assistente, Anthropic ou logout.
-        await cleanupUsers(db, [emailA, emailB, emailD]).catch((error) => {
+        await cleanupUsers(db, [emailA, emailB, emailD, emailE]).catch((error) => {
           console.error(statusLine("WARN", "cleanup", error.message));
         });
         await db?.end().catch(() => {});

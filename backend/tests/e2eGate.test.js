@@ -192,6 +192,7 @@ const reportCompleto = {
   accountDeletion: "PASSED",
   severityVerdict: "PASSED",
   productComparison: "PASSED",
+  offlineCache: "PASSED",
   anthropicReal: "EXECUTED_GENERIC_AND_PRODUCT",
   assistantAuthenticated: "PASSED",
 };
@@ -268,6 +269,7 @@ test("D2: o conjunto de requisitos do modo strict e exatamente este", () => {
     "accountDeletion",
     "severityVerdict",
     "productComparison",
+    "offlineCache",
   ]);
 
   const chavesComFlag = buildStrictRequirements(reportCompleto, { anthropicFlagEnabled: true }).map(
@@ -441,8 +443,8 @@ test("A12: os 14 requisitos anteriores a v0.7.0 continuam exigidos, um a um", ()
 
   // A v0.7.0 acrescentou tres (historico, favoritos, frescor do veredito), a
   // v0.7.3 acrescentou um (`manualCodeLookup`), a v0.8.0, dois (exportar e
-  // excluir a conta), a v0.9.0, um (`severityVerdict`), e a v0.10.0, um
-  // (`productComparison`).
+  // excluir a conta), a v0.9.0, um (`severityVerdict`), a v0.10.0, um
+  // (`productComparison`), e a v0.11.0, um (`offlineCache`).
   //
   // A assercao aqui e sobre o que este teste realmente guarda: que nenhum dos
   // 14 antigos sumiu e que nada foi acrescentado sem ser nomeado. Travar um
@@ -461,6 +463,7 @@ test("A12: os 14 requisitos anteriores a v0.7.0 continuam exigidos, um a um", ()
       "accountDeletion",
       "severityVerdict",
       "productComparison",
+      "offlineCache",
     ],
     `requisitos acrescentados desde a v0.6.9 fora do esperado: ${acrescentados.join(", ")}`,
   );
@@ -532,7 +535,7 @@ test("A10: os 17 requisitos da v0.7.2 continuam exigidos, um a um", () => {
   }
 });
 
-test("A10: desde a v0.7.2 entraram so manualCodeLookup, os dois da v0.8.0, o da v0.9.0 e o da v0.10.0, nomeados", () => {
+test("A10: desde a v0.7.2 entraram so manualCodeLookup, os dois da v0.8.0, o da v0.9.0, o da v0.10.0 e o da v0.11.0, nomeados", () => {
   // Ate a v0.7.6 este teste travava o total em 18. O total exato agora e do
   // teste A11, abaixo; aqui fica o que este sempre guardou: nada entrou desde a
   // v0.7.2 sem ser nomeado.
@@ -542,7 +545,7 @@ test("A10: desde a v0.7.2 entraram so manualCodeLookup, os dois da v0.8.0, o da 
   const novos = atuais.filter((chave) => !REQUISITOS_DA_V072.includes(chave));
   assert.deepEqual(
     novos,
-    ["manualCodeLookup", "accountExport", "accountDeletion", "severityVerdict", "productComparison"],
+    ["manualCodeLookup", "accountExport", "accountDeletion", "severityVerdict", "productComparison", "offlineCache"],
     `requisitos novos inesperados: ${novos.join(", ")}`,
   );
 });
@@ -622,15 +625,57 @@ test("A11: os 21 requisitos da v0.9.0 continuam exigidos, um a um", () => {
   }
 });
 
-test("A11: o modo strict tem exatamente 22 requisitos, os 21 da v0.9.0 mais productComparison", () => {
+// A11 da v0.11.0: o subgate novo nao pode custar nenhum requisito antigo.
+//
+// A v0.10.0 saiu com 22 requisitos em modo strict, aprovada por auditoria
+// externa. A v0.11.0 acrescenta `offlineCache` e passa a 23. O teste que
+// travava o total em 22 foi substituido pelo de 23, abaixo, que nomeia o unico
+// requisito novo - nao removido sem troca.
+const REQUISITOS_DA_V0100 = [...REQUISITOS_DA_V090, "productComparison"];
+
+test("A11: os 22 requisitos da v0.10.0 continuam exigidos, um a um", () => {
+  assert.equal(REQUISITOS_DA_V0100.length, 22, "a lista de referencia mudou de tamanho");
+
   const atuais = buildStrictRequirements(reportCompleto, { anthropicFlagEnabled: true }).map(
     ([chave]) => chave,
   );
 
-  assert.equal(atuais.length, 22, `o modo strict tem ${atuais.length} requisitos`);
+  for (const chave of REQUISITOS_DA_V0100) {
+    assert.ok(atuais.includes(chave), `o requisito ${chave} da v0.10.0 sumiu do modo strict`);
+    assert.deepEqual(
+      findMissingRequirements({ ...reportCompleto, [chave]: "NOT_EXECUTED" }, { anthropicFlagEnabled: true }),
+      [chave],
+      `o requisito ${chave} da v0.10.0 deixou de reprovar quando nao executado`,
+    );
+  }
+});
 
-  const novos = atuais.filter((chave) => !REQUISITOS_DA_V090.includes(chave));
-  assert.deepEqual(novos, ["productComparison"], `requisitos novos inesperados: ${novos.join(", ")}`);
+test("A11: o modo strict tem exatamente 23 requisitos, os 22 da v0.10.0 mais offlineCache", () => {
+  const atuais = buildStrictRequirements(reportCompleto, { anthropicFlagEnabled: true }).map(
+    ([chave]) => chave,
+  );
+
+  assert.equal(atuais.length, 23, `o modo strict tem ${atuais.length} requisitos`);
+
+  const novos = atuais.filter((chave) => !REQUISITOS_DA_V0100.includes(chave));
+  assert.deepEqual(novos, ["offlineCache"], `requisitos novos inesperados: ${novos.join(", ")}`);
+});
+
+test("A11: offlineCache e requisito BASE e reprova sozinho", () => {
+  // Depende do PostgreSQL e dos modulos do cliente; nao chama IA. Sem a flag da
+  // IA continua exigido.
+  for (const flag of [true, false]) {
+    assert.deepEqual(
+      findMissingRequirements({ ...reportCompleto, offlineCache: "NOT_EXECUTED" }, { anthropicFlagEnabled: flag }),
+      ["offlineCache"],
+      `offlineCache deixou de reprovar (flag da IA ${flag})`,
+    );
+    assert.deepEqual(
+      findMissingRequirements({ ...reportCompleto, offlineCache: "SKIPPED" }, { anthropicFlagEnabled: flag }),
+      ["offlineCache"],
+      "SKIP nao pode contar como PASS",
+    );
+  }
 });
 
 test("A11: productComparison e requisito BASE e reprova sozinho", () => {

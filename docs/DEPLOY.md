@@ -1,9 +1,9 @@
-# Publicar o NutriScan - v0.10.0
+# Publicar o NutriScan - v0.11.0
 
 Este documento e para **quem vai publicar**, nao para quem escreveu o codigo.
 Siga na ordem. Nenhum passo pede para adivinhar.
 
-**Situacao hoje:** as versoes 0.7.1 a 0.10.0 nunca foram publicadas. O servico
+**Situacao hoje:** as versoes 0.7.1 a 0.11.0 nunca foram publicadas. O servico
 `nutriscan` no Render ainda roda a 0.7.0.
 
 Nenhum valor real de credencial aparece aqui. Onde houver `<...>`, troque pelo
@@ -387,6 +387,25 @@ Depois de publicar, para conferir a mao (sem conta, ou com uma descartavel):
 
 O `verify:deploy` nao toca nisso: ele so le, e as rotas de comparacao sao
 `POST`.
+
+### Uso sem rede (v0.11.0)
+
+A v0.11.0 **nao traz migration**, **nao tem variavel nova** e **nao muda
+nenhuma rota**. O cache para usar sem rede vive no navegador de cada pessoa (um
+banco IndexedDB chamado `nutriscan-offline`); o servidor nao sabe dele.
+
+Depois de publicar, para conferir a mao (com uma conta descartavel):
+
+1. Entre, marque Leite/lactose e abra um produto com leite pelo codigo.
+2. Desligue a internet do celular (modo aviao) com o app aberto.
+3. Abra o mesmo produto pelo codigo: deve aparecer "Do aparelho · guardado em
+   ...", com o conflito de leite.
+4. Digite o codigo de um produto que nunca abriu: deve aparecer "nao esta
+   disponivel offline".
+5. Ligue a internet e toque em Sair da conta.
+
+Abrir o app do zero, ja sem sinal, nao funciona nesta versao - nao ha service
+worker. O `verify:deploy` nao toca nisso: o cache e do navegador.
 
 ### Pontos de atencao conhecidos
 

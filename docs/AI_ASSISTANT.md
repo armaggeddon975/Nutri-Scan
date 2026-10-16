@@ -1,4 +1,4 @@
-# Nutri Assistente IA - v0.10.0
+# Nutri Assistente IA - v0.11.0
 
 ## Fluxo
 
@@ -336,6 +336,14 @@ mesmo provedor, modelo, timeout e Structured Outputs do chat.
 
 O JSON Schema enviado para Structured Outputs nao declara a quantidade de itens
 (`minItems`/`maxItems`); quem exige exatamente dois e o Zod, depois.
+
+## Sem internet (v0.11.0)
+
+Sem internet, o assistente nao responde - e a tela diz isso, em vez de mostrar
+"Analisando o rotulo..." como se o assistente estivesse pensando. A mensagem e
+"Sem internet, o assistente nao responde." O alerta de alergia continua: e do
+motor do app, calculado no aparelho. O mesmo vale para "Explicar as diferencas"
+na comparacao. Nenhuma pergunta e guardada para mandar depois.
 
 ## Limites Medicos
 

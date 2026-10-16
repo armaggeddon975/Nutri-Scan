@@ -1,5 +1,120 @@
 # Changelog
 
+## NutriScan v0.11.0 - 2026-10-16
+
+Leitura sem rede: rever, sem internet, o que ja passou por este aparelho. Minor:
+capacidade nova de produto. Nao ha migration, rota nova nem variavel nova.
+
+Isto descreve o que o software faz. Nao e orientacao de saude nem de nutricao,
+e esta versao nao declara o NutriScan clinicamente adequado nem em conformidade
+juridica.
+
+### O projeto segue NAO PUBLICADO
+
+As versoes 0.7.1 a 0.11.0 nunca foram ao ar. O servico `nutriscan` no Render
+continua rodando a **0.7.0**. Esta versao nao publica nada.
+
+### O problema, pelo que era
+
+O NutriScan e usado no celular, dentro do supermercado - exatamente onde o sinal
+cai: corredor fundo, subsolo, estoque. Ate a v0.10.0, sem rede o app nao servia
+nem o que ja tinha visto. Quem leu um produto ontem nao conseguia rever o
+veredito hoje se o sinal sumisse. E o motor de alergia, em `shared/`, sempre
+rodou no navegador: a capacidade existia, so nunca foi aproveitada.
+
+### O que entrou
+
+Com o app aberto e sem internet, a pessoa ve:
+
+- os produtos que ABRIU com internet neste aparelho, pelo codigo de barras;
+- o veredito de alergia deles, refeito na hora pelo motor de `shared/`, com o
+  perfil de agora - alerta maximo incluido;
+- o proprio perfil de alergias e nivel de alerta;
+- as listas de historico e favoritos, como estavam na ultima conexao;
+- a comparacao de dois produtos, quando os dois estao guardados.
+
+Tudo marcado: "Do aparelho · guardado em 16/10/2026". Dado do aparelho nunca se
+passa por dado fresco.
+
+### O veredito NUNCA e guardado - e por que
+
+O aparelho guarda o PRODUTO (nome, marca, ingredientes, alergenicos, tabela
+nutricional), nunca o `allergyVerdict`. O veredito depende do perfil de alergias
+e do nivel de alerta, que mudam: um veredito guardado de tres semanas atras
+poderia dizer "sem conflito" para quem marcou uma alergia nova ontem -
+informacao de seguranca errada com cara de certa. E a mesma regra que ja vale
+para historico e favoritos desde a v0.7.0.
+
+### As regras
+
+- **Produto que nao esta no aparelho:** "nao disponivel offline", explicito.
+  Nada de produto parecido por prefixo, marca ou semelhanca.
+- **O codigo passa pela mesma conferencia de sempre** - digito verificador,
+  UPC-A para EAN-13 - antes de o aparelho ser consultado.
+- **Validade de 30 dias.** Depois disso, o produto guardado nao e servido: a
+  tela diz que o dado do aparelho esta antigo demais e pede para conferir o
+  rotulo. Receita reformulada e real, e para alergia importa.
+- **Online que nao responde:** com o produto guardado, depois de 6 s sem
+  resposta da internet a pessoa ve o do aparelho, marcado, e a tela troca pela
+  versao da internet se ela chegar. Com o servidor do NutriScan fora, a sessao e
+  lida do aparelho, com aviso.
+- **Com rede, a rede manda.** O cache nao impede consulta fresca, e o produto
+  aberto com rede atualiza a copia.
+- **Nada e escrito sem rede.** Com conta, favoritar, marcar alergia, mudar o
+  nivel e apagar historico precisam de internet - sem ela, nada acontece e nada
+  fica guardado para depois. Fila de sincronizacao traria conflito entre
+  aparelhos, e isso e outra versao.
+- **Sem rede, o assistente nao responde**, e a tela diz isso.
+
+### Dado de saude no aparelho
+
+- IndexedDB, num banco proprio, por conta. Lista fechada de campos na escrita e
+  na leitura. Nunca: veredito, senha, hash, salt, token, cookie, chave de API,
+  e-mail.
+- **Uma conta por aparelho.** Confirmar uma conta apaga o cache de qualquer
+  outra.
+- **Sair da conta apaga o cache da conta**, mesmo sem resposta do servidor.
+  **Excluir a conta** tambem, depois de o servidor confirmar. Sessao recusada
+  pelo servidor (401) tambem.
+- **Cadastro:** as alergias marcadas como visitante vao para a conta e saem do
+  armazenamento de visitante.
+
+### Gate E2E: 22 -> 23 requisitos
+
+Subgate `offlineCache`: os modulos do cliente alimentados pelo backend real - o
+perfil vem do PostgreSQL, a sessao e um cookie de verdade, o logout e o da API.
+O que fica guardado contem produto e perfil; nao contem veredito, nem o cookie,
+nem hash, salt e hash de sessao lidos do banco, nem senha, nem e-mail; e sai no
+logout. O IndexedDB do subgate e o do `fake-indexeddb`: a persistencia no
+navegador de verdade foi conferida a parte, no navegador. Requisito BASE.
+
+### Testes e mutacao
+
+O1-O16 em `backend/tests/offline.test.js`. `fake-indexeddb` 6.2.5 entrou como
+dependencia de desenvolvimento, com versao fixa - a 6.2.6 tinha saido no mesmo
+dia. `scripts/mutation-check.js` ganhou 14 mutantes (Z1-Z13, com Z5b); o W11, o
+X9 e o Y9 apontam para o teste do total renomeado. Resultado em
+`AUDIT_REPORT.md`.
+
+### Descrito e NAO alterado - para decisao
+
+- **Abrir o app ja sem sinal** exige service worker; nao foi feito.
+- **Sair sem resposta do servidor:** o cache sai do aparelho, mas a sessao no
+  servidor continua aberta, e o app pode entrar de novo sozinho quando a
+  internet voltar - a tela avisa para tocar em Sair de novo. Era assim antes.
+- **Contas locais antigas:** a chave `nutriscan:users`, das contas que existiam
+  antes do backend, guarda hash de senha nos aparelhos que as usaram. O app so a
+  le, para migrar; nao a apaga.
+- **O chat ainda diz "sem conflito" para produto sem dado de alergenico**, como
+  descrito na v0.10.0.
+
+### O que esta versao NAO prova
+
+- A leitura da camera em aparelho real: **NAO EXECUTADO**.
+- O deploy real da 0.11.0: **NAO EXECUTADO** - nada foi publicado.
+- O modo sem rede num celular de verdade: **NAO EXECUTADO** - conferido no
+  navegador do ambiente de desenvolvimento.
+
 ## NutriScan v0.10.0 - 2026-10-16
 
 Comparacao de dois produtos, lado a lado. Minor: capacidade nova de produto.

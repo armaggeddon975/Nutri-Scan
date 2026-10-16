@@ -43,6 +43,21 @@ export function writeStoredAllergies(allergies) {
   }
 }
 
+// CADASTRO ACEITO (v0.11.0)
+//
+// O cadastro leva as alergias marcadas como visitante para a conta nova. Dali
+// em diante elas sao o perfil DA CONTA - e a copia de visitante sai do
+// aparelho. Sem isso, depois de sair da conta, o perfil de alergias de quem saiu
+// continuaria no navegador, como alergias "de visitante".
+export function limparAlergiasDeVisitante() {
+  try {
+    localStorage.removeItem(GUEST_ALLERGIES_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // CONVITE DO ALERTA MAXIMO (v0.9.0)
 //
 // O convite para revisar o nivel de alerta aparece UMA vez por conta, neste

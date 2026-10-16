@@ -70,6 +70,7 @@ import {
 import {
   readAlertInviteSeen,
   readStoredAllergies,
+  limparAlergiasDeVisitante,
   readStoredUsers,
   writeAlertInviteSeen,
   writeStoredAllergies,
@@ -92,6 +93,33 @@ import {
 } from "./services/productLookup";
 import { codigoLidoPelaCamera, isBarcodeQuery, normalizeText } from "./utils/text";
 import { hashPassword, hasSecureCrypto, legacyHashPassword } from "./utils/security";
+import { OfflineNotice } from "./components/common/OfflineNotice";
+import { VISITANTE } from "./services/offlineCache";
+import {
+  avaliarNoAparelho,
+  buscarNoAparelho,
+  cacheDoAparelho,
+  consultarNoAparelho,
+  dataDoAparelho,
+  EXPIRADO_NO_APARELHO,
+  guardarProdutoVisto,
+  iniciarPrazoDaRede,
+  NAO_DISPONIVEL_OFFLINE,
+  NO_APARELHO,
+  REDE_LENTA,
+  SEM_INTERNET,
+  SEM_RESPOSTA,
+  semInternet,
+} from "./services/offlineLookup";
+import {
+  aoConfirmarConta,
+  aoExcluirConta,
+  aoPerderSessao,
+  aoSairDaConta,
+  escreverComInternet,
+  recuperarSessao,
+  SEM_INTERNET_PARA_ESCREVER,
+} from "./services/offlineSession";
 
 const VALID_PAGES = ["home", "consulta", "scan", "alergias", "chat", "guia", "meus", "conta", "comparar"];
 
@@ -189,6 +217,9 @@ function App() {
   const [activePage, setActivePage] = useState("home");
   const [query, setQuery] = useState("");
   const [product, setProduct] = useState(null);
+  // De onde veio o produto aberto (v0.11.0): "rede", "local" (a base que vem no
+  // app) ou "aparelho" (o cache, sem internet), com a data do dado e o motivo.
+  const [origemDoProduto, setOrigemDoProduto] = useState(null);
   const [localMatches, setLocalMatches] = useState([]);
   const [scannerState, setScannerState] = useState("idle");
   const [torch, setTorch] = useState({ available: false, on: false });
@@ -199,6 +230,13 @@ function App() {
     message: "Abra um produto para ele aparecer aqui.",
   });
   const [currentUser, setCurrentUser] = useState(null);
+  // Sem internet (v0.11.0): o navegador diz, e os eventos online/offline mantem
+  // a tela em dia.
+  const [offline, setOffline] = useState(() => semInternet());
+  // Perfil lido do aparelho, sem confirmacao do servidor: a data dele. Null
+  // quando o servidor confirmou a sessao.
+  const [sessaoDoAparelho, setSessaoDoAparelho] = useState(null);
+  const sessaoDoAparelhoRef = useRef(null);
   const [selectedAllergies, setSelectedAllergies] = useState(() => getInitialAllergies());
   const selectedAllergiesRef = useRef(selectedAllergies);
   const confirmedAllergiesRef = useRef(selectedAllergies);
@@ -254,6 +292,11 @@ function App() {
 
   const restoreGuestSession = useCallback((message, type = "ready") => {
     const guestAllergies = readStoredAllergies();
+    // Voltar a visitante - saiu, conta excluida, sessao recusada - tira do
+    // aparelho o cache de qualquer conta (v0.11.0).
+    aoPerderSessao();
+    sessaoDoAparelhoRef.current = null;
+    setSessaoDoAparelho(null);
     currentUserRef.current = null;
     selectedAllergiesRef.current = guestAllergies;
     confirmedAllergiesRef.current = guestAllergies;
@@ -273,12 +316,21 @@ function App() {
     selectedAllergiesRef.current = selectedAllergies;
   }, [selectedAllergies]);
 
-  useEffect(() => {
-    let active = true;
-
-    getMe()
-      .then(({ user }) => {
-        if (!active) return;
+  // Ao abrir, o SERVIDOR decide de quem e a sessao. Sem resposta dele, vale o
+  // perfil que este aparelho guardou da conta que estava aberta, marcado como
+  // tal (v0.11.0). Servidor recusando a sessao (401) tira o cache da conta.
+  const aplicarSessao = useCallback(
+    (sessao) => {
+      if (sessao.tipo === "conta" || sessao.tipo === "aparelho") {
+        const doAparelho = sessao.tipo === "aparelho";
+        const user = doAparelho
+          ? {
+              id: sessao.perfil.id,
+              name: sessao.perfil.nome,
+              allergies: sessao.perfil.alergias,
+              alertLevels: sessao.perfil.niveis,
+            }
+          : sessao.user;
         const serverAllergies = Array.isArray(user?.allergies) ? user.allergies : DEFAULT_ALLERGIES;
         const publicUser = getPublicUser(user);
         currentUserRef.current = publicUser;
@@ -287,25 +339,58 @@ function App() {
         selectedAllergiesRef.current = serverAllergies;
         confirmedAllergiesRef.current = serverAllergies;
         applyServerAlertLevels(user);
-        setAuthStatus({
-          type: "success",
-          message: `Sessão recuperada, ${user.name}.`,
-        });
-      })
-      .catch((error) => {
-        if (!active) return;
-        restoreGuestSession(
-          error.status === 401
-            ? "Entre na conta para salvar suas alergias."
-            : "Conta fora do ar. O app continua funcionando.",
-          error.status === 401 ? "ready" : "warning",
+        const marca = doAparelho ? { guardadoEm: sessao.perfil.guardadoEm } : null;
+        sessaoDoAparelhoRef.current = marca;
+        setSessaoDoAparelho(marca);
+        setAuthStatus(
+          doAparelho
+            ? {
+                type: "warning",
+                message: `Sem conexão. Perfil guardado neste aparelho em ${dataDoAparelho(sessao.perfil.guardadoEm)}.`,
+              }
+            : { type: "success", message: `Sessão recuperada, ${user.name}.` },
         );
-      });
+        return;
+      }
+
+      restoreGuestSession(
+        sessao.motivo === "sem_sessao"
+          ? "Entre na conta para salvar suas alergias."
+          : "Conta fora do ar. O app continua funcionando.",
+        sessao.motivo === "sem_sessao" ? "ready" : "warning",
+      );
+    },
+    [restoreGuestSession, applyServerAlertLevels],
+  );
+
+  useEffect(() => {
+    let active = true;
+
+    recuperarSessao({ getMe }).then((sessao) => {
+      if (active) aplicarSessao(sessao);
+    });
 
     return () => {
       active = false;
     };
-  }, [restoreGuestSession, applyServerAlertLevels]);
+  }, [aplicarSessao]);
+
+  // Sem internet / internet de volta. Com ela de volta e o perfil vindo do
+  // aparelho, o servidor confirma a sessao de novo.
+  useEffect(() => {
+    const aoMudarARede = () => {
+      setOffline(semInternet());
+      if (!semInternet() && sessaoDoAparelhoRef.current) {
+        recuperarSessao({ getMe }).then(aplicarSessao);
+      }
+    };
+    window.addEventListener("online", aoMudarARede);
+    window.addEventListener("offline", aoMudarARede);
+    return () => {
+      window.removeEventListener("online", aoMudarARede);
+      window.removeEventListener("offline", aoMudarARede);
+    };
+  }, [aplicarSessao]);
 
   // Convite do alerta maximo (v0.9.0): uma vez por conta neste aparelho, so
   // para quem tem alergia marcada e ainda nao usou o alerta maximo.
@@ -323,6 +408,19 @@ function App() {
   };
 
   const nutrientRows = useMemo(() => getNutrientRows(product?.nutriments), [product]);
+  // Produto lido do aparelho: o veredito e refeito AGORA, pelo motor de
+  // `shared/`, com o perfil que o app tem neste momento - nunca lido do cache,
+  // que nao o guarda (v0.11.0).
+  const vereditoDoAparelho = useMemo(
+    () =>
+      origemDoProduto?.fonte === "aparelho" && product
+        ? avaliarNoAparelho(product, {
+            profileAllergies: selectedAllergies,
+            alertLevels: currentUser ? alertLevels : {},
+          }).allergyVerdict
+        : null,
+    [origemDoProduto, product, selectedAllergies, alertLevels, currentUser],
+  );
   const allergyScan = useMemo(
     () => scanAllergies(product, selectedAllergies),
     [product, selectedAllergies],
@@ -394,21 +492,48 @@ function App() {
     window.scrollTo({ top: 0, behavior: "instant" });
   }, [activePage]);
 
+  // O cache de produto fica so com o que esta no historico ou nos favoritos.
+  const podarCacheDoAparelho = (dono, historico, favoritos, anterioresA) => {
+    const mantidos = [...(historico || []), ...(favoritos || [])].map((item) => item.productCode).filter(Boolean);
+    cacheDoAparelho.podarProdutos(dono, mantidos, { anterioresA }).catch(() => {});
+  };
+
   // Fonte de verdade por estado de sessao: com conta, o PostgreSQL; sem conta,
   // o proprio navegador. Trocar de usuario recarrega tudo do zero em vez de
   // mesclar - misturar as duas origens e como dado de um vaza para o outro.
   const refreshCollections = useCallback(async () => {
+    const inicio = Date.now();
     if (!currentUserRef.current) {
-      setHistory(readGuestHistory());
-      setFavorites(readGuestFavorites());
+      const historicoLocal = readGuestHistory();
+      const favoritosLocal = readGuestFavorites();
+      setHistory(historicoLocal);
+      setFavorites(favoritosLocal);
+      // O cache do visitante acompanha as listas dele (v0.11.0).
+      podarCacheDoAparelho(VISITANTE, historicoLocal, favoritosLocal, inicio);
       return;
     }
 
+    const dono = currentUserRef.current.id;
     try {
       const [historico, favoritos] = await Promise.all([fetchHistory(), fetchFavorites()]);
       setHistory(historico.items || []);
       setFavorites(favoritos.items || []);
+      // As listas confirmadas pelo servidor vao para o aparelho, e o cache de
+      // produto fica so com o que ainda esta nelas (v0.11.0).
+      cacheDoAparelho.guardarColecoes(dono, { historico: historico.items, favoritos: favoritos.items }).catch(() => {});
+      podarCacheDoAparelho(dono, historico.items, favoritos.items, inicio);
     } catch (error) {
+      // Sem resposta: as listas guardadas neste aparelho, marcadas.
+      const guardadas = await cacheDoAparelho.lerColecoes(dono).catch(() => null);
+      if (guardadas && currentUserRef.current?.id === dono) {
+        setHistory(guardadas.historico);
+        setFavorites(guardadas.favoritos);
+        setCollectionsStatus({
+          type: "warning",
+          message: `Sem conexão. Lista guardada neste aparelho em ${dataDoAparelho(guardadas.guardadoEm)}.`,
+        });
+        return;
+      }
       // Lista vazia com aviso, nunca lista local no lugar da do servidor:
       // mostrar dado de visitante para quem esta logado seria inventar estado.
       setHistory([]);
@@ -429,8 +554,15 @@ function App() {
   // em vez de criar linha nova.
   useEffect(() => {
     if (!product) return;
+    // Produto lido do APARELHO e releitura, nao consulta nova: nada e gravado -
+    // nem historico, nem cache, que manteria a data velha como nova (v0.11.0).
+    if (origemDoProduto?.fonte === "aparelho") return;
     const referencia = toProductRef(product, getProductName(product));
     if (!referencia) return;
+
+    // A copia para usar sem rede: so o que a pessoa ABRIU com internet. Vai sem
+    // veredito - ele e refeito a cada leitura, com o perfil do momento.
+    guardarProdutoVisto(currentUserRef.current ? currentUserRef.current.id : VISITANTE, product);
 
     if (!currentUserRef.current) {
       setHistory(recordGuestView(referencia));
@@ -451,7 +583,7 @@ function App() {
     return () => {
       ativo = false;
     };
-  }, [product]);
+  }, [product, origemDoProduto]);
 
   useEffect(() => {
     chatLogRef.current?.scrollTo({
@@ -460,8 +592,9 @@ function App() {
     });
   }, [assistantMessages, assistantLoading]);
 
-  const selectProduct = useCallback((nextProduct) => {
+  const selectProduct = useCallback((nextProduct, origem = null) => {
     setProduct(nextProduct);
+    setOrigemDoProduto(origem ?? { fonte: nextProduct?.isLocal ? "local" : "rede" });
     setQuery(nextProduct.isLocal ? getProductName(nextProduct) : nextProduct.code || "");
     setStatus({
       type: "success",
@@ -491,7 +624,16 @@ function App() {
     }
 
     try {
-      const resultado = await apiToggleFavorite(referencia);
+      // Sem internet nada e gravado - nem guardado para depois (v0.11.0).
+      const escrita = await escreverComInternet(() => apiToggleFavorite(referencia));
+      if (!escrita.gravado) {
+        // O aviso vai para as duas telas: a do produto, onde a pessoa tocou, e
+        // a de Meus produtos.
+        setCollectionsStatus({ type: "warning", message: SEM_INTERNET_PARA_ESCREVER.favorito });
+        setStatus({ type: "warning", message: SEM_INTERNET_PARA_ESCREVER.favorito });
+        return;
+      }
+      const resultado = escrita.resultado;
       const favoritos = await fetchFavorites();
       setFavorites(favoritos.items || []);
       setCollectionsStatus({
@@ -512,7 +654,11 @@ function App() {
       return;
     }
     try {
-      await apiDeleteHistoryItem(item.id);
+      const escrita = await escreverComInternet(() => apiDeleteHistoryItem(item.id));
+      if (!escrita.gravado) {
+        setCollectionsStatus({ type: "warning", message: SEM_INTERNET_PARA_ESCREVER.historico });
+        return;
+      }
       const historico = await fetchHistory();
       setHistory(historico.items || []);
     } catch (error) {
@@ -526,7 +672,11 @@ function App() {
       return;
     }
     try {
-      await apiClearHistory();
+      const escrita = await escreverComInternet(() => apiClearHistory());
+      if (!escrita.gravado) {
+        setCollectionsStatus({ type: "warning", message: SEM_INTERNET_PARA_ESCREVER.historico });
+        return;
+      }
       setHistory([]);
       setCollectionsStatus({ type: "success", message: "Histórico limpo." });
     } catch (error) {
@@ -540,7 +690,11 @@ function App() {
       return;
     }
     try {
-      await apiDeleteFavorite(item.id);
+      const escrita = await escreverComInternet(() => apiDeleteFavorite(item.id));
+      if (!escrita.gravado) {
+        setCollectionsStatus({ type: "warning", message: SEM_INTERNET_PARA_ESCREVER.historico });
+        return;
+      }
       const favoritos = await fetchFavorites();
       setFavorites(favoritos.items || []);
     } catch (error) {
@@ -571,6 +725,42 @@ function App() {
   // um digito e transposicao de vizinhos sao exatamente o que o digito
   // verificador pega, e num app de alergia o resultado de um digito errado nao
   // e "nao encontrado" - e outro produto, com outros alergenicos.
+  // O que o aparelho tem para um codigo, posto na tela - sempre marcado. Sem o
+  // produto, a resposta e explicita: "nao disponivel offline", nunca uma tela
+  // vazia que pareca resultado (v0.11.0).
+  const mostrarDoAparelho = useCallback(
+    (doAparelho, motivo) => {
+      if (doAparelho.estado === NO_APARELHO) {
+        selectProduct(doAparelho.produto, { fonte: "aparelho", guardadoEm: doAparelho.guardadoEm, motivo });
+        setStatus({
+          type: "warning",
+          message: `${getProductName(doAparelho.produto)}: dados guardados neste aparelho em ${dataDoAparelho(doAparelho.guardadoEm)}.`,
+        });
+        return;
+      }
+
+      lastDetectedRef.current = "";
+      if (doAparelho.estado === CODIGO_INVALIDO) {
+        setStatus({ type: "warning", message: doAparelho.mensagem });
+        return;
+      }
+
+      const semRede = motivo === SEM_INTERNET ? "Sem internet." : "A internet não respondeu.";
+      if (doAparelho.estado === EXPIRADO_NO_APARELHO) {
+        setStatus({
+          type: "warning",
+          message: `${semRede} O dado do produto ${doAparelho.codigo} neste aparelho é de ${dataDoAparelho(doAparelho.guardadoEm)}, antigo demais para usar. Confira o rótulo.`,
+        });
+        return;
+      }
+      setStatus({
+        type: "warning",
+        message: `${semRede} O produto ${doAparelho.codigo} não está disponível offline. Ele só fica guardado depois de aberto com internet.`,
+      });
+    },
+    [selectProduct],
+  );
+
   const searchProduct = useCallback(
     async (rawQuery, { origem = "manual" } = {}) => {
       const nextQuery = rawQuery.trim();
@@ -596,6 +786,16 @@ function App() {
           setStatus({
             type: "success",
             message: `${matches.length} resultado(s) na base local brasileira.`,
+          });
+          return;
+        }
+
+        // Busca por nome precisa da Open Food Facts: sem internet, nao ha o que
+        // procurar - e nada de "parecido" vindo do aparelho.
+        if (semInternet()) {
+          setStatus({
+            type: "warning",
+            message: "Sem internet, a busca por nome não funciona. Use o código de um produto que você já abriu.",
           });
           return;
         }
@@ -642,9 +842,37 @@ function App() {
       // outros alergenicos.
       const previa =
         origem === "manual" ? validarCodigoDeBarras(nextQuery).codigo ?? nextQuery : nextQuery;
+      const dono = currentUserRef.current ? currentUserRef.current.id : VISITANTE;
+
+      // SEM INTERNET (v0.11.0): nem tenta a rede. So o que este aparelho
+      // guardou - e o codigo passa antes pela mesma `prepararCodigo`.
+      if (semInternet()) {
+        const doAparelho = await consultarNoAparelho(nextQuery, { origem, dono });
+        if (token !== searchTokenRef.current) return;
+        mostrarDoAparelho(doAparelho, SEM_INTERNET);
+        return;
+      }
+
       setStatus({ type: "loading", message: `Buscando produto ${previa}...` });
 
+      // Com rede, a rede manda. Mas com o produto guardado a pessoa nao espera a
+      // insistencia inteira da Open Food Facts: passado o prazo sem resposta, ve
+      // o que o aparelho tem, marcado - e a tela troca pela versao da internet
+      // se ela chegar.
+      const guardado = await consultarNoAparelho(nextQuery, { origem, dono });
+      if (token !== searchTokenRef.current) return;
+      let mostrouDoAparelho = false;
+      const cancelarPrazo =
+        guardado.estado === NO_APARELHO
+          ? iniciarPrazoDaRede(() => {
+              if (token !== searchTokenRef.current) return;
+              mostrouDoAparelho = true;
+              mostrarDoAparelho(guardado, REDE_LENTA);
+            })
+          : () => {};
+
       const resultado = await consultarProdutoPorCodigo(nextQuery, { origem });
+      cancelarPrazo();
       if (token !== searchTokenRef.current) return;
 
       if (resultado.estado === CODIGO_INVALIDO) {
@@ -655,6 +883,11 @@ function App() {
 
       if (resultado.estado === NAO_ENCONTRADO) {
         lastDetectedRef.current = "";
+        // A resposta fresca vale mais que a copia do aparelho.
+        if (mostrouDoAparelho) {
+          setProduct(null);
+          setOrigemDoProduto(null);
+        }
         setStatus({
           type: "warning",
           message: `Produto ${resultado.codigo} não está cadastrado na Open Food Facts. Você pode buscar pelo nome ou conferir o rótulo.`,
@@ -663,17 +896,18 @@ function App() {
       }
 
       if (resultado.estado === ERRO_DE_REDE) {
-        lastDetectedRef.current = "";
-        setStatus({
-          type: "error",
-          message: "Não consegui buscar. Verifique sua internet.",
-        });
+        // A internet nao respondeu: o que o aparelho tem, marcado - ou, sem o
+        // produto, "nao disponivel offline" (v0.11.0).
+        mostrarDoAparelho(guardado, SEM_RESPOSTA);
         return;
       }
 
-      selectProduct(resultado.produto);
+      selectProduct(resultado.produto, { fonte: "rede" });
+      if (mostrouDoAparelho) {
+        setStatus({ type: "success", message: "Chegou a versão da internet. A tela foi atualizada." });
+      }
     },
-    [selectProduct],
+    [selectProduct, mostrarDoAparelho],
   );
 
   const startScanner = useCallback(async () => {
@@ -830,6 +1064,11 @@ function App() {
       confirmedAllergiesRef.current = serverAllergies;
       confirmedAlertLevelsRef.current = serverLevels;
       setCurrentUser(publicUser);
+      // O perfil confirmado vai para o aparelho: a leitura sem rede usa sempre o
+      // mais novo (v0.11.0).
+      aoConfirmarConta(user);
+      sessaoDoAparelhoRef.current = null;
+      setSessaoDoAparelho(null);
       if (shouldApplyAllergySaveResult(version, allergySaveVersionRef.current)) {
         selectedAllergiesRef.current = serverAllergies;
         setSelectedAllergies(serverAllergies);
@@ -864,6 +1103,12 @@ function App() {
   };
 
   const toggleAllergy = (id) => {
+    // Com conta, alergia so muda no servidor: sem internet, nada muda e nada
+    // fica guardado para depois (v0.11.0).
+    if (currentUserRef.current && semInternet()) {
+      setAuthStatus({ type: "warning", message: SEM_INTERNET_PARA_ESCREVER.alergia });
+      return;
+    }
     const previousAllergies = selectedAllergiesRef.current;
     const nextAllergies = previousAllergies.includes(id)
       ? previousAllergies.filter((item) => item !== id)
@@ -888,6 +1133,10 @@ function App() {
   const setAllergyAlertLevel = (allergyId, level) => {
     const userSnapshot = currentUserRef.current;
     if (!userSnapshot) return;
+    if (semInternet()) {
+      setAuthStatus({ type: "warning", message: SEM_INTERNET_PARA_ESCREVER.alergia });
+      return;
+    }
     const currentAllergies = selectedAllergiesRef.current;
     if (!currentAllergies.includes(allergyId)) return;
 
@@ -943,6 +1192,10 @@ function App() {
         selectedAllergiesRef.current = serverAllergies;
         confirmedAllergiesRef.current = serverAllergies;
         applyServerAlertLevels(user);
+        // As alergias de visitante foram para a conta: sao dela agora, e a copia
+        // de visitante sai do aparelho (v0.11.0).
+        limparAlergiasDeVisitante();
+        aoConfirmarConta(user);
         setAuthForm({ name: "", email: "", password: "" });
         setAuthStatus({
           type: "success",
@@ -969,6 +1222,7 @@ function App() {
       selectedAllergiesRef.current = serverAllergies;
       confirmedAllergiesRef.current = serverAllergies;
       applyServerAlertLevels(user);
+      aoConfirmarConta(user);
       setAuthForm({ name: "", email: "", password: "" });
       setAuthStatus({
         type: "success",
@@ -989,6 +1243,7 @@ function App() {
             selectedAllergiesRef.current = migratedAllergies;
             confirmedAllergiesRef.current = migratedAllergies;
             applyServerAlertLevels(migrated.user);
+            aoConfirmarConta(migrated.user);
             setAuthForm({ name: "", email: "", password: "" });
             setAuthStatus({
               type: "success",
@@ -1015,13 +1270,16 @@ function App() {
   };
 
   const logout = async () => {
-    try {
-      await logoutAccount();
-    } catch {
-      // Mesmo se o servidor estiver indisponivel, a interface volta para o perfil visitante.
-    }
-
-    restoreGuestSession("Você saiu da conta.");
+    // Mesmo se o servidor estiver indisponivel, a interface volta para o perfil
+    // visitante - e o cache da conta sai do aparelho SEMPRE (v0.11.0). Sem
+    // resposta, a sessao no servidor continua aberta, e a tela diz isso.
+    const { servidorRespondeu } = await aoSairDaConta({ sair: logoutAccount });
+    restoreGuestSession(
+      servidorRespondeu
+        ? "Você saiu da conta."
+        : "Você saiu neste aparelho, mas o servidor não respondeu. Se a conta voltar sozinha com a internet, toque em Sair de novo.",
+      servidorRespondeu ? "ready" : "warning",
+    );
   };
 
   // Direitos do titular (v0.8.0). A identidade vem da sessao no servidor: o app
@@ -1045,7 +1303,8 @@ function App() {
   const excluirConta = async (senha) => {
     setDataStatus({ type: "loading", message: "Excluindo sua conta..." });
     try {
-      await excluirMinhaConta(senha);
+      // So depois de o servidor confirmar, o cache da conta sai do aparelho.
+      await aoExcluirConta(senha, { excluir: excluirMinhaConta });
       setDataStatus(null);
       restoreGuestSession("Sua conta foi excluída.", "success");
       return true;
@@ -1064,6 +1323,32 @@ function App() {
     event.preventDefault();
     const question = assistantQuestion.trim();
     if (!question) return;
+
+    // Sem internet a IA nao responde - e a tela diz, em vez de fingir que o
+    // assistente esta pensando (v0.11.0). O alerta de alergia segue: e do motor
+    // do app, calculado aqui.
+    if (semInternet()) {
+      setAssistantMessages([
+        ...assistantMessages,
+        { role: "user", text: question },
+        {
+          role: "assistant",
+          text: product
+            ? "Sem internet, o assistente não responde. Abaixo, só a verificação do próprio app."
+            : "Sem internet, o assistente não responde. Abra um produto guardado para ver o alerta de alergia.",
+          source: "local",
+          verdict: buildAllergyVerdict({
+            profileRisks: allergyScan.profileRisks,
+            profileAllergies: selectedAllergiesRef.current,
+            hasProductContext: Boolean(product),
+            alertLevels: currentUserRef.current ? alertLevelsRef.current : {},
+          }),
+        },
+      ]);
+      setAssistantQuestion("");
+      setAssistantConnection({ type: "warning", message: "Sem internet. O assistente não responde agora." });
+      return;
+    }
 
     lastAssistantQuestionRef.current = question;
     const nextMessages = [...assistantMessages, { role: "user", text: question }];
@@ -1184,9 +1469,15 @@ function App() {
 
     // O MESMO caminho da busca de um produto, duas vezes. Os dois codigos sao
     // conferidos antes de qualquer busca.
+    // Sem internet (v0.11.0): a MESMA consulta de dois - conferencia e codigos
+    // iguais incluidos -, com a busca trocada pela leitura do aparelho.
+    const offlineAgora = semInternet();
     const consulta = await consultarDoisProdutos(
       { entrada: entradaA, origem: origemA },
       { entrada: entradaB, origem: origemB },
+      offlineAgora
+        ? { buscar: buscarNoAparelho({ dono: currentUserRef.current ? currentUserRef.current.id : VISITANTE }) }
+        : undefined,
     );
 
     if (consulta.estado === CODIGO_INVALIDO) {
@@ -1222,8 +1513,18 @@ function App() {
           return [
             lado,
             resultado.estado === ENCONTRADO
-              ? { produto: analisarUmNoAparelho({ codigo: resultado.codigo, produto: resultado.produto }, lado, perfilDoAparelho) }
-              : { consulta: resultado },
+              ? {
+                  produto: {
+                    ...analisarUmNoAparelho({ codigo: resultado.codigo, produto: resultado.produto }, lado, perfilDoAparelho),
+                    guardadoEm: resultado.produto.guardadoEm,
+                  },
+                }
+              : {
+                  consulta:
+                    offlineAgora && resultado.estado === NAO_ENCONTRADO
+                      ? { ...resultado, estado: NAO_DISPONIVEL_OFFLINE }
+                      : resultado,
+                },
           ];
         }),
       );
@@ -1231,7 +1532,12 @@ function App() {
         ...atual,
         carregando: false,
         parcial,
-        mensagem: { type: "warning", text: "Falta um dos produtos. Veja abaixo o que foi encontrado." },
+        mensagem: {
+          type: "warning",
+          text: offlineAgora
+            ? "Sem internet. Falta um dos produtos neste aparelho. Veja abaixo o que ele tem."
+            : "Falta um dos produtos. Veja abaixo o que foi encontrado.",
+        },
       }));
       return;
     }
@@ -1241,6 +1547,23 @@ function App() {
       { codigo: consulta.b.codigo, produto: consulta.b.produto },
     ];
     itensComparadosRef.current = itens;
+
+    // Sem internet, nem tenta o servidor: o mesmo modulo compartilhado, aqui,
+    // com cada coluna dizendo de quando e o dado.
+    if (offlineAgora) {
+      const datas = Object.fromEntries(itens.map((item) => [item.codigo, item.produto.guardadoEm]));
+      const resultado = compararNoAparelho(itens, perfilDoAparelho);
+      setComparacao((atual) => ({
+        ...atual,
+        carregando: false,
+        resultado: {
+          ...resultado,
+          products: resultado.products.map((produto) => ({ ...produto, guardadoEm: datas[produto.code] })),
+        },
+        mensagem: { type: "warning", text: "Sem internet. A comparação usa os dados guardados neste aparelho." },
+      }));
+      return;
+    }
 
     try {
       const resposta = await compararNoServidor(itens, { guestAllergies: selectedAllergiesRef.current });
@@ -1281,6 +1604,13 @@ function App() {
   const explicarComparacaoAtual = async () => {
     const itens = itensComparadosRef.current;
     if (!itens) return;
+    if (semInternet()) {
+      setComparacao((atual) => ({
+        ...atual,
+        mensagem: { type: "warning", text: "Sem internet, o assistente não responde. Os fatos acima continuam valendo." },
+      }));
+      return;
+    }
     setComparacao((atual) => ({ ...atual, explicando: true, mensagem: null }));
     try {
       const resposta = await explicarNoServidor(itens, { guestAllergies: selectedAllergiesRef.current });
@@ -1324,6 +1654,8 @@ function App() {
       isFavorite={Boolean(product?.code) && favoriteCodes.has(String(product.code))}
       onToggleFavorite={handleToggleFavorite}
       onCompare={abrirComparacao}
+      origemDoDado={origemDoProduto}
+      vereditoDoAparelho={vereditoDoAparelho}
     />
   );
 
@@ -1510,6 +1842,19 @@ function App() {
         />
 
         <main id="conteudo" className="content" aria-label="Página atual">
+          {offline ? (
+            <OfflineNotice titulo="Sem internet">
+              O app mostra só o que está guardado neste aparelho.{" "}
+              {currentUser
+                ? "Buscar produto novo, favoritar e mudar alergias precisam de internet."
+                : "Para buscar produto novo, conecte-se."}
+            </OfflineNotice>
+          ) : sessaoDoAparelho ? (
+            <OfflineNotice titulo="Sem conexão com o servidor">
+              Perfil guardado neste aparelho em {dataDoAparelho(sessaoDoAparelho.guardadoEm)}. Para mudar algo, espere a
+              conexão voltar.
+            </OfflineNotice>
+          ) : null}
           {renderActivePage()}
           <BrandSignature />
         </main>

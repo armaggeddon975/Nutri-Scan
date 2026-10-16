@@ -1,6 +1,850 @@
-# Relatorio de Auditoria - NutriScan v0.10.0
+# Relatorio de Auditoria - NutriScan v0.11.0
 
 Data: 2026-10-16
+
+## Escopo
+
+Entrada 0.10.0, saida 0.11.0. Leitura sem rede: rever, sem internet, o que ja
+passou por este aparelho. Minor: capacidade nova de produto. Nao ha migration,
+rota nova nem variavel nova.
+
+**Isto nao e orientacao de saude nem de nutricao.** O relatorio descreve o que o
+software faz. Ele nao declara o NutriScan clinicamente adequado nem em
+conformidade juridica.
+
+Preservado sem refatoracao, como a secao 3 mandou. O `git diff` contra a v0.10.0
+(commit `0374bb3`) e VAZIO em todo o `backend/src/`, em todo o `shared/`, em
+`scripts/verify-deploy.js`, em `src/services/productLookup.js`,
+`src/services/openFoodFactsService.js` e `src/services/compareService.js`. A
+comparacao, `amarrarExplicacoes`, os tres estados de alergenico, a matriz de
+severidade, C1, digito verificador, canonicalizacao, tetos, isolamento,
+exportacao, exclusao, handler de erro e fail-closed nao mudaram uma linha.
+
+Codigo de producao da entrega (secao 6), todo no cliente:
+
+```text
+NOVO  src/services/offlineCache.js        o cache: IndexedDB, lista fechada, por dono
+NOVO  src/services/offlineLookup.js       ler o aparelho e refazer o veredito
+NOVO  src/services/offlineSession.js      sessao sem rede, sair, excluir, 401, e a
+                                          porta unica de escrita
+NOVO  src/components/common/OfflineNotice.jsx   o aviso "do aparelho"
+      src/App.jsx                         a ligacao: busca, sessao, colecoes, escritas,
+                                          assistente e comparacao sem rede
+      src/components/food/ProductAnalysis.jsx   a marca de origem e o veredito do aparelho
+      src/pages/Compare/ComparePage.jsx   a data na coluna; "nao guardado neste aparelho"
+      src/services/storageService.js      limparAlergiasDeVisitante (cadastro aceito)
+      src/styles-v070.css                 so acrescimo; styles.css intocado
+```
+
+Gate e testes: `scripts/e2e-real.js` (subgate `offlineCache`),
+`scripts/lib/e2eGate.js` (requisito novo), `scripts/mutation-check.js` (14
+mutantes novos; W11, X9 e Y9 apontam para o teste do total renomeado),
+`backend/tests/offline.test.js` (novo) e `backend/tests/e2eGate.test.js` (23
+requisitos). `fake-indexeddb` 6.2.5 entrou como dependencia de desenvolvimento,
+com versao fixa: a 6.2.6 tinha sido publicada no mesmo dia, depois de quase um
+ano sem versao nova, e por cautela ficou a anterior.
+
+## Mecanismo de armazenamento: IndexedDB, e por que (6.3)
+
+Um banco IndexedDB proprio, `nutriscan-offline`, versao 1, com quatro lojas.
+
+- **Nao `localStorage`:** e sincrono e pequeno. 300 produtos com ingredientes e
+  tabela nutricional, lidos e reescritos inteiros a cada abertura, travariam a
+  tela de um celular simples - e o limite dele fica perto do volume.
+- **Nao cookie:** iria ao servidor em toda requisicao. A secao 6.3 proibe.
+- **IndexedDB:** assincrono, guarda objeto estruturado, indexa por dono, e tem
+  cota grande (medida abaixo).
+- **Verificavel por teste:** nos testes e no gate, o IndexedDB e o do
+  `fake-indexeddb` - uma implementacao completa da API, nao um objeto que finge
+  sucesso -, e a conferencia NAO usa o leitor do proprio modulo: abre cada banco
+  que existir (`indexedDB.databases()`) e le cada chave e cada valor, cru. No
+  navegador de verdade, a mesma leitura crua foi feita no IndexedDB do Chromium
+  (ver "A verificacao no navegador").
+
+Se o navegador nao oferece IndexedDB ou ele falha (modo privado, cota), o app
+segue funcionando com rede; so nao havera copia para usar sem ela.
+
+## O que entra no cache, e o que NUNCA entra - item a item
+
+```text
+loja       chave              o que guarda
+produtos   [dono, codigo]     os campos de CAMPOS_DO_PRODUTO (abaixo) e guardadoEm -
+                              a data em que o dado veio da internet
+perfis     dono               id e nome da conta, alergias, nivel de alerta, guardadoEm
+colecoes   dono               historico e favoritos: id, productCode, productName,
+                              productBrand, imageUrl (so https), viewedAt/createdAt
+sessao     "atual"            qual conta (dono) esta aberta neste aparelho
+```
+
+`CAMPOS_DO_PRODUTO` - os campos que o motor de alergia e a tela leem, os mesmos
+que o app pede a Open Food Facts: `code`, `product_name`, `product_name_pt`,
+`product_name_en`, `brands`, `quantity`, `image_front_url` (so https),
+`ingredients_text`, `ingredients_text_pt`, `ingredients_text_en`, `ingredients`,
+`allergens`, `allergens_tags`, `traces`, `traces_tags`, `labels_tags`,
+`categories_tags`, `nutriments` (so numero ou texto curto), `nutriscore_grade`,
+`nutrition_grades`, `nutrition_data_per`, `serving_size`. Texto ate 10 000
+caracteres; lista ate 200 itens.
+
+O que NUNCA entra:
+
+```text
+allergyVerdict - nem nenhum resultado do motor (verdict, safety, minimumSafety,
+                 conflicts, profileRisks, allRisks, hasData)
+senha, hash, salt, token de sessao, hash de sessao, cookie, chave de API
+e-mail - nao e preciso para ler um rotulo sem rede
+qualquer campo fora das listas acima
+```
+
+**A lista fechada vale na escrita E na leitura** (`reduzirProduto`): dado da Open
+Food Facts continua nao confiavel por estar no aparelho. Um registro alterado no
+banco - com `allergyVerdict`, imagem `javascript:` ou texto de 50 000 caracteres -
+sai da leitura sem o campo, sem a imagem e cortado (teste "dado da Open Food
+Facts continua nao confiavel no cache").
+
+**"salt", na varredura do navegador real:** a unica chave que casou com "salt"
+foi `salt_100g` - o nutriente sal, dentro de `nutriments`. Os testes tratam isso
+de proposito: o produto de teste tem sal, e o O11 exige que "salt" so apareca
+como nutriente, com valor de nutriente.
+
+## O veredito: recalculado, nunca lido de cache - e onde
+
+```text
+src/services/offlineLookup.js
+  avaliarNoAparelho(produto, { profileAllergies, alertLevels })
+    analyzeProductAllergens   (shared/allergenEngine.js)
+    buildAllergyVerdict       (shared/allergyVerdict.js), allergenDataAvailable
+    applyAllergyAuthority     (shared/allergyVerdict.js) - o piso
+
+src/App.jsx
+  vereditoDoAparelho = useMemo(() => avaliarNoAparelho(product, {
+    profileAllergies: selectedAllergies, alertLevels }), [... selectedAllergies, alertLevels ...])
+```
+
+O produto lido do aparelho vem sem veredito - o cache nao o tem. O veredito e
+refeito a cada render, com o perfil que o app tem NAQUELE momento: muda o perfil,
+muda o veredito. O perfil do aparelho e sempre o ultimo que o servidor confirmou
+(`aoConfirmarConta` roda no login, no cadastro, no `me` e a cada alergia salva).
+A severidade da v0.9.0 vale igual: alerta maximo + declarado da `urgent`, alerta
+maximo + traco da conflito com `caution` (O5). Sem segunda implementacao: o O6
+compara a saida com a do motor, produto a produto, e confere que o modulo nao
+tem dicionario de alergenico.
+
+## Como o logout e a exclusao limpam o cache
+
+```text
+src/services/offlineSession.js
+  aoSairDaConta({ sair })       sair() no servidor (responda ou nao) -> apagarContas()
+  aoExcluirConta(senha, ...)    excluir() no servidor; SO com sucesso -> apagarContas()
+  recuperarSessao({ getMe })    401 -> apagarContas()
+src/App.jsx
+  restoreGuestSession           toda volta a visitante -> aoPerderSessao()
+  cadastro aceito               limparAlergiasDeVisitante()
+src/services/offlineCache.js
+  apagarContas()                apaga perfil, listas, produtos e a marca de sessao de
+                                TODA conta; o do visitante fica. Se a limpeza fina
+                                falhar, apaga o banco inteiro.
+  guardarPerfil()               confirmar uma conta apaga o cache de qualquer outra
+```
+
+- **Logout:** o cache da conta sai SEMPRE, mesmo sem resposta do servidor.
+- **Exclusao:** so depois de o servidor confirmar. Exclusao recusada (senha
+  errada, sem rede) nao faz o aparelho esquecer uma conta que existe - o O10
+  confere os dois lados, e o navegador tambem.
+- **Sessao recusada (401):** expirou, saiu em outro aparelho, conta excluida em
+  outro aparelho - o cache sai na proxima vez que este aparelho falar com o
+  servidor.
+- **Cadastro:** as alergias marcadas como visitante vao para a conta nova e saem
+  da chave de visitante. Sem isso, depois de sair, o perfil de alergias de quem
+  saiu continuaria no navegador como "de visitante".
+- **O do visitante fica:** e dele, e nunca veio de uma conta.
+
+## 6.1 - o que fica disponivel sem rede, e a comparacao
+
+Sem rede: o perfil de alergias e o nivel de alerta da conta aberta no aparelho;
+os produtos ABERTOS com internet neste aparelho; a consulta por codigo, so desses
+produtos; o veredito refeito; as listas de historico e favoritos como estavam na
+ultima conexao. Fora: busca de produto novo (por codigo ou por nome), o
+assistente, comparacao com produto nao guardado, exportacao, exclusao, login.
+
+So o que foi ABERTO entra no cache - "com os dados que o app ja tinha". Um item do
+historico aberto em OUTRO aparelho aparece na lista, mas abrir diz que nao esta
+disponivel offline: o app nao busca 300 produtos na Open Food Facts para encher o
+cache sem a pessoa pedir.
+
+**A comparacao funciona sem rede quando os DOIS estao guardados.** Ela e a
+mesma: `consultarDoisProdutos` - com a conferencia de codigo e a recusa de
+codigos iguais - com a busca trocada pela leitura do aparelho, e
+`compararNoAparelho`, o modulo compartilhado. Justificativa: a pessoa com as duas
+embalagens que ja viu, no corredor sem sinal, e exatamente o caso da v0.10.0, e o
+motor nao precisa de rede. Cada coluna diz de quando e o dado; se um nao esta
+guardado, a coluna diz "nao esta guardado neste aparelho", como a 6.5 da v0.10.0
+manda. A comparacao sem rede vale com o navegador sem rede; com internet
+instavel, a comparacao segue o comportamento da v0.10.0 (o que veio aparece, o
+que faltou e dito).
+
+## 6.2 - tamanho e expiracao
+
+**Tamanho.** O cache acompanha os limites que ja existiam: 100 no historico, 200
+nos favoritos - no maximo 300 produtos por conta, com corte pelo mais antigo, e a
+poda tira o que saiu das duas listas.
+
+Estimativa, com medicao (A4):
+
+```text
+amostra: os 100 produtos brasileiros mais escaneados da Open Food Facts,
+         passados pela MESMA lista fechada e medidos como o registro guardado
+
+por produto     media 3 029 B   mediana 2 944 B   p90 4 068 B   maior 7 434 B
+no navegador    Leite Moca 2 406 B, Coca-Cola 2 491 B (registros reais no IndexedDB)
+
+300 produtos    pela media      ~0,9 MB
+                pelo maior      ~2,2 MB
+listas          300 referencias, ~250 B cada         ~75 KB
+perfil e sessao                                      < 1 KB
+
+teto teorico    a conta pelos limites da lista fechada: 13 textos de 10 000
+                caracteres, allergens e traces e as 4 listas de etiquetas de 200
+                itens de 200 caracteres, 300 nutrientes - ~416 mil caracteres
+                por produto, ~125 milhoes para 300. Nunca observado: o maior
+                produto da amostra tem 7 434 B
+cota medida     Chromium desta maquina: 3,28 GB (navigator.storage.estimate)
+```
+
+Cabe com folga onde foi medido. A cota num celular varia com o navegador e o
+espaco livre do aparelho e **nao foi medida**. Se o navegador recusar a gravacao
+(cota cheia), o app segue funcionando com rede - so nao havera copia para usar
+sem ela.
+
+**Expiracao: 30 dias, e dado vencido e tratado como AUSENTE.** O produto guardado
+vale 30 dias a contar de quando veio da internet. Passado isso, ele nao e servido:
+"Sem internet. O dado do produto 5449000000996 neste aparelho e de 15/09/2026,
+antigo demais para usar. Confira o rotulo."
+
+- Por que expirar: rotulo muda - reformulacao de receita e real, e para alergia
+  importa. Servir para sempre seria assumir que o rotulo de seis meses atras
+  ainda e o da prateleira.
+- Por que 30 dias: cobre a compra da semana e a do mes, que e o uso real; um mes
+  e curto perto do ritmo de reformulacao, e longo o bastante para o aparelho ser
+  util.
+- Por que ausente, e nao "com aviso de idade": um aviso de idade no topo de um
+  veredito "sem conflito" ainda e lido como "sem conflito". Num app de alergia,
+  dado velho demais nao deve chegar a virar veredito.
+- Abrir o produto com internet renova a copia e a data. O perfil nao vence: e da
+  propria pessoa e so muda por acao dela; aparece com a data de quando o servidor
+  o confirmou.
+
+## 6.4 - deteccao de rede, e "online mas sem resposta"
+
+```text
+navegador diz offline              nem tenta a rede: o aparelho, marcado "Sem internet"
+online, Open Food Facts nao        com o produto guardado: 6 s sem resposta -> o do
+responde                           aparelho, marcado "A internet esta demorando"; a
+                                   resposta que chegar depois troca a tela, e "nao
+                                   encontrado" fresco derruba a copia. A internet
+                                   desistindo -> fica o do aparelho, "A internet nao
+                                   respondeu". Sem o produto guardado: a espera de
+                                   sempre, e no fim "nao disponivel offline"
+online, servidor NutriScan nao     a sessao do aparelho, com aviso "Sem conexao com o
+responde                           servidor. Perfil guardado neste aparelho em ..."; o
+                                   evento online faz o app pedir ao servidor de novo
+com rede de verdade                a rede manda; o produto aberto atualiza a copia
+```
+
+Justificativa: o navegador dizendo offline e confiavel o bastante para nao
+esperar nada. "Online" nao e: a consulta por codigo da Open Food Facts insiste
+tres vezes, ate 8 s cada - mais de 20 s de tela parada no corredor. Com o produto
+guardado, 6 s e o teto de espera; e a resposta da rede, quando chega, continua
+mandando, porque ela e a fonte de verdade.
+
+## Nenhuma escrita sem rede (5.5)
+
+Com conta, toda escrita passa por `escreverComInternet`: sem rede, a acao nao e
+feita e nada e guardado - nem para depois. Favoritar, apagar item do historico,
+limpar o historico, desfavoritar; marcar alergia e mudar o nivel de alerta sao
+barrados antes de mudar a tela. O produto lido do aparelho nao grava historico
+nem renova o cache.
+
+Visitante: o que ele marca continua indo so para o proprio navegador, como sempre
+foi - sem servidor, sem fila e sem sincronizacao. Nao e escrita nova desta
+versao.
+
+Fila de sincronizacao NAO foi implementada, como a 5.5 mandou.
+
+## A1 - O1 a O16, R1 a R7
+
+Todos presentes e verdes na suite completa contra PostgreSQL real (A7). Os O sao
+testes de CLIENTE e nao dependem de banco: verdes tambem sem ele.
+
+```text
+tests/offline.test.js
+O1   O1 produto no aparelho + sem rede: os dados do cache, marcados, com a data do dado
+     O1 a tela do produto vindo do aparelho diz de onde veio e de quando
+O2   O2 produto NAO guardado + sem rede: 'nao disponivel offline', explicito - nunca resultado vazio nem aproximado
+O3   O3 o cache NAO contem allergyVerdict nem resultado do motor em nenhuma chave
+O4   O4 perfil alterado DEPOIS do cache: a leitura offline reflete o perfil NOVO
+O5   O5 severidade offline: estrito+declarado urgent; estrito+traco conflito caution; padrao como sempre
+O6   O6 o motor offline e o de shared/, sem segunda implementacao
+O7   O7 codigo invalido offline e recusado pela mesma funcao, ANTES de consultar o cache
+O8   O8 UPC-A offline acha o produto guardado como EAN-13 - e o contrario
+O9   O9 LOGOUT limpa o cache: nenhuma chave e nenhum VALOR com o id de alergia ou o historico da conta
+     O9 cadastro: as alergias de visitante vao para a conta e saem do armazenamento local
+     O9 o App limpa o cache ao sair - e em toda volta a visitante
+O10  O10 exclusao de conta limpa o cache no aparelho - so depois de o servidor confirmar
+O11  O11 o cache nunca contem senha, hash, salt, token, cookie, chave de API nem e-mail
+O12  O12 o cache de A nao e legivel por B no mesmo aparelho
+O13  O13 com rede, o app usa a rede: o cache nao impede consulta fresca
+     O13 produto reaberto com rede substitui a copia antiga do aparelho, com data nova
+O14  O14 nenhuma escrita offline: favoritar e marcar alergia sem rede nao chamam o servidor, nao gravam e nao enfileiram
+O15  O15 'online mas sem resposta': passado o prazo, o aparelho; a resposta da rede ainda manda
+     O15 a sessao 'sem resposta' usa o perfil do aparelho, marcado; 401 tira o cache
+O16  O16 dado expirado nao e servido como valido: depois de 30 dias, e tratado como ausente, com o motivo
+     o cache nunca passa de 300 produtos por dono, e a poda segue historico e favoritos
+     dado da Open Food Facts continua nao confiavel no cache: a lista fechada vale na leitura tambem
+```
+
+**O armazenamento destes testes, dito como e.** O IndexedDB e o do
+`fake-indexeddb` (implementacao completa da API, inspecionada crua); o
+`localStorage` dos testes e uma implementacao em memoria da Web Storage API,
+inspecionada do mesmo jeito. Nenhum teste passa sem ler o que foi guardado. O que
+eles NAO provam - o IndexedDB e o `localStorage` do navegador de verdade - foi
+conferido no Chromium, com a mesma leitura crua (abaixo). Por isso O3, O9, O11 e
+O12 nao ficam NAO COMPROVADOS: tem prova em Node e prova no navegador.
+
+**O13 e O15 tem parte estatica.** A decisao de "rede primeiro" e do prazo de 6 s
+mora no `App.jsx`, ao lado da linha
+`const resultado = await consultarProdutoPorCodigo(nextQuery, { origem });`, que e
+ancora do mutante P3 e e exigida pelo teste "o caminho manual nao monta o
+resultado por conta propria" - nao foi movida. Os testes conferem a ligacao no
+fonte, o prazo com relogio simulado, e o navegador conferiu o comportamento: com
+a API fora e a Open Food Facts de pe, o produto veio da rede, sem marca de
+aparelho.
+
+R1 a R7 - regressao, verdes na mesma execucao (118 testes):
+
+```text
+R1  C1              T1 exploit C1: modelo negando conflito nao entrega falso seguro
+R2  severidade      S1, S2, S3, S4 - a matriz - e S5 (unitario e com o banco) (6)
+R3  comparacao      C1t, C2t, C3t, C4t (unitarios e com o banco) (6)
+R4  amarracao       C5t (2), C7t (2)
+R5  isolamento      I1, I2, I3, I4 e V1, S16, C13 (13); exportacao E1 a E8 (14);
+                    exclusao D1 a D9 (13)
+R6  digito          M1 (5), M3 (3), M9 (2); canonicalizacao N1 a N1g (14);
+                    tetos R1, R2, R5, R6, R7, R11 (10; 403 de 3000 por IP); C15 (1)
+R7  handler         O2a a O2e (11), P5 (4); fail-closed P9 (6) e MODO (2);
+                    verify:deploy somente leitura P13 (3)
+```
+
+## A2 - validacao por mutacao
+
+Rodada completa, com banco, sobre o codigo entregue:
+
+```text
+RUN_DB_INTEGRATION_TESTS=true DATABASE_URL=<PostgreSQL LOCAL> DATABASE_SSL=false \
+  node scripts/mutation-check.js --com-banco
+```
+
+```text
+mortas 123 | nao executadas 0 | problemas 1 | linha de base: antes verde, depois verde
+REPROVADO: ha teste que nao detecta o defeito que deveria detectar.
+=== EXIT: 1 ===
+```
+
+**124 mutantes: 123 mortos, 1 sobrevivente (W1, o equivalente da v0.8.0), 0 nao
+executados, 0 inaplicaveis.** A linha de base - as 17 suites sem mutacao,
+incluida a nova (`tests/offline.test.js`) - estava verde antes e depois. **Os 14
+mutantes novos morreram todos.** O script sai com codigo 1 por causa do W1, e
+isso fica registrado como esta.
+
+### Os mutantes pedidos pelo prompt (O3, O4, O9, O11, O14)
+
+```text
+pedido pelo prompt                                  mutante  teste que o pegou  resultado
+o cache passa a guardar o allergyVerdict            Z1       O3                 MORTA
+a leitura offline passa a usar o perfil do cache    Z2       O4                 MORTA
+o logout deixa de limpar o cache                    Z3       O9                 MORTA
+o cache passa a guardar o token de sessao           Z4       O11                MORTA
+favoritar offline passa a enfileirar escrita        Z5       O14                MORTA
+                                                    Z5b      O14                MORTA
+```
+
+O que cada um injeta:
+
+- **Z1** - `offlineCache.js`: o registro do produto ganha `allergyVerdict` ao
+  lado do produto reduzido - fora da lista fechada, onde ela nao alcanca.
+- **Z2** - `offlineCache.js`: o perfil so e gravado se ainda nao existe. O
+  aparelho fica com o perfil do momento em que o cache foi populado, e a leitura
+  sem rede passa a usa-lo.
+- **Z3** - `offlineSession.js`: `aoSairDaConta` deixa de chamar `apagarContas`.
+- **Z4** - `offlineCache.js`: o perfil guardado ganha `token`.
+- **Z5** - `offlineSession.js`: sem rede, a escrita e posta numa fila no
+  `localStorage` (`nutriscan:fila-offline`) para depois.
+- **Z5b** - a outra metade: sem rede, a escrita e feita mesmo assim.
+
+### Os outros oito mutantes novos
+
+```text
+Z6   O2   produto ausente volta como resultado vazio que parece resposta    MORTA
+Z7   O7   codigo invalido passa a consultar o cache                         MORTA
+Z8   O8   a chave do produto deixa de ser a forma canonica                  MORTA
+Z9   O10  a exclusao da conta deixa de limpar o cache                       MORTA
+Z10  O12  uma conta nova deixa de apagar o cache da anterior                MORTA
+Z11  O16  dado expirado passa a ser servido como valido                     MORTA
+Z12  O15  sessao recusada (401) deixa de tirar o cache                      MORTA
+Z13  A11  o gate perde o requisito offlineCache                             MORTA
+```
+
+(Z1 a Z13, mais o Z5b: 14 mutantes.)
+
+### Tres mutantes antigos ajustados - sem mudar o defeito
+
+**W11** (v0.8.0), **X9** (v0.9.0) e **Y9** (v0.10.0) - o gate perde um
+requisito - sao os mesmos mutantes; o teste que os pega foi renomeado de
+"exatamente 22 requisitos" para "exatamente 23". MORTAS.
+
+### O sobrevivente: W1, o mesmo da v0.8.0
+
+O W1 faz o repositorio da exportacao devolver a linha inteira de `users`, mas o
+servico monta o arquivo campo a campo - a exportacao nao muda, e o teste esta
+certo em passar. E equivalente, foi descrito na v0.8.0 com a demonstracao de que
+a suite estatica (`nunca usa SELECT *`) o pega, e esta versao nao mexeu nele nem
+no `mutation-check.js` por causa dele.
+
+### A rodada inteira
+
+Linha de base:
+
+```text
+[linha de base - antes] 17 suite(s), sem mutacao
+  VERDE    tests/productionHardening.test.js
+  VERDE    tests/verifyDeploy.test.js
+  VERDE    tests/renderSync.test.js
+  VERDE    tests/bodyParseError.test.js
+  VERDE    tests/productLookup.test.js
+  VERDE    tests/migrate.test.js
+  VERDE    tests/doctor.test.js
+  VERDE    tests/e2eGate.test.js
+  VERDE    tests/accountIntegration.test.js
+  VERDE    tests/barcode.test.js
+  VERDE    tests/collectionsIntegration.test.js
+  VERDE    tests/rateLimit.test.js
+  VERDE    tests/alertLevel.test.js
+  VERDE    tests/alertLevelIntegration.test.js
+  VERDE    tests/comparison.test.js
+  VERDE    tests/comparisonIntegration.test.js
+  VERDE    tests/offline.test.js
+```
+
+```text
+T1  P2   MORTA                  "P2 producao sem FRONTEND_ORIGIN nao sobe, e diz qual falta" falhou, como deveria
+T1b  P2   MORTA                  "P2 sem FRONTEND_ORIGIN, nem o createApp direto cai no default de localhost" falhou, como deveria
+T2  P5   MORTA                  "P5 erro do driver do banco nao chega ao cliente" falhou, como deveria
+T2b  P5   MORTA                  "P5 o detalhe do erro vai para o log do servidor" falhou, como deveria
+T3  P9   MORTA                  "P9 cada variavel obrigatoria ausente impede a subida, e a mensagem diz qual" falhou, como deveria
+T3b  P9   MORTA                  "P9 valor booleano nao reconhecido nao cai em default silencioso" falhou, como deveria
+T4  P12  MORTA                  "P12 versao no ar diferente da do repositorio reprova o D1" falhou, como deveria
+T5  P13  MORTA                  "P13 o registro de requisicoes do verify:deploy nao tem escrita" falhou, como deveria
+T5b  P13  MORTA                  "P13 contra o roteador REAL, nenhuma rota de escrita e alcancada" falhou, como deveria
+T6  P3   MORTA                  "P3 CORS devolve a origem configurada, nunca a do request" falhou, como deveria
+T7  P4   MORTA                  "P4 com trust proxy, req.ip segue o X-Forwarded-For e o balde acompanha" falhou, como deveria
+T8  P11  MORTA                  "P11 NOT_EXECUTED nao conta como PASS no agregado" falhou, como deveria
+T9  P11  MORTA                  "P11 o comando de verdade sai com codigo 1 quando um subgate falha" falhou, como deveria
+V1  S1/S4 MORTA                  "S1 render.yaml contem todas as obrigatorias de VARIAVEIS_OBRIGATORIAS_EM_PRODUCAO" falhou, como deveria
+V1b  S2   MORTA                  "S2 render.yaml nao declara variavel que o codigo nao le" falhou, como deveria
+V1c  S3   MORTA                  "S3 nenhuma credencial com valor literal no render.yaml" falhou, como deveria
+V2  O2a  MORTA                  "O2a JSON malformado responde 400, nao 500 - a medicao do auditor" falhou, como deveria
+V3  O2d  MORTA                  "O2d erro de biblioteca com statusCode arbitrario nao escolhe o status" falhou, como deveria
+V3b  O2d  MORTA                  "O2d copiar o type do body-parser nao basta para ganhar 400" falhou, como deveria
+V4  R7   MORTA                  "P13 o registro de requisicoes do verify:deploy nao tem escrita" falhou, como deveria
+U1  C2   MORTA                  "C2 a camera nunca transforma um codigo em outro" falhou, como deveria
+U2  C2   MORTA                  "C2 o App usa a leitura segura e nunca manda leitura da camera para a busca por nome" falhou, como deveria
+U3  C2   MORTA                  "C2 o App usa a leitura segura e nunca manda leitura da camera para a busca por nome" falhou, como deveria
+U4  O2e  MORTA                  "O2e corpo grande demais responde 413 fixo, sem a mensagem do leitor" falhou, como deveria
+U4b  O2e  MORTA                  "O2e copiar name, type e status do corpo grande nao basta para ganhar 413" falhou, como deveria
+U5  MODO MORTA                  "MODO NODE_ENV digitado errado nao sobe, e diz qual variavel" falhou, como deveria
+U5b  MODO MORTA                  "MODO NODE_ENV digitado errado nao sobe, e diz qual variavel" falhou, como deveria
+U6  MIG  MORTA                  "MIG migration que nao alcanca o banco falha dizendo por que" falhou, como deveria
+U7  MIG  MORTA                  "o doctor conta as mesmas migrations que o runner aplica, .sql e .js" falhou, como deveria
+U8  ORC  MORTA                  "o orcamento do gate usa os mesmos tetos do limitador, inclusive o por IP" falhou, como deveria
+W1  E2   MUTACAO SOBREVIVEU     a suite passou com o defeito aplicado
+W1b  E2   MORTA                  "E2 a exportacao nao contem o password_hash nem o salt reais - pelo valor" falhou, como deveria
+W2  E4   MORTA                  "E4 a exportacao de A nao contem nada de B, com B populado" falhou, como deveria
+W2b  E4   MORTA                  "E4 a exportacao de A nao contem nada de B, com B populado" falhou, como deveria
+W3  E5   MORTA                  "E5 userId no corpo, na query ou em cabecalho nao muda quem e exportado" falhou, como deveria
+W3b  E5   MORTA                  "E5 userId no corpo, na query ou em cabecalho nao muda quem e exportado" falhou, como deveria
+W4  D2   MORTA                  "D2 exclusao com senha errada nao remove nada" falhou, como deveria
+W5  D4   MORTA                  "D4 o schema montado SO pelas migrations tem ON DELETE CASCADE em toda FK para users" falhou, como deveria
+W5b  D4   MORTA                  "D4 o schema montado SO pelas migrations tem ON DELETE CASCADE em toda FK para users" falhou, como deveria
+W6  D8   MORTA                  "D8 falha simulada no meio da exclusao deixa o estado anterior intacto" falhou, como deveria
+W7  E8   MORTA                  "E8 a rota real recusa a exportacao acima do teto do usuario" falhou, como deveria
+W8  D9   MORTA                  "D9 a tentativa com senha errada gasta o mesmo balde do login" falhou, como deveria
+W9  D1   MORTA                  "D1 exclusao com a senha correta remove a conta e limpa o cookie" falhou, como deveria
+W10  E7   MORTA                  "E7 o arquivo nao leva e-mail nem nome, e a resposta nao pode ir para cache" falhou, como deveria
+W10b  E7   MORTA                  "E7 o arquivo nao leva e-mail nem nome, e a resposta nao pode ir para cache" falhou, como deveria
+W11  A11  MORTA                  "A11: o modo strict tem exatamente 23 requisitos, os 22 da v0.10.0 mais offlineCache" falhou, como deveria
+S1  N1a  MORTA                  "N1 o schema canonicaliza UPC-A para EAN-13" falhou, como deveria
+S1b  N1a  MORTA                  "N1a o mesmo produto em UPC-A e EAN-13 vira UMA linha canonica" falhou, como deveria
+S1c  N1c  MORTA                  "N1c requisicao DIRETA ao backend grava a forma canonica" falhou, como deveria
+S2  N1e  MORTA                  "N1e o schema nao altera EAN-13 nem EAN-8" falhou, como deveria
+S2b  N1d  MORTA                  "N1d codigo nao-EAN passa intacto pela canonicalizacao" falhou, como deveria
+S3  N1g  MORTA                  "N1g a migration funde as duas formas pela regra declarada" falhou, como deveria
+S4  N1g  MORTA                  "N1g a migration e idempotente e nao toca codigo nao-EAN" falhou, como deveria
+S5  R2   MORTA                  "N1 a canonicalizacao nao afrouxa a conferencia do digito" falhou, como deveria
+S6  N1   MORTA                  "N1 a canonicalizacao usa shared/barcode.js, sem copia local" falhou, como deveria
+P1  M1   MORTA                  "M1 codigos com digito verificador errado sao recusados pelo motivo certo" falhou, como deveria
+P1b  M1   MORTA                  "M1 codigos validos de EAN-13, EAN-8 e UPC-A sao aceitos" falhou, como deveria
+P2  M3   MORTA                  "M3 o backend recusa productCode com digito verificador invalido" falhou, como deveria
+P2b  M3   MORTA                  "M3 a regra do backend e estreita e nao quebra cadastro legitimo" falhou, como deveria
+P3  M4   MORTA                  "o caminho manual nao monta o resultado por conta propria" falhou, como deveria
+P3b  M4   MORTA                  "M2 codigo invalido nao chega a rede" falhou, como deveria
+P4  M5   MORTA                  "M5 o piso de risco vale no caminho manual" falhou, como deveria
+P5  M9   MORTA                  "M9 nao existe segunda implementacao do digito verificador" falhou, como deveria
+P5b  M9   MORTA                  "M9 backend e frontend usam a MESMA implementacao de shared/" falhou, como deveria
+P6  M7   MORTA                  "M7 UPC-A vira EAN-13 com zero a esquerda, e o produto e o mesmo" falhou, como deveria
+P7  M6   MORTA                  "M6 cada motivo de recusa tem mensagem propria" falhou, como deveria
+P8  M8   MORTA                  "M8 nenhum outro caractere e removido em silencio" falhou, como deveria
+P9  M10  MORTA                  "M10 o backend recusa gravar codigo com digito verificador invalido" falhou, como deveria
+N1  R1/R3 MORTA                  "R1 usuario dentro do teto mas IP estourado recebe 429" falhou, como deveria
+N1b  R3   MORTA                  "R3 multiplas contas do mesmo IP nao ultrapassam o teto por IP" falhou, como deveria
+N2  R2   MORTA                  "R2 IP dentro do teto mas usuario estourado recebe 429" falhou, como deveria
+N2b  R4   MORTA                  "R4 dois usuarios atras do MESMO IP mantem cotas separadas" falhou, como deveria
+N3  R4   MORTA                  "R4 a requisicao recusada pelo teto de usuario nao consome orcamento do IP" falhou, como deveria
+N4  R5   MORTA                  "R5 dados forjados no request nao conseguem balde de IP novo" falhou, como deveria
+N5  R5   MORTA                  "R5 um bloco IPv6 /64 nao vira infinitos baldes" falhou, como deveria
+M1  R6   MORTA                  "R6 os tres tetos por rota seguem nos valores declarados" falhou, como deveria
+M2  R7   MORTA                  "R7 o teto por IP esta no valor medido" falhou, como deveria
+M3  Q3   MORTA                  "Q3 nenhuma variavel de ambiente desliga os limitadores" falhou, como deveria
+M3b  Q4   MORTA                  "Q4 nenhum dos limitadores tem opcao de pular requisicao" falhou, como deveria
+M4  Q2   MORTA                  "Q2 em producao o teto por usuario recusa na requisicao seguinte ao teto" falhou, como deveria
+M6  R9   MORTA                  "I1 usuario A nao le historico nem favorito de B" falhou, como deveria
+M7  R9   MORTA                  "I2 usuario B nao remove item de A" falhou, como deveria
+X1  S2   MORTA                  "S2 alerta maximo + conflito declarado: piso urgent" falhou, como deveria
+X2  S3   MORTA                  "S3 alerta maximo + traco: conflito no veredito, piso caution" falhou, como deveria
+X3  S5   MORTA                  "S5 o modelo respondendo normal nao derruba o piso em nenhum dos casos" falhou, como deveria
+X4  S6   MORTA                  "S6 o modelo nao escreve nem influencia o nivel: campo de nivel vindo dele derruba a resposta" falhou, como deveria
+X5  S12  MORTA                  "S12 o banco recusa nivel invalido inserido direto em SQL - no banco e no schema das migrations" falhou, como deveria
+X6  S13  MORTA                  "S13 nenhuma tabela de colecao tem onde guardar nivel ou veredito - no banco e no schema das migrations" falhou, como deveria
+X6b  S13  MORTA                  "S13 nivel nao congelado: o item salvo nao muda e a leitura seguinte reflete o nivel novo" falhou, como deveria
+X7  S17  MORTA                  "S17 o log da tentativa de minimizacao e o mesmo com alerta padrao ou maximo" falhou, como deveria
+X8  S18  MORTA                  "S18 o payload enviado a Anthropic nao ganhou canal novo: o nivel nao vai nem no allergySnapshot" falhou, como deveria
+X9  A11  MORTA                  "A11: o modo strict tem exatamente 23 requisitos, os 22 da v0.10.0 mais offlineCache" falhou, como deveria
+X10  S9   MORTA                  "S9 nivel para alergia ausente do perfil e recusado pela validacao" falhou, como deveria
+X11  S1   MORTA                  "S1 nivel padrao + conflito declarado: piso caution, identico a v0.8.0" falhou, como deveria
+X12  S8   MORTA                  "S8 nivel desconhecido e recusado pela validacao" falhou, como deveria
+X13  S16  MORTA                  "S16 o nivel de A nao e visivel nem alteravel por B" falhou, como deveria
+Y1  C2t  MORTA                  "C2t produto em conflito com produto limpo: o limpo nao herda safety e o em conflito nao e rebaixado" falhou, como deveria
+Y2  C2t  MORTA                  "C2t produto em conflito com produto limpo: o limpo nao herda safety e o em conflito nao e rebaixado" falhou, como deveria
+Y3  C5t  MORTA                  "C5t explicacoes em ordem trocada: cada uma cai no produto certo, pelo codigo" falhou, como deveria
+Y4  C7t  MORTA                  "C7t o modelo nao escreve, nao altera e nao reordena veredito" falhou, como deveria
+Y5  C8t  MORTA                  "C8t produto sem dado de alergenico: a ausencia nao vira 'nao contem' em lugar nenhum" falhou, como deveria
+Y5b  C8t  MORTA                  "C8t produto sem dado de alergenico: a ausencia nao vira 'nao contem' em lugar nenhum" falhou, como deveria
+Y5c  C8t  MORTA                  "C8t produto sem dado de alergenico: a ausencia nao vira 'nao contem' em lugar nenhum" falhou, como deveria
+Y6  C6t  MORTA                  "C6t o modelo respondendo normal nao derruba o piso de nenhum dos dois" falhou, como deveria
+Y7  C9t  MORTA                  "C9t digito verificador invalido em qualquer dos dois e recusado antes de qualquer busca" falhou, como deveria
+Y8  C11  MORTA                  "C11 codigos iguais: recusados com mensagem clara, sem busca" falhou, como deveria
+Y8b  C11  MORTA                  "C11 codigos iguais: recusados com mensagem clara, sem busca" falhou, como deveria
+Y9  A11  MORTA                  "A11: o modo strict tem exatamente 23 requisitos, os 22 da v0.10.0 mais offlineCache" falhou, como deveria
+Y10  C13  MORTA                  "C13 a sessao de B com o id de A no corpo compara com o perfil de B" falhou, como deveria
+Y11  C15  MORTA                  "C15 o limitador cobre as duas rotas: comparacao 30/300 por 10 min, explicacao no balde do assistente" falhou, como deveria
+Z1  O3   MORTA                  "O3 o cache NAO contem allergyVerdict nem resultado do motor em nenhuma chave" falhou, como deveria
+Z2  O4   MORTA                  "O4 perfil alterado DEPOIS do cache: a leitura offline reflete o perfil NOVO" falhou, como deveria
+Z3  O9   MORTA                  "O9 LOGOUT limpa o cache: nenhuma chave e nenhum VALOR com o id de alergia ou o historico da conta" falhou, como deveria
+Z4  O11  MORTA                  "O11 o cache nunca contem senha, hash, salt, token, cookie, chave de API nem e-mail" falhou, como deveria
+Z5  O14  MORTA                  "O14 nenhuma escrita offline: favoritar e marcar alergia sem rede nao chamam o servidor, nao gravam e nao enfileiram" falhou, como deveria
+Z5b  O14  MORTA                  "O14 nenhuma escrita offline: favoritar e marcar alergia sem rede nao chamam o servidor, nao gravam e nao enfileiram" falhou, como deveria
+Z6  O2   MORTA                  "O2 produto NAO guardado + sem rede: 'nao disponivel offline', explicito - nunca resultado vazio nem aproximado" falhou, como deveria
+Z7  O7   MORTA                  "O7 codigo invalido offline e recusado pela mesma funcao, ANTES de consultar o cache" falhou, como deveria
+Z8  O8   MORTA                  "O8 UPC-A offline acha o produto guardado como EAN-13 - e o contrario" falhou, como deveria
+Z9  O10  MORTA                  "O10 exclusao de conta limpa o cache no aparelho - so depois de o servidor confirmar" falhou, como deveria
+Z10  O12  MORTA                  "O12 o cache de A nao e legivel por B no mesmo aparelho" falhou, como deveria
+Z11  O16  MORTA                  "O16 dado expirado nao e servido como valido: depois de 30 dias, e tratado como ausente, com o motivo" falhou, como deveria
+Z12  O15  MORTA                  "O15 a sessao 'sem resposta' usa o perfil do aparelho, marcado; 401 tira o cache" falhou, como deveria
+Z13  A11  MORTA                  "A11: o modo strict tem exatamente 23 requisitos, os 22 da v0.10.0 mais offlineCache" falhou, como deveria
+mortas 123 | nao executadas 0 | problemas 1 | linha de base: antes verde, depois verde
+```
+
+## A3 e A4 - decisoes e estimativa de tamanho
+
+As decisoes de 6.1 a 6.4 estao nas secoes acima. A estimativa de tamanho esta em
+6.2.
+
+## A5 a A9
+
+```text
+A5  npm run build                          sucesso
+A6  npm --prefix backend test              434 testes, 359 pass, 0 fail, 75 skipped
+                                           (72 exigem PostgreSQL, 1 a IA real,
+                                           2 a Open Food Facts real - todos
+                                           declarados NAO EXECUTADO, nenhum PASS)
+A7  suite contra PostgreSQL real (local)   434 testes, 431 pass, 0 fail, 3 skipped
+                                           (1 IA real, 2 Open Food Facts real)
+A8  npm audit --audit-level=moderate       frontend: found 0 vulnerabilities
+    npm --prefix backend audit (moderate)  backend:  found 0 vulnerabilities
+A9  npm run verify:release                 exit 0 - build, testes, os dois audits e
+                                           "secret scan - 0 real secrets" (na
+                                           execucao final; ver abaixo)
+```
+
+O A7 rodou com `RUN_DB_INTEGRATION_TESTS=true` contra o PostgreSQL LOCAL (17,
+porta 5433), com `DATABASE_URL` definida no comando - nunca contra o banco de
+producao. Gastos da suite contra os tetos por IP, medidos na propria execucao:
+`[R11] 403 de 3000` e `[exportacao] 17 de 20`.
+
+**O `verify:release` nao passou de primeira - e o registro fica aqui:**
+
+```text
+verify:release 1  FAIL  build OK; testes 434 / 359 / 0 fail / 75 skipped; os dois
+                        audits 0; secret scan: "1 suspicious file(s) -
+                        backend/tests/offline.test.js". O O11 escrevia no fonte
+                        duas iscas com o FORMATO de chave da Anthropic, para provar
+                        que o cache nao guarda chave. O scan estava certo em barrar
+                        o formato; o scan nao foi tocado. As iscas passaram a ser
+                        montadas em tempo de execucao, como o verifyDeploy.test.js
+                        ja fazia. Depois disso: a suite offline 23/23 e o mutante
+                        do O11 (Z4) MORTO de novo.
+verify:release 2  PASS  exit 0 - a arvore exata que foi para o ZIP, com este registro
+```
+
+## A10 - `verify:e2e`
+
+**PASS, exit code 0, na primeira execucao**, com PostgreSQL real e Claude real -
+2 chamadas pagas. Os 23 requisitos em `PASSED`, `ok: true`. A saida literal, a
+tabela de subgates, a contagem por balde e o `E2E_LAST_RUN.json` integral estao
+no `E2E_REPORT.md`. Nao ha migration nova: o doctor leu "4/4 applied".
+
+```text
+[OK] offline cache - perfil do banco e produto guardados, sem veredito nem credencial; perfil novo refeito sem rede; logout real limpa
+```
+
+**O subgate prova o que pode provar contra o backend real, e diz o que nao
+prova.** A secao 8 pediu para dizer se o subgate nao pudesse ser provado contra o
+backend real por ser comportamento de cliente. Parte pode: os modulos do cliente
+(`offlineCache`, `offlineSession`, `offlineLookup`) foram alimentados pelas
+respostas do backend real - perfil do PostgreSQL, cookie de sessao de verdade,
+logout da API -, e o cache foi inspecionado cru contra o cookie real e contra
+`password_hash`, `password_salt` e `token_hash` lidos do banco. Parte nao pode: o
+IndexedDB do subgate e o do `fake-indexeddb`, e a ligacao com a tela nao passa
+por ele. **Proposta, nao implementada:** um subgate que abra um navegador de
+verdade (por exemplo, com Playwright), popule o cache pela tela, corte a rede e
+inspecione o IndexedDB real - e o lugar certo para provar o comportamento do
+cliente de ponta a ponta. Ate la, essa parte e a verificacao no navegador
+descrita abaixo.
+
+Contagem por balde:
+
+```text
+balde        usado   teto/usuario     teto/IP
+assistente      2             20           -
+auth            8             40           -
+colecoes       20            300        3000
+comparacao      4             30         300
+exportacao      1              5          20
+```
+
+O subgate novo gastou 1 de auth (o cadastro da conta E) e 3 de colecoes.
+
+## A11 - os 22 requisitos antigos continuam exigidos; agora sao 23
+
+Prova por execucao, sobre o `E2E_LAST_RUN.json` desta versao: para cada
+requisito do modo strict, um relatorio com SO aquele requisito em
+`NOT_EXECUTED` tem de reprovar, e reprovar so por ele.
+
+```text
+requisitos no modo strict (flag da IA ligada): 23
+faltando no E2E_LAST_RUN.json desta versao: []
+
+requisito                origem   presente   NOT_EXECUTED sozinho reprova
+backendProcess           v0.10.0  sim        sim, e so ele
+database                 v0.10.0  sim        sim, e so ele
+migrations               v0.10.0  sim        sim, e so ele
+auth                     v0.10.0  sim        sim, e so ele
+sessionSchema            v0.10.0  sim        sim, e so ele
+multiDevice              v0.10.0  sim        sim, e so ele
+isolation                v0.10.0  sim        sim, e so ele
+logout                   v0.10.0  sim        sim, e so ele
+assistantAuthority       v0.10.0  sim        sim, e so ele
+deterministicEngine      v0.10.0  sim        sim, e so ele
+fallback                 v0.10.0  sim        sim, e so ele
+privacy                  v0.10.0  sim        sim, e so ele
+historySync              v0.10.0  sim        sim, e so ele
+favoritesSync            v0.10.0  sim        sim, e so ele
+verdictFreshness         v0.10.0  sim        sim, e so ele
+manualCodeLookup         v0.10.0  sim        sim, e so ele
+accountExport            v0.10.0  sim        sim, e so ele
+accountDeletion          v0.10.0  sim        sim, e so ele
+severityVerdict          v0.10.0  sim        sim, e so ele
+productComparison        v0.10.0  sim        sim, e so ele
+offlineCache             v0.11.0  sim        sim, e so ele
+anthropicReal            v0.10.0  sim        sim, e so ele
+assistantAuthenticated   v0.10.0  sim        sim, e so ele
+
+os 22 da v0.10.0 presentes: 22 de 22
+novos: ["offlineCache"]
+sem a flag da IA: 21 requisitos; offlineCache entre eles: sim
+```
+
+Os testes que travam isso na suite, verdes:
+
+```text
+A11: os 22 requisitos da v0.10.0 continuam exigidos, um a um
+A11: o modo strict tem exatamente 23 requisitos, os 22 da v0.10.0 mais offlineCache
+A11: offlineCache e requisito BASE e reprova sozinho          (inclusive "SKIPPED")
+A11: os 21 requisitos da v0.9.0 continuam exigidos, um a um
+A11: os 20 requisitos da v0.8.0 continuam exigidos, um a um
+A11: os 18 requisitos da v0.7.6 continuam exigidos, um a um
+A10: desde a v0.7.2 entraram so manualCodeLookup, os dois da v0.8.0, o da v0.9.0, o da v0.10.0 e o da v0.11.0, nomeados
+D2: o conjunto de requisitos do modo strict e exatamente este
+```
+
+O teste da v0.10.0 que travava o total em "exatamente 22" foi substituido pelo de
+"exatamente 23", que nomeia o unico requisito novo - nao removido sem troca. O
+mutante Z13 (o gate perde `offlineCache`), o Y9, o X9 e o W11 provam que ele
+pega a perda. `offlineCache` e BASE: depende do PostgreSQL e dos modulos do
+cliente, nao chama IA - sem a flag da IA, o modo strict exige 21 (os 20 da v0.10.0
+sem IA e ele); com a flag, os 23.
+
+## A12 - limpeza do banco depois do gate
+
+Residuo **0** em todos os padroes de teste, e nenhuma linha orfa. A conta E do
+subgate novo cai no padrao `nutriscan-e2e-%`. Saida completa no `E2E_REPORT.md`.
+
+## A13 - `verify:deploy` inalterado e somente leitura
+
+`git diff` do `scripts/verify-deploy.js` contra a v0.10.0: vazio. A v0.11.0 nao
+tem rota nova; o P13 continua verde.
+
+```text
+verify:deploy simulado (local, http)   FAIL, exit 1 - 7 PASS, D2 FAIL (sem TLS local)
+verify:deploy REAL (somente leitura)   FAIL, exit 1 - 7 PASS, D1 FAIL
+                                       "repositorio declara 0.11.0 e o deploy anuncia 0.7.0"
+```
+
+Os dois FAIL sao os esperados. Os sete PASS do real medem a 0.7.0. No simulado, o
+D8 inspecionou os bundles novos: nenhum segredo - o cache nao tem chave, e o
+bundle tambem nao.
+
+## A14 - varredura do nome antigo
+
+Fora de `node_modules`, `dist`, `.git` e `releases`, o nome antigo aparece so em
+`backend/tests/productName.test.js`, o teste que o procura, e nas secoes
+historicas do `AUDIT_REPORT.md` e do `CHANGELOG.md`.
+
+## A15 - versao nos sete pontos
+
+```text
+package.json                             0.11.0
+backend/package.json                     0.11.0
+package-lock.json (raiz e "")            0.11.0 / 0.11.0
+backend/package-lock.json (raiz e "")    0.11.0 / 0.11.0
+/api/health de um processo real          D1 do alvo simulado: "ambos declaram 0.11.0"; E2E_LAST_RUN.json: 0.11.0
+README                                   # NutriScan v0.11.0
+CHANGELOG                                ## NutriScan v0.11.0 - 2026-10-16
+
+dependencia @zxing/text-encoding         0.9.0 - intocada, como deve
+```
+
+## A verificacao no navegador - o armazenamento REAL
+
+No navegador embutido do ambiente de desenvolvimento (Chromium), com o `dist/`
+compilado servido na porta 3300 e a API local na 3200 (PostgreSQL local, sem
+chave de IA), Open Food Facts REAL. O que se inspecionou foi o IndexedDB e o
+`localStorage` do proprio Chromium, por `indexedDB.databases()` e leitura crua
+de toda loja.
+
+**Como o "sem internet" foi feito:** no JavaScript da pagina,
+`navigator.onLine` passou a responder `false`, toda requisicao passou a falhar
+e o evento `offline` foi disparado. Isso simula a falta de rede para o app; o
+armazenamento continua sendo o real. O caso "online mas o servidor nao responde"
+foi REAL: a API da porta 3200 foi derrubada, e a pagina recarregada.
+
+```text
+visitante marca Leite; cria conta pela tela   guest-allergies: ["milk"] -> null (foi para a conta)
+liga o alerta maximo                          servidor { milk: "strict" }
+abre Leite Moca e Coca-Cola com internet      IndexedDB nutriscan-offline: colecoes 1, perfis 1,
+                                              produtos 2, sessao 1; localStorage vazio
+varredura do conteudo inteiro                 nenhuma chave de veredito, senha, token, cookie,
+                                              e-mail; nem o valor do e-mail nem o da senha.
+                                              "salt" so como nutriente (salt_100g, o sal)
+tamanho real                                  2406 e 2491 bytes por produto; cota do Chromium
+                                              nesta maquina: 3,28 GB
+muda o perfil COM internet (alerta padrao)    aparelho acompanha: { milk: "standard" }
+sem internet: abre Leite Moca                 "Do aparelho · guardado em 16/10/2026"; veredito
+                                              refeito: "Conflito com o seu perfil" (padrao, nao
+                                              mais alerta maximo); 0 requisicoes
+produto nunca aberto, sem internet            "Sem internet. O produto 7894900011517 nao esta
+                                              disponivel offline..."; nenhum produto na tela
+favoritar e mudar alergia, sem internet       0 requisicoes; armazenamento identico antes e depois
+API derrubada de verdade, pagina recarregada  "Sem conexao com o servidor. Perfil guardado neste
+                                              aparelho em 16/10/2026"; Leite segue marcado
+mesma situacao, abre Leite Moca               consultou a Open Food Facts; sem marca de aparelho
+API de volta, recarrega                       sessao confirmada; aviso some
+assistente sem internet                       "Sem internet, o assistente nao responde"; 0 requisicoes
+comparacao sem internet, os dois guardados    cada coluna "Do aparelho · guardado em 16/10/2026",
+                                              Leite em conflito, Coca sem conflito
+comparacao sem internet, um nao guardado      "Sem internet. O produto 7894900011517 nao esta
+                                              guardado neste aparelho."
+"Explicar as diferencas" sem internet         "Sem internet, o assistente nao responde..."
+registro da Coca envelhecido para 31 dias     "... e de 15/09/2026, antigo demais para usar.
+                                              Confira o rotulo."; nenhum produto na tela
+SAIR DA CONTA, com internet                   IndexedDB: 0 registros; localStorage e
+                                              sessionStorage vazios; nenhum "milk", "strict",
+                                              id da conta, nome ou codigo de produto
+EXCLUIR A CONTA pela tela (outra conta)       antes: perfil com "peanut" e 1 produto; depois:
+                                              0 registros, nenhum "peanut"; /api/auth/me 401
+exclusao NAO concluida (confirmacao sem a     cache intacto - correto: a conta continua existindo
+caixa marcada)
+320 px, sem internet, produto do aparelho     sem rolagem lateral; menor fonte dos avisos 17 px
+```
+
+As contas de teste foram apagadas do banco local no fim.
+
+## Observacoes descritas e NAO corrigidas - para decisao
+
+Fora da secao 6. Descritas, como manda a secao 15.
+
+1. **Abrir o app ja sem sinal nao funciona.** O que funciona e o app aberto que
+   perde o sinal. Abrir do zero sem rede exige um service worker que guarde o
+   proprio app (HTML, JS, CSS); ele nao foi feito - mexe em como cada deploy
+   chega ao aparelho e pede decisao. E o passo que falta para o cenario "leu
+   ontem, reve hoje sem sinal" valer tambem com o app fechado.
+2. **Sair sem resposta do servidor.** O cache da conta sai do aparelho, mas o
+   cookie de sessao e HttpOnly e a sessao continua aberta no servidor: quando a
+   internet voltar, o app pode entrar sozinho na conta e guardar o perfil de
+   novo. A tela avisa: "Voce saiu neste aparelho, mas o servidor nao respondeu.
+   Se a conta voltar sozinha com a internet, toque em Sair de novo." Era assim
+   antes desta versao. Alternativas: recusar o logout sem rede, ou repetir o
+   logout quando a rede voltar - que ja seria uma fila.
+3. **Contas locais antigas guardam hash de senha.** A chave `nutriscan:users`,
+   das contas que existiam no navegador antes do backend, guarda hash e salt de
+   senha nos aparelhos que as usaram. O app so a le, para migrar a conta para o
+   servidor; nada a grava (conferido no fonte), e ela nao faz parte do cache
+   novo. Apaga-la depois da migracao e uma correcao possivel, fora da secao 6.
+4. **O convite do alerta maximo** (v0.9.0) guarda no `localStorage` a marca
+   "visto" com o id da conta - nao alergia, nao historico. Fica depois do logout,
+   como a v0.9.0 decidiu.
+5. **Imagem do produto sem rede:** nao e guardada; pode nao aparecer.
+6. **Herdados, ainda abertos:** o chat diz "sem conflito" para produto sem dado
+   de alergenico (v0.10.0); a explicacao da comparacao nunca rodou contra o
+   modelo real (v0.10.0); os textos de conduta do assistente (v0.9.0); a tela
+   Conta rola de lado em 320 px; o log de erro interno grava o objeto inteiro.
+
+## O que esta versao NAO prova
+
+- **A camera em hardware real: NAO EXECUTADO.**
+- **O deploy real da 0.11.0: NAO EXECUTADO.** Nada foi publicado; no ar esta a
+  0.7.0. Nada mudou no banco de producao alem das contas descartaveis que o gate
+  cria e apaga.
+- **O modo sem rede num celular de verdade: NAO EXECUTADO.** A verificacao foi no
+  navegador embutido do ambiente de desenvolvimento, com o "sem internet" feito
+  no JavaScript da pagina; o "servidor fora" foi real.
+- **A cota de armazenamento num celular: NAO MEDIDA** - so a do Chromium desta
+  maquina.
+- **HTTPS da 0.11.0: NAO COMPROVADO** - o alvo simulado nao tem TLS.
+- **Adequacao clinica e conformidade juridica: nao declaradas**, e nao sao algo
+  que teste prove.
+
+## Historico de auditorias anteriores
+
+## Auditoria da v0.10.0 - 2026-10-16
 
 ## Escopo
 
@@ -849,8 +1693,6 @@ Fora das secoes 6, 7 e 8. Descritas, como manda a secao 17.
   embutido; a largura de 320 px foi emulada.
 - **Adequacao clinica e conformidade juridica: nao declaradas**, e nao sao algo
   que teste prove.
-
-## Historico de auditorias anteriores
 
 ## Auditoria da v0.9.0 - 2026-10-16
 

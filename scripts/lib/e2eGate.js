@@ -164,6 +164,11 @@ export function buildStrictRequirements(report, { anthropicFlagEnabled = false }
     // PostgreSQL e do motor; o modelo do subgate e simulado, para forcar a troca
     // das explicacoes e a negacao do conflito.
     ["productComparison", report.productComparison === "PASSED"],
+
+    // v0.11.0 - o cache para usar sem rede. Requisito BASE: depende do
+    // PostgreSQL e dos modulos do cliente; nao chama IA. O que ele prova e o
+    // que nao prova esta no subgate, em `e2e-real.js`.
+    ["offlineCache", report.offlineCache === "PASSED"],
   ];
 
   if (anthropicFlagEnabled) {

@@ -2,6 +2,7 @@ import { Camera } from "lucide-react";
 
 import { AllergyVerdict } from "../../components/assistant/AllergyVerdict";
 import { PageHeader } from "../../components/common/PageHeader";
+import { dataDoAparelho } from "../../services/offlineLookup";
 import { formatNumber } from "../../utils/formatting";
 
 // Comparacao de dois produtos (v0.10.0).
@@ -45,6 +46,10 @@ function ColunaDoProduto({ produto, onAbrirProduto }) {
       <p className="eyebrow">{TITULO_DO_LADO[produto.slot]}</p>
       <h3>{produto.name || `Código ${produto.code}`}</h3>
       {produto.brand && <p className="compare-brand">{produto.brand}</p>}
+      {/* Sem internet (v0.11.0): o produto saiu do aparelho, e a coluna diz de quando. */}
+      {produto.guardadoEm ? (
+        <p className="compare-stored">Do aparelho · guardado em {dataDoAparelho(produto.guardadoEm)}</p>
+      ) : null}
       <VereditoDoProduto produto={produto} />
       {produto.explanation && (
         <div className="compare-explanation">
@@ -63,7 +68,9 @@ function ColunaQueFaltou({ lado, consulta }) {
   const mensagem =
     consulta.estado === "erro_de_rede"
       ? `Não consegui buscar o produto ${consulta.codigo} agora. Verifique sua internet.`
-      : `Não encontrei o produto ${consulta.codigo} na Open Food Facts.`;
+      : consulta.estado === "nao_disponivel_offline"
+        ? `Sem internet. O produto ${consulta.codigo} não está guardado neste aparelho.`
+        : `Não encontrei o produto ${consulta.codigo} na Open Food Facts.`;
   return (
     <article className="compare-col compare-col-missing" aria-label={`${TITULO_DO_LADO[lado]} produto`}>
       <p className="eyebrow">{TITULO_DO_LADO[lado]}</p>

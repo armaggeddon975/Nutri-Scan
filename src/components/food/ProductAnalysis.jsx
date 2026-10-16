@@ -1,5 +1,8 @@
 import { Barcode, CircleGauge, Heart, Scale, Utensils } from "lucide-react";
 
+import { AllergyVerdict } from "../assistant/AllergyVerdict";
+import { OfflineNotice } from "../common/OfflineNotice";
+import { dataDoAparelho, REDE_LENTA, SEM_INTERNET } from "../../services/offlineLookup";
 import { formatTag } from "../../utils/formatting";
 import { getIngredients, getProductName } from "../../utils/product";
 import { getNutriScore, getNutriScoreClass } from "../../utils/nutrition";
@@ -15,6 +18,8 @@ export function ProductAnalysis({
   isFavorite = false,
   onToggleFavorite,
   onCompare,
+  origemDoDado = null,
+  vereditoDoAparelho = null,
 }) {
   if (!product) {
     return (
@@ -29,6 +34,23 @@ export function ProductAnalysis({
   return (
     <div className="content-grid">
       <section className="product-section">
+        {/* Produto lido do APARELHO (v0.11.0): diz de onde veio e de quando, e
+            mostra o veredito refeito agora, com o perfil atual. */}
+        {origemDoDado?.fonte === "aparelho" ? (
+          <div className="offline-product">
+            <OfflineNotice titulo={`Do aparelho · guardado em ${dataDoAparelho(origemDoDado.guardadoEm)}`}>
+              {origemDoDado.motivo === SEM_INTERNET
+                ? "Sem internet. Estes são os dados guardados neste aparelho."
+                : origemDoDado.motivo === REDE_LENTA
+                  ? "A internet está demorando. Enquanto isso, os dados guardados neste aparelho."
+                  : "A internet não respondeu. Estes são os dados guardados neste aparelho."}{" "}
+              O alerta de alergia foi refeito agora, com o seu perfil.
+            </OfflineNotice>
+            {vereditoDoAparelho ? (
+              <AllergyVerdict verdict={vereditoDoAparelho} origem="Verificação do próprio app, feita agora neste aparelho." />
+            ) : null}
+          </div>
+        ) : null}
         <div className="product-header">
           <div className="product-image-wrap">
             {product.image_front_url ? (

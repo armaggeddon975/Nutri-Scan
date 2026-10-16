@@ -1,4 +1,4 @@
-# NutriScan v0.10.0
+# NutriScan v0.11.0
 
 NutriScan e um app web para consultar alimentos por nome ou codigo de barras,
 ver tabela nutricional, identificar ingredientes sensiveis e conversar com um
@@ -34,6 +34,7 @@ Com isso, `{ traces: "milk" }` e tratado como traco, enquanto
 - Exportar os proprios dados e excluir a propria conta, pela tela Conta (v0.8.0).
 - Alerta maximo por alergia: o aviso mais forte, inclusive para "pode conter" (v0.9.0).
 - Comparar dois produtos lado a lado, cada um com o proprio veredito (v0.10.0).
+- Rever sem internet os produtos ja abertos neste aparelho, com o veredito refeito na hora (v0.11.0).
 
 ## Requisitos
 
@@ -331,6 +332,38 @@ informacao de seguranca errada em abril, quando a pessoa marca uma alergia nova.
 O veredito e sempre recalculado pelo motor deterministico na hora de exibir, com
 o perfil atual.
 
+## Sem internet (v0.11.0)
+
+O sinal cai justamente no supermercado. Com o app aberto, sem internet, a pessoa
+continua vendo o que ja passou por este aparelho:
+
+```text
+funciona sem internet                        precisa de internet
+os produtos abertos com internet aqui        buscar produto novo
+o veredito de alergia, refeito na hora       o assistente de IA
+o perfil de alergias e o nivel de alerta     favoritar, marcar alergia, mudar o nivel
+as listas de historico e favoritos           comparar com produto que nao esta guardado
+comparar dois produtos guardados             exportar os dados, excluir a conta
+```
+
+- **Tudo o que vem do aparelho aparece marcado**, com a data: "Do aparelho ·
+  guardado em 16/10/2026".
+- **O veredito nunca e guardado.** O aparelho guarda o produto; o veredito e
+  refeito a cada leitura, com o perfil de agora. Um veredito de semanas atras
+  poderia dizer "sem conflito" para quem marcou uma alergia nova ontem.
+- **Produto que nao esta no aparelho:** "nao disponivel offline", com todas as
+  letras - nunca um produto parecido.
+- **O dado do produto vale 30 dias.** Depois disso o app pede para conferir o
+  rotulo: receita muda.
+- **Sair da conta tira do aparelho** o perfil, as listas e os produtos da conta.
+  Excluir a conta tambem.
+- **Nada e gravado sem internet**, nem guardado para depois.
+- **Abrir o app ja sem sinal nao funciona nesta versao**: vale para o app aberto
+  que perde o sinal.
+
+As decisoes - o que fica no aparelho, por quanto tempo, por que nao ha escrita
+sem rede - estao em [docs/OFFLINE.md](docs/OFFLINE.md).
+
 ## Comparar dois produtos (v0.10.0)
 
 Na gondola a pergunta costuma ser "qual destes dois?". A tela **Comparar** poe
@@ -446,7 +479,7 @@ escrito para quem publica: o que preencher no painel, como as migrations
 entram, como verificar o resultado e o que fazer quando um subgate falha. As
 decisoes de HTTPS, cookie e migrations tambem estao la.
 
-As versoes 0.7.1 a 0.10.0 ainda nao foram publicadas; o servico no ar roda a
+As versoes 0.7.1 a 0.11.0 ainda nao foram publicadas; o servico no ar roda a
 0.7.0.
 
 ### Variaveis obrigatorias em producao
@@ -619,6 +652,7 @@ como `sem proteinas do leite`. Se o rotulo tambem trouxer `leite`, `whey`,
 - [Dados do titular: exportacao e exclusao](docs/DADOS_DO_TITULAR.md)
 - [Nivel de alerta por alergia](docs/NIVEL_DE_ALERTA.md)
 - [Comparacao de dois produtos](docs/COMPARACAO.md)
+- [Usar o app sem internet](docs/OFFLINE.md)
 - [Nutri Assistente IA](docs/AI_ASSISTANT.md)
 - [Relatorio de auditoria](AUDIT_REPORT.md)
 - [Relatorio E2E](E2E_REPORT.md)

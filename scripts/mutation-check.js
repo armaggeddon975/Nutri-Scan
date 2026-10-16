@@ -61,6 +61,9 @@ const COMPARACAO_SERVICE = "backend/src/services/comparisonService.js";
 const COMPARACAO_PROMPT = "backend/src/ai/comparisonPrompt.js";
 const COMPARACAO_CONTROLLER = "backend/src/controllers/compareController.js";
 const COMPARACAO_ROTAS = "backend/src/routes/compareRoutes.js";
+const OFFLINE_CACHE = "src/services/offlineCache.js";
+const OFFLINE_LOOKUP = "src/services/offlineLookup.js";
+const OFFLINE_SESSAO = "src/services/offlineSession.js";
 
 const SUITE_BARCODE = "tests/barcode.test.js";
 const SUITE_LOOKUP = "tests/productLookup.test.js";
@@ -78,6 +81,7 @@ const SUITE_NIVEL = "tests/alertLevel.test.js";
 const SUITE_NIVEL_BANCO = "tests/alertLevelIntegration.test.js";
 const SUITE_COMPARACAO = "tests/comparison.test.js";
 const SUITE_COMPARACAO_BANCO = "tests/comparisonIntegration.test.js";
+const SUITE_OFFLINE = "tests/offline.test.js";
 
 const COMPOSICAO = "  return [porUsuario, porIp];";
 
@@ -615,7 +619,7 @@ const MUTACOES = [
     de: '    ["accountDeletion", report.accountDeletion === "PASSED"],',
     para: "",
     suite: SUITE_GATE,
-    deveQuebrar: "A11: o modo strict tem exatamente 22 requisitos, os 21 da v0.9.0 mais productComparison",
+    deveQuebrar: "A11: o modo strict tem exatamente 23 requisitos, os 22 da v0.10.0 mais offlineCache",
     banco: false,
   },
   {
@@ -1200,7 +1204,7 @@ const MUTACOES = [
     de: '    ["severityVerdict", report.severityVerdict === "PASSED"],\n',
     para: "",
     suite: SUITE_GATE,
-    deveQuebrar: "A11: o modo strict tem exatamente 22 requisitos, os 21 da v0.9.0 mais productComparison",
+    deveQuebrar: "A11: o modo strict tem exatamente 23 requisitos, os 22 da v0.10.0 mais offlineCache",
     banco: false,
   },
   {
@@ -1387,7 +1391,7 @@ const MUTACOES = [
     de: '    ["productComparison", report.productComparison === "PASSED"],\n',
     para: "",
     suite: SUITE_GATE,
-    deveQuebrar: "A11: o modo strict tem exatamente 22 requisitos, os 21 da v0.9.0 mais productComparison",
+    deveQuebrar: "A11: o modo strict tem exatamente 23 requisitos, os 22 da v0.10.0 mais offlineCache",
     banco: false,
   },
   {
@@ -1410,6 +1414,173 @@ const MUTACOES = [
     para: 'compareRoutes.post("/", optionalAuth, comparar);',
     suite: SUITE_COMPARACAO,
     deveQuebrar: "C15 o limitador cobre as duas rotas: comparacao 30/300 por 10 min, explicacao no balde do assistente",
+    banco: false,
+  },
+
+  // v0.11.0 - leitura sem rede.
+  {
+    id: "Z1",
+    requisito: "O3",
+    descricao: "o cache passa a guardar o allergyVerdict junto com o produto",
+    arquivo: OFFLINE_CACHE,
+    de: "      loja.put({ dono: String(dono), codigo: reduzido.code, guardadoEm: agora(), produto: reduzido });",
+    para:
+      "      loja.put({ dono: String(dono), codigo: reduzido.code, guardadoEm: agora(), produto: reduzido, allergyVerdict: produto.allergyVerdict ?? null });",
+    suite: SUITE_OFFLINE,
+    deveQuebrar: "O3 o cache NAO contem allergyVerdict nem resultado do motor em nenhuma chave",
+    banco: false,
+  },
+  {
+    id: "Z2",
+    requisito: "O4",
+    descricao: "a leitura offline passa a usar o perfil do momento do cache",
+    arquivo: OFFLINE_CACHE,
+    de: "      transacao.objectStore(LOJAS.perfis).put(registro);",
+    para:
+      "      if (!(await pedido(transacao.objectStore(LOJAS.perfis).get(registro.dono)))) transacao.objectStore(LOJAS.perfis).put(registro);",
+    suite: SUITE_OFFLINE,
+    deveQuebrar: "O4 perfil alterado DEPOIS do cache: a leitura offline reflete o perfil NOVO",
+    banco: false,
+  },
+  {
+    id: "Z3",
+    requisito: "O9",
+    descricao: "o logout deixa de limpar o cache",
+    arquivo: OFFLINE_SESSAO,
+    de: "  await cache.apagarContas();\n  return { servidorRespondeu };",
+    para: "  return { servidorRespondeu };",
+    suite: SUITE_OFFLINE,
+    deveQuebrar: "O9 LOGOUT limpa o cache: nenhuma chave e nenhum VALOR com o id de alergia ou o historico da conta",
+    banco: false,
+  },
+  {
+    id: "Z4",
+    requisito: "O11",
+    descricao: "o cache passa a guardar o token de sessao",
+    arquivo: OFFLINE_CACHE,
+    de: '    nome: texto(usuario.name, 120) ?? "",',
+    para: '    nome: texto(usuario.name, 120) ?? "",\n    token: usuario.token ?? usuario.sessionToken ?? null,',
+    suite: SUITE_OFFLINE,
+    deveQuebrar: "O11 o cache nunca contem senha, hash, salt, token, cookie, chave de API nem e-mail",
+    banco: false,
+  },
+  {
+    id: "Z5",
+    requisito: "O14",
+    descricao: "favoritar offline passa a enfileirar a escrita",
+    arquivo: OFFLINE_SESSAO,
+    de: '  if (!online()) return { gravado: false, motivo: "sem_internet" };',
+    para:
+      "  if (!online()) {\n" +
+      '    const fila = JSON.parse(localStorage.getItem("nutriscan:fila-offline") || "[]");\n' +
+      '    localStorage.setItem("nutriscan:fila-offline", JSON.stringify([...fila, String(gravar)]));\n' +
+      '    return { gravado: false, motivo: "sem_internet" };\n' +
+      "  }",
+    suite: SUITE_OFFLINE,
+    deveQuebrar: "O14 nenhuma escrita offline: favoritar e marcar alergia sem rede nao chamam o servidor, nao gravam e nao enfileiram",
+    banco: false,
+  },
+  {
+    id: "Z5b",
+    requisito: "O14",
+    descricao: "a escrita passa a ser feita mesmo sem rede",
+    arquivo: OFFLINE_SESSAO,
+    de: '  if (!online()) return { gravado: false, motivo: "sem_internet" };',
+    para: '  if (false) return { gravado: false, motivo: "sem_internet" };',
+    suite: SUITE_OFFLINE,
+    deveQuebrar: "O14 nenhuma escrita offline: favoritar e marcar alergia sem rede nao chamam o servidor, nao gravam e nao enfileiram",
+    banco: false,
+  },
+  {
+    id: "Z6",
+    requisito: "O2",
+    descricao: "produto ausente passa a voltar como resultado vazio que parece resposta",
+    arquivo: OFFLINE_LOOKUP,
+    de: "  if (!registro) return { estado: NAO_DISPONIVEL_OFFLINE, codigo };",
+    para: "  if (!registro) return { estado: NO_APARELHO, codigo, guardadoEm: 0, produto: {} };",
+    suite: SUITE_OFFLINE,
+    deveQuebrar: "O2 produto NAO guardado + sem rede: 'nao disponivel offline', explicito - nunca resultado vazio nem aproximado",
+    banco: false,
+  },
+  {
+    id: "Z7",
+    requisito: "O7",
+    descricao: "codigo invalido passa a consultar o cache",
+    arquivo: OFFLINE_LOOKUP,
+    de: "  if (preparado.estado === CODIGO_INVALIDO) return preparado;",
+    para:
+      "  if (preparado.estado === CODIGO_INVALIDO) {\n" +
+      "    await cache.lerProduto(dono, String(entrada));\n" +
+      "    return preparado;\n" +
+      "  }",
+    suite: SUITE_OFFLINE,
+    deveQuebrar: "O7 codigo invalido offline e recusado pela mesma funcao, ANTES de consultar o cache",
+    banco: false,
+  },
+  {
+    id: "Z8",
+    requisito: "O8",
+    descricao: "a chave do produto no aparelho deixa de ser a forma canonica",
+    arquivo: OFFLINE_LOOKUP,
+    de: '  return identidadeDoCodigo(String(codigo ?? "").trim());',
+    para: '  return String(codigo ?? "").trim();',
+    suite: SUITE_OFFLINE,
+    deveQuebrar: "O8 UPC-A offline acha o produto guardado como EAN-13 - e o contrario",
+    banco: false,
+  },
+  {
+    id: "Z9",
+    requisito: "O10",
+    descricao: "a exclusao da conta deixa de limpar o cache",
+    arquivo: OFFLINE_SESSAO,
+    de: "  await cache.apagarContas();\n  return resposta;",
+    para: "  return resposta;",
+    suite: SUITE_OFFLINE,
+    deveQuebrar: "O10 exclusao de conta limpa o cache no aparelho - so depois de o servidor confirmar",
+    banco: false,
+  },
+  {
+    id: "Z10",
+    requisito: "O12",
+    descricao: "uma conta nova no aparelho deixa de apagar o cache da anterior",
+    arquivo: OFFLINE_CACHE,
+    de: "      await apagarOutrasContas(transacao, registro.dono);",
+    para: "",
+    suite: SUITE_OFFLINE,
+    deveQuebrar: "O12 o cache de A nao e legivel por B no mesmo aparelho",
+    banco: false,
+  },
+  {
+    id: "Z11",
+    requisito: "O16",
+    descricao: "dado expirado passa a ser servido como valido",
+    arquivo: OFFLINE_LOOKUP,
+    de: "  if (registro.expirado) return { estado: EXPIRADO_NO_APARELHO, codigo, guardadoEm: registro.guardadoEm };",
+    para: "",
+    suite: SUITE_OFFLINE,
+    deveQuebrar: "O16 dado expirado nao e servido como valido: depois de 30 dias, e tratado como ausente, com o motivo",
+    banco: false,
+  },
+  {
+    id: "Z12",
+    requisito: "O15",
+    descricao: "uma sessao recusada pelo servidor (401) deixa de tirar o cache",
+    arquivo: OFFLINE_SESSAO,
+    de: '      await cache.apagarContas().catch(() => false);\n      return { tipo: "visitante", motivo: "sem_sessao" };',
+    para: '      return { tipo: "visitante", motivo: "sem_sessao" };',
+    suite: SUITE_OFFLINE,
+    deveQuebrar: "O15 a sessao 'sem resposta' usa o perfil do aparelho, marcado; 401 tira o cache",
+    banco: false,
+  },
+  {
+    id: "Z13",
+    requisito: "A11",
+    descricao: "o gate perde o requisito offlineCache",
+    arquivo: E2E_GATE,
+    de: '    ["offlineCache", report.offlineCache === "PASSED"],\n',
+    para: "",
+    suite: SUITE_GATE,
+    deveQuebrar: "A11: o modo strict tem exatamente 23 requisitos, os 22 da v0.10.0 mais offlineCache",
     banco: false,
   },
 ];
