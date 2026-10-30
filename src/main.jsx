@@ -1,6 +1,8 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.jsx";
+import { conviteDeInstalacao } from "./sw/instalacao.js";
+import { serviceWorkerDoApp } from "./sw/registro.js";
 
 // Fontes empacotadas no build, nao carregadas do Google: a CSP do backend so
 // libera fonte da propria origem, o app promete funcionar sem internet para os
@@ -21,3 +23,9 @@ createRoot(document.getElementById("root")).render(
     <App />
   </React.StrictMode>,
 );
+
+// O app ja esta na tela. O service worker vem DEPOIS, e nada depende dele: sem
+// suporte, fora de contexto seguro ou com o registro falhando, o app segue como
+// na v0.12.0 (v0.13.0). Em `npm run dev` nao ha service worker.
+conviteDeInstalacao.ouvir();
+serviceWorkerDoApp.registrar({ ativo: import.meta.env.PROD });

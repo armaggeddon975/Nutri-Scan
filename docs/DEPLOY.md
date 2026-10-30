@@ -1,9 +1,9 @@
-# Publicar o NutriScan - v0.12.0
+# Publicar o NutriScan - v0.13.0
 
 Este documento e para **quem vai publicar**, nao para quem escreveu o codigo.
 Siga na ordem. Nenhum passo pede para adivinhar.
 
-**Situacao hoje:** as versoes 0.7.1 a 0.12.0 nunca foram publicadas. O servico
+**Situacao hoje:** as versoes 0.7.1 a 0.13.0 nunca foram publicadas. O servico
 `nutriscan` no Render ainda roda a 0.7.0.
 
 Nenhum valor real de credencial aparece aqui. Onde houver `<...>`, troque pelo
@@ -159,7 +159,7 @@ O comando roda da sua maquina, contra a URL publica. **Ele so le:** nao cria
 conta, nao grava nada, nao chama a IA. Pode ser rodado a qualquer momento,
 quantas vezes quiser - antes, durante ou depois de uma publicacao.
 
-Exit 0 so com os oito subgates em PASS. `NOT_EXECUTED` nao e aprovacao.
+Exit 0 so com os doze subgates em PASS. `NOT_EXECUTED` nao e aprovacao.
 
 O plano free do Render adormece o servico. A primeira requisicao pode levar
 quase um minuto; o limite e 60 s por requisicao e sobe com `DEPLOY_TIMEOUT_MS`.
@@ -175,6 +175,12 @@ D5  quatro rotas que exigem login respondem 401 sem sessao
 D6  um corpo invalido provoca erro sem vazar stack, SQL, tabela nem caminho
 D7  a pagina e servida, e cada script e estilo que ela cita carrega
 D8  nenhuma chave nem string de conexao aparece no HTML ou nos scripts
+D9  o HTML aponta um manifesto da propria origem, servido como manifesto, JSON
+    valido, com nome, nome curto, start_url, scope, display, cores e icones de
+    192 e 512 (v0.13.0)
+D10 cada icone que o manifesto declara e servido como imagem
+D11 /sw.js e servido como JavaScript - e nao como a pagina do app
+D12 /sw.js vai com Cache-Control no-cache, no-store ou max-age=0
 ```
 
 ### 8. Quando um subgate falha - a causa mais provavel
@@ -212,6 +218,21 @@ D8  Uma chave ou string de conexao foi parar no codigo do frontend - por
     fornecedor; o bundle ja foi servido. Se o D8 der NOT_EXECUTED, o D7 falhou
     antes: resolva o D7.
 
+D9  O build e anterior a v0.13.0, ou o public/manifest.webmanifest nao foi
+    para o dist/. Se o tipo veio errado, o que responde nao e o backend do
+    NutriScan (CDN, regra de reescrita).
+
+D10 Um icone declarado nao esta no dist/ - o fallback do app devolve a pagina
+    no lugar dele. Confira public/ e o build. Se o D10 der NOT_EXECUTED, o D9
+    falhou antes: resolva o D9.
+
+D11 O dist/ nao tem o sw.js (o build nao rodou com a vite.config.js do projeto)
+    e o fallback devolveu a pagina; ou um proxy trocou o tipo.
+
+D12 Um proxy ou CDN na frente do Render esta pondo cache longo nos arquivos. O
+    service worker preso em cache HTTP atrasa a atualizacao do app. Se o D12
+    der NOT_EXECUTED, o D11 falhou antes: resolva o D11.
+
 Sem resposta nenhuma (todos FAIL por tempo): o servico estava dormindo ou fora
 do ar. Rode de novo; se persistir, aumente DEPLOY_TIMEOUT_MS e veja os Logs.
 ```
@@ -227,7 +248,7 @@ IA so explica; ela nunca decide alergia.
 
 ### 10. Antes de considerar publicado
 
-- [ ] Os oito subgates em PASS, com exit 0.
+- [ ] Os doze subgates em PASS, com exit 0.
 - [ ] O `/api/health` mostra a versao nova e `database: connected`.
 - [ ] Se preencheu a chave: `ai: configured`.
 
@@ -387,6 +408,31 @@ Depois de publicar, para conferir a mao (sem conta, ou com uma descartavel):
 
 O `verify:deploy` nao toca nisso: ele so le, e as rotas de comparacao sao
 `POST`.
+
+### App instalavel e service worker (v0.13.0)
+
+A v0.13.0 **nao traz migration**, **nao tem variavel nova** e **nao muda
+nenhuma rota**. O que muda na publicacao:
+
+- **HTTPS e obrigatorio.** Service worker so registra em contexto seguro. No
+  Render isso ja vale (o D2 confere). Sem HTTPS, o app funciona, mas nao abre
+  sem rede e nao instala.
+- **Cabecalhos.** O backend serve `/sw.js` e `/manifest.webmanifest` com
+  `Cache-Control: no-cache` e o tipo certo. Nao ponha CDN nem regra de cache na
+  frente que mude isso: um `sw.js` em cache HTTP atrasa a versao nova - e uma
+  correcao no motor de alergenicos demora a chegar a quem precisa dela.
+- **Verificacao.** `npm run verify:deploy` confere D9 a D12 contra o deploy.
+
+Depois de publicar, para conferir a mao num celular:
+
+1. Abra o app com internet e abra dois produtos; a tela Inicio deve convidar a
+   instalar (Android). Instale.
+2. Ponha o celular em modo aviao e abra o app pelo icone: ele deve abrir, e os
+   produtos ja abertos devem aparecer "Do aparelho".
+3. Publique uma versao nova e abra o app: deve aparecer "Há uma versão nova do
+   NutriScan"; toque em "Atualizar agora".
+
+O detalhe esta em [SERVICE_WORKER.md](SERVICE_WORKER.md).
 
 ### Acessibilidade do alerta (v0.12.0)
 

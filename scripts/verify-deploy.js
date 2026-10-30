@@ -26,6 +26,10 @@
 // O teste `P13` grava cada requisicao que este comando faz e exige que nenhuma
 // seja de escrita.
 //
+// APP INSTALAVEL (v0.13.0). D9 a D12 conferem o manifesto, os icones e o service
+// worker publicados - tudo por GET, como o resto. O service worker so funciona
+// sob HTTPS, entao e contra o deploy que isso pode ser provado de verdade.
+//
 // USO
 //   npm run verify:deploy -- https://nutriscan-h1wp.onrender.com
 //   DEPLOY_URL=https://... npm run verify:deploy
@@ -115,7 +119,7 @@ function resultado(id, descricao, estado, detalhe) {
 }
 
 // ---------------------------------------------------------------------------
-// Os oito subgates
+// Os subgates
 // ---------------------------------------------------------------------------
 
 async function d1Versao(cliente, { versaoLocal }) {
@@ -269,6 +273,104 @@ async function d8Segredos(_cliente, contexto) {
     : [PASS, `${contexto.paginas.length} arquivo(s) inspecionado(s), nenhum segredo`];
 }
 
+// O caminho do service worker e fixo: o app o registra em `src/sw/registro.js`
+// (`CAMINHO_DO_SERVICE_WORKER`). O teste confere que os dois sao o mesmo.
+export const CAMINHO_DO_SERVICE_WORKER = "/sw.js";
+
+// O que o manifesto precisa declarar para o app ser instalavel e se apresentar
+// como o NutriScan.
+export const CAMPOS_DO_MANIFESTO = [
+  "name",
+  "short_name",
+  "start_url",
+  "scope",
+  "display",
+  "theme_color",
+  "background_color",
+  "icons",
+];
+
+function extrairManifesto(html) {
+  const m =
+    html.match(/<link\b[^>]*\brel=["']manifest["'][^>]*\bhref=["']([^"']+)["']/i) ||
+    html.match(/<link\b[^>]*\bhref=["']([^"']+)["'][^>]*\brel=["']manifest["']/i);
+  return m ? m[1] : null;
+}
+
+async function d9Manifesto(cliente, contexto) {
+  const html = contexto.paginas?.[0]?.texto ?? (await cliente.requisitar("/")).texto;
+  const caminho = extrairManifesto(html);
+  if (!caminho) return [FAIL, "o HTML nao declara manifesto (<link rel=\"manifest\">)"];
+  if (!caminho.startsWith("/") || caminho.startsWith("//")) return [FAIL, `manifesto fora da propria origem: ${caminho}`];
+
+  const { resposta, texto } = await cliente.requisitar(caminho);
+  const tipo = resposta.headers.get("content-type") || "";
+  if (resposta.status !== 200) return [FAIL, `${caminho} respondeu ${resposta.status}`];
+  if (!/application\/(manifest\+)?json/i.test(tipo)) return [FAIL, `${caminho} servido como "${tipo}"`];
+
+  let manifesto;
+  try {
+    manifesto = JSON.parse(texto);
+  } catch {
+    return [FAIL, `${caminho} nao e JSON valido`];
+  }
+  const faltando = CAMPOS_DO_MANIFESTO.filter((campo) => manifesto[campo] === undefined || manifesto[campo] === "");
+  if (faltando.length) return [FAIL, `faltando no manifesto: ${faltando.join(", ")}`];
+  if (!Array.isArray(manifesto.icons) || manifesto.icons.length === 0) return [FAIL, "o manifesto nao declara icone"];
+  // Para instalar, os navegadores pedem um icone de 192 e um de 512.
+  const tamanhos = new Set(manifesto.icons.flatMap((icone) => String(icone.sizes || "").split(/\s+/)));
+  const semTamanho = ["192x192", "512x512"].filter((t) => !tamanhos.has(t));
+  if (semTamanho.length) return [FAIL, `o manifesto nao declara icone ${semTamanho.join(" nem ")}`];
+
+  contexto.manifesto = { caminho, icones: manifesto.icons };
+  return [PASS, `${caminho} (${tipo.split(";")[0]}), ${manifesto.icons.length} icone(s), display ${manifesto.display}`];
+}
+
+async function d10Icones(cliente, contexto) {
+  // Depende do manifesto que o D9 leu: sem ele, nenhum icone foi conferido.
+  if (!contexto.manifesto) return [NOT_EXECUTED, "D9 nao obteve o manifesto; nenhum icone foi conferido"];
+  const origem = new URL(contexto.base).origin;
+  const problemas = [];
+  for (const icone of contexto.manifesto.icones) {
+    const url = new URL(String(icone.src || ""), new URL(contexto.manifesto.caminho, contexto.base));
+    if (url.origin !== origem) {
+      problemas.push(`${icone.src} (outra origem)`);
+      continue;
+    }
+    const { resposta } = await cliente.requisitar(url.pathname);
+    const tipo = resposta.headers.get("content-type") || "";
+    if (resposta.status !== 200 || !/^image\//i.test(tipo)) problemas.push(`${icone.src} (${resposta.status} ${tipo})`);
+  }
+  return problemas.length
+    ? [FAIL, `icone declarado que nao e servido: ${problemas.join("; ")}`]
+    : [PASS, `${contexto.manifesto.icones.length} icone(s) servidos como imagem`];
+}
+
+async function d11ServiceWorker(cliente, contexto) {
+  const { resposta } = await cliente.requisitar(CAMINHO_DO_SERVICE_WORKER);
+  const tipo = resposta.headers.get("content-type") || "";
+  if (resposta.status !== 200) return [FAIL, `${CAMINHO_DO_SERVICE_WORKER} respondeu ${resposta.status}`];
+  // O navegador so registra service worker servido como JavaScript. O index.html
+  // devolvido pelo fallback do app (text/html) cai aqui.
+  if (!/^(text|application)\/(x-)?javascript/i.test(tipo)) {
+    return [FAIL, `${CAMINHO_DO_SERVICE_WORKER} servido como "${tipo}", e nao como JavaScript`];
+  }
+  contexto.serviceWorker = { cacheControl: resposta.headers.get("cache-control") || "" };
+  return [PASS, `${CAMINHO_DO_SERVICE_WORKER} servido como ${tipo.split(";")[0]}`];
+}
+
+async function d12CacheDoServiceWorker(_cliente, contexto) {
+  if (!contexto.serviceWorker) return [NOT_EXECUTED, "D11 nao obteve o service worker; o cabecalho nao foi conferido"];
+  const cacheControl = contexto.serviceWorker.cacheControl;
+  const maxAge = cacheControl.match(/max-age=(\d+)/i);
+  // Sem cache longo: no-cache, no-store ou max-age=0. Um sw.js guardado em cache
+  // HTTP atrasa a propria atualizacao - e a correcao no motor demora a chegar.
+  const semCacheLongo = /no-cache|no-store/i.test(cacheControl) || (maxAge && Number(maxAge[1]) === 0);
+  return semCacheLongo
+    ? [PASS, `Cache-Control "${cacheControl}"`]
+    : [FAIL, `Cache-Control "${cacheControl || "ausente"}": o service worker pode ficar preso em cache HTTP`];
+}
+
 export const SUBGATES = [
   ["D1", "versao no ar igual a do repositorio", d1Versao],
   ["D2", "resposta por HTTPS, e http:// redireciona", d2Https],
@@ -278,10 +380,14 @@ export const SUBGATES = [
   ["D6", "erro provocado nao vaza stack, SQL nem caminho", d6Vazamento],
   ["D7", "o frontend e servido e carrega", d7Frontend],
   ["D8", "nenhuma chave no HTML nem nos bundles", d8Segredos],
+  ["D9", "manifesto servido e valido", d9Manifesto],
+  ["D10", "os icones declarados no manifesto existem", d10Icones],
+  ["D11", "service worker servido como JavaScript", d11ServiceWorker],
+  ["D12", "service worker sem cabecalho de cache longo", d12CacheDoServiceWorker],
 ];
 
 /**
- * A regra do agregado: os oito subgates sao obrigatorios, e so PASS aprova.
+ * A regra do agregado: todos os subgates sao obrigatorios, e so PASS aprova.
  * NOT_EXECUTED nao conta como PASS.
  *
  * Fica separada para ser testada sozinha. No fluxo real, D8 so sai como
@@ -298,7 +404,7 @@ export async function lerVersaoLocal() {
 }
 
 /**
- * Roda os oito subgates contra `base`. Nunca lanca: cada subgate que quebra
+ * Roda os subgates contra `base`. Nunca lanca: cada subgate que quebra
  * vira FAIL com o motivo. Devolve tambem o registro de requisicoes.
  */
 export async function verificarDeploy({

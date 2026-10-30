@@ -1,4 +1,4 @@
-# NutriScan v0.12.0
+# NutriScan v0.13.0
 
 NutriScan e um app web para consultar alimentos por nome ou codigo de barras,
 ver tabela nutricional, identificar ingredientes sensiveis e conversar com um
@@ -36,6 +36,7 @@ Com isso, `{ traces: "milk" }` e tratado como traco, enquanto
 - Comparar dois produtos lado a lado, cada um com o proprio veredito (v0.10.0).
 - Rever sem internet os produtos ja abertos neste aparelho, com o veredito refeito na hora (v0.11.0).
 - Alerta de alergia que chega sem depender de cor, anunciado ao leitor de tela (v0.12.0).
+- App instalavel, que abre sem internet (v0.13.0).
 
 ## Requisitos
 
@@ -333,6 +334,33 @@ informacao de seguranca errada em abril, quando a pessoa marca uma alergia nova.
 O veredito e sempre recalculado pelo motor deterministico na hora de exibir, com
 o perfil atual.
 
+## Instalar o app e abrir sem internet (v0.13.0)
+
+O NutriScan pode ficar na tela inicial do celular e abre mesmo sem internet - com
+o que ja foi consultado neste aparelho (v0.11.0).
+
+**Instalar:**
+
+- **Android (Chrome, Samsung Internet, Edge):** depois de abrir alguns produtos,
+  a tela Inicio mostra "Instale o NutriScan". Ou pelo menu do navegador:
+  "Instalar app" / "Adicionar a tela inicial".
+- **iPhone (Safari):** botao de compartilhar, "Adicionar a Tela de Inicio".
+- **Computador (Chrome, Edge):** o icone de instalar na barra de endereco.
+
+Precisa de HTTPS: o app publicado e instalavel; em `npm run dev` nao ha service
+worker.
+
+**O que fica no aparelho:** so o proprio app (HTML, JavaScript, CSS, fontes e
+icones, cerca de 1,2 MB). Nada da conta, nenhuma resposta do servidor, nenhum
+veredito - os dados sem rede continuam no IndexedDB da v0.11.0. Sair da conta
+limpa os dois.
+
+**Versao nova:** o app avisa "Há uma versão nova do NutriScan" e atualiza quando
+a pessoa tocar em "Atualizar agora" - nunca sozinho, no meio de uma leitura. Na
+proxima vez que o app abrir, atualiza de qualquer jeito.
+
+Detalhes, decisoes e o que continua aberto: [docs/SERVICE_WORKER.md](docs/SERVICE_WORKER.md).
+
 ## Acessibilidade do alerta (v0.12.0)
 
 O veredito de alergia precisa CHEGAR a quem usa leitor de tela, tem baixa visao
@@ -499,7 +527,7 @@ escrito para quem publica: o que preencher no painel, como as migrations
 entram, como verificar o resultado e o que fazer quando um subgate falha. As
 decisoes de HTTPS, cookie e migrations tambem estao la.
 
-As versoes 0.7.1 a 0.12.0 ainda nao foram publicadas; o servico no ar roda a
+As versoes 0.7.1 a 0.13.0 ainda nao foram publicadas; o servico no ar roda a
 0.7.0.
 
 ### Variaveis obrigatorias em producao
@@ -573,9 +601,11 @@ npm run verify:deploy https://nutriscan-h1wp.onrender.com
 ```
 
 Prova, contra a URL publicada, que o que esta no ar e o que foi auditado. Sao
-oito subgates, D1 a D8: versao igual a do repositorio, HTTPS com redirecionamento,
-cabecalhos de seguranca, 404 de API em JSON, 401 sem sessao, erro sem vazamento,
-frontend servido e nenhuma chave nos bundles. Exit 0 so com os oito em PASS.
+doze subgates, D1 a D12: versao igual a do repositorio, HTTPS com
+redirecionamento, cabecalhos de seguranca, 404 de API em JSON, 401 sem sessao,
+erro sem vazamento, frontend servido, nenhuma chave nos bundles e, desde a
+v0.13.0, manifesto valido, icones servidos, service worker servido como
+JavaScript e sem cache longo. Exit 0 so com os doze em PASS.
 
 O comando so le. Nao cria conta, nao grava nada e nao chama a IA. Sem URL, ele
 falha - nunca assume localhost. E separado do `verify:e2e`, que prova o backend
@@ -674,6 +704,7 @@ como `sem proteinas do leite`. Se o rotulo tambem trouxer `leite`, `whey`,
 - [Comparacao de dois produtos](docs/COMPARACAO.md)
 - [Usar o app sem internet](docs/OFFLINE.md)
 - [Acessibilidade do alerta de alergia](docs/ACESSIBILIDADE.md)
+- [App instalavel e service worker](docs/SERVICE_WORKER.md)
 - [Nutri Assistente IA](docs/AI_ASSISTANT.md)
 - [Relatorio de auditoria](AUDIT_REPORT.md)
 - [Relatorio E2E](E2E_REPORT.md)

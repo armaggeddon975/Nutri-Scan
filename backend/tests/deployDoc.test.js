@@ -33,7 +33,8 @@ test("DEPLOY.md explica cada subgate e o diagnostico de cada falha", async () =>
   const doc = await lerDoc("docs/DEPLOY.md");
   const prova = doc.slice(doc.indexOf("### 7."), doc.indexOf("### 8."));
   const falha = doc.slice(doc.indexOf("### 8."), doc.indexOf("### 9."));
-  for (const id of ["D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8"]) {
+  // D9 a D12 desde a v0.13.0 (app instalavel).
+  for (const id of ["D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10", "D11", "D12"]) {
     assert.match(prova, new RegExp(`^${id}\\s`, "m"), `${id} sem explicacao do que prova`);
     assert.match(falha, new RegExp(`^${id}\\s`, "m"), `${id} sem causa provavel de falha`);
   }

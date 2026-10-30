@@ -52,6 +52,23 @@ function buildContentSecurityPolicy() {
   return { directives, useDefaults: false };
 }
 
+// APP INSTALAVEL (v0.13.0). O service worker (`/sw.js`) e o manifesto nunca vao
+// com o cache de 1 hora dos outros arquivos: o navegador confere o sw.js para
+// saber se ha versao nova, e um sw.js guardado em cache HTTP atrasaria a
+// atualizacao - num app de alergia, uma correcao no motor chegaria depois. O
+// tipo vai explicito: service worker so registra servido como JavaScript, e o
+// manifesto tem tipo proprio.
+export function cabecalhosDoAppInstalavel(res, caminho) {
+  const nome = path.basename(caminho);
+  if (nome === "sw.js") {
+    res.setHeader("Content-Type", "text/javascript; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache");
+  } else if (nome === "manifest.webmanifest") {
+    res.setHeader("Content-Type", "application/manifest+json; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache");
+  }
+}
+
 // `options.distDir` existe para teste: permite apontar para um diretorio
 // temporario e exercitar os dois modos (com e sem build) sem depender de
 // `npm run build` ter rodado.
@@ -91,7 +108,13 @@ export function createApp(options = {}) {
   // Isso evita CORS e cookie de terceiro, como recomenda docs/ARCHITECTURE.md.
   const hasBuild = existsSync(path.join(activeDistDir, "index.html"));
   if (hasBuild) {
-    app.use(express.static(activeDistDir, { index: false, maxAge: "1h" }));
+    app.use(
+      express.static(activeDistDir, {
+        index: false,
+        maxAge: "1h",
+        setHeaders: cabecalhosDoAppInstalavel,
+      }),
+    );
   }
 
   app.use("/api", healthRoutes);

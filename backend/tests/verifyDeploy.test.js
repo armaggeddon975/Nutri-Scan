@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import path from "node:path";
+import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 
@@ -14,9 +15,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "../..");
 const scriptVerify = path.join(rootDir, "scripts/verify-deploy.js");
 
-const { FAIL, NOT_EXECUTED, PASS, SONDA_INEXISTENTE, SUBGATES, agregar, verificarDeploy } = await import(
-  pathToFileURL(scriptVerify).href
-);
+const { CAMINHO_DO_SERVICE_WORKER, FAIL, NOT_EXECUTED, PASS, SONDA_INEXISTENTE, SUBGATES, agregar, verificarDeploy } =
+  await import(pathToFileURL(scriptVerify).href);
 
 // v0.7.5 - verify:deploy.
 //
@@ -28,7 +28,25 @@ const { FAIL, NOT_EXECUTED, PASS, SONDA_INEXISTENTE, SUBGATES, agregar, verifica
 const BASE = "https://deploy.nutriscan.test";
 const VERSAO = "0.7.5";
 
-const HTML = '<!doctype html><title>NutriScan</title><script type="module" src="/assets/app.js"></script>';
+const HTML =
+  '<!doctype html><title>NutriScan</title><link rel="manifest" href="/manifest.webmanifest" />' +
+  '<script type="module" src="/assets/app.js"></script>';
+
+// v0.13.0: o manifesto do deploy simulado, com os campos que o D9 exige e os
+// icones que o D10 confere.
+const MANIFESTO = {
+  name: "NutriScan",
+  short_name: "NutriScan",
+  start_url: "/",
+  scope: "/",
+  display: "standalone",
+  theme_color: "#3d472b",
+  background_color: "#f5f2ea",
+  icons: [
+    { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
+    { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
+  ],
+};
 
 // Isca de chave para o D8, montada por partes. Ela precisa ter forma de chave
 // Anthropic NO BUNDLE SERVIDO, para o D8 ter o que pegar - mas nao pode existir
@@ -87,7 +105,27 @@ function deploySimulado({ versao = VERSAO, quebra = null } = {}) {
       return responder(JSON.stringify({ error: { code: "UNAUTHENTICATED" } }), 401, "application/json");
     }
 
-    if (url.pathname === "/") return responder(HTML, 200, "text/html");
+    if (url.pathname === "/") {
+      return responder(quebra === "sem-manifesto" ? HTML.replace(/<link rel="manifest"[^>]*>/, "") : HTML, 200, "text/html");
+    }
+
+    if (url.pathname === "/manifest.webmanifest") {
+      const manifesto = quebra === "manifesto-incompleto" ? { ...MANIFESTO, display: undefined } : MANIFESTO;
+      return responder(JSON.stringify(manifesto), 200, "application/manifest+json");
+    }
+
+    if (url.pathname === "/icon-192.png" || url.pathname === "/icon-512.png") {
+      // Icone declarado que nao existe: o fallback do app devolveria o HTML.
+      if (quebra === "icone-faltando" && url.pathname === "/icon-512.png") return responder(HTML, 200, "text/html");
+      return responder("PNG", 200, "image/png");
+    }
+
+    if (url.pathname === CAMINHO_DO_SERVICE_WORKER) {
+      if (quebra === "sw-como-html") return responder(HTML, 200, "text/html");
+      return responder("self.addEventListener('fetch', () => {});", 200, "text/javascript", {
+        "cache-control": quebra === "sw-cache-longo" ? "public, max-age=86400" : "no-cache",
+      });
+    }
 
     if (url.pathname === "/assets/app.js") {
       const js = quebra === "chave" ? `const k="${ISCA_DE_CHAVE}";` : "console.log('app');";
@@ -132,12 +170,12 @@ test("P10 verify:deploy nao assume localhost nem em URL invalida", () => {
 // P11 - um subgate que falha derruba o agregado
 // ---------------------------------------------------------------------------
 
-test("P11 deploy perfeito: os oito subgates passam", async () => {
+test("P11 deploy perfeito: os doze subgates passam", async () => {
   const { fetchFalso } = deploySimulado();
   const saida = await verificarDeploy({ base: BASE, versaoLocal: VERSAO, fetchImpl: fetchFalso });
 
   for (const r of saida.resultados) assert.equal(r.estado, PASS, `${r.id}: ${r.detalhe}`);
-  assert.equal(saida.resultados.length, 8);
+  assert.equal(saida.resultados.length, 12);
   assert.equal(saida.aprovado, true);
 });
 
@@ -149,6 +187,12 @@ test("P11 cada defeito derruba o seu subgate e o agregado", async () => {
     ["sem-auth", "D5"],
     ["stack", "D6"],
     ["chave", "D8"],
+    // v0.13.0 - o app instalavel.
+    ["sem-manifesto", "D9"],
+    ["manifesto-incompleto", "D9"],
+    ["icone-faltando", "D10"],
+    ["sw-como-html", "D11"],
+    ["sw-cache-longo", "D12"],
   ];
 
   for (const [quebra, subgate] of casos) {
@@ -179,6 +223,9 @@ test("P11 rede fora: nenhum subgate vira PASS", async () => {
   assert.equal(saida.aprovado, false);
   // D8 depende do que D7 baixou: sem nada baixado, nao olhou - NOT_EXECUTED.
   assert.equal(estadoDe(saida, "D8"), NOT_EXECUTED);
+  // O mesmo para D10 (icones do manifesto do D9) e D12 (cabecalho do sw do D11).
+  assert.equal(estadoDe(saida, "D10"), NOT_EXECUTED);
+  assert.equal(estadoDe(saida, "D12"), NOT_EXECUTED);
 });
 
 test("P11 NOT_EXECUTED nao conta como PASS no agregado", () => {
@@ -187,7 +234,7 @@ test("P11 NOT_EXECUTED nao conta como PASS no agregado", () => {
   // teste monta os resultados a mao: sete PASS e um NOT_EXECUTED, nada de FAIL.
   const comEstado = (estado) => SUBGATES.map(([id]) => ({ id, estado: id === "D8" ? estado : PASS }));
 
-  assert.equal(agregar(comEstado(PASS)), true, "oito PASS deveriam aprovar");
+  assert.equal(agregar(comEstado(PASS)), true, "todos em PASS deveriam aprovar");
   assert.equal(agregar(comEstado(NOT_EXECUTED)), false, "NOT_EXECUTED foi aceito como aprovacao");
   assert.equal(agregar(comEstado("SKIP")), false, "um estado desconhecido foi aceito como aprovacao");
   assert.equal(agregar(comEstado(PASS).slice(1)), false, "faltando um subgate, o agregado aprovou");
@@ -346,9 +393,49 @@ test("P13 a sonda do D6 nao corresponde a nenhuma rota registrada", async () => 
   }
 });
 
-test("os oito subgates D1 a D8 existem", () => {
+test("os doze subgates D1 a D12 existem: os oito de antes e os quatro do app instalavel", () => {
   assert.deepEqual(
     SUBGATES.map(([id]) => id),
-    ["D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8"],
+    ["D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10", "D11", "D12"],
   );
+});
+
+test("D11 confere o mesmo caminho que o app registra", () => {
+  const registro = readFileSync(path.join(rootDir, "src/sw/registro.js"), "utf8");
+  assert.match(registro, new RegExp(`CAMINHO_DO_SERVICE_WORKER = "${CAMINHO_DO_SERVICE_WORKER}"`));
+});
+
+test("D9 a D12 contra o backend REAL: manifesto, icones e service worker servidos certo", async () => {
+  // O createApp de verdade, servindo um dist com manifesto, icones e sw.js: os
+  // cabecalhos sao os que o backend poe (v0.13.0), nao os de um simulado.
+  const dist = criarDist();
+  const { mkdirSync, writeFileSync: gravar } = await import("node:fs");
+  gravar(
+    path.join(dist.raiz, "index.html"),
+    '<!doctype html><title>NutriScan</title><link rel="manifest" href="/manifest.webmanifest" />' +
+      '<script type="module" src="/assets/app.js"></script>',
+  );
+  mkdirSync(path.join(dist.raiz, "assets"), { recursive: true });
+  gravar(path.join(dist.raiz, "assets/app.js"), "console.log('app');");
+  gravar(path.join(dist.raiz, "manifest.webmanifest"), JSON.stringify(MANIFESTO));
+  gravar(path.join(dist.raiz, "icon-192.png"), "PNG");
+  gravar(path.join(dist.raiz, "icon-512.png"), "PNG");
+  gravar(path.join(dist.raiz, "sw.js"), "self.addEventListener('fetch', () => {});");
+
+  const servidor = createServer(createApp({ distDir: dist.raiz }));
+  await new Promise((resolve) => servidor.listen(0, "127.0.0.1", resolve));
+  try {
+    const saida = await verificarDeploy({
+      base: `http://127.0.0.1:${servidor.address().port}`,
+      versaoLocal: VERSAO,
+      timeoutMs: 10000,
+    });
+    for (const id of ["D9", "D10", "D11", "D12"]) {
+      const r = saida.resultados.find((x) => x.id === id);
+      assert.equal(r.estado, PASS, `${id}: ${r.detalhe}`);
+    }
+  } finally {
+    await new Promise((resolve) => servidor.close(resolve));
+    dist.remover();
+  }
 });

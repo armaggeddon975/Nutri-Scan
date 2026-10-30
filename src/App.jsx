@@ -95,6 +95,10 @@ import { codigoLidoPelaCamera, isBarcodeQuery, normalizeText } from "./utils/tex
 import { hashPassword, hasSecureCrypto, legacyHashPassword } from "./utils/security";
 import { OfflineNotice } from "./components/common/OfflineNotice";
 import { AnuncioDoVeredito } from "./components/common/AnuncioDoVeredito";
+import { AvisoDeVersaoNova } from "./components/common/AvisoDeVersaoNova";
+import { conviteDeInstalacao } from "./sw/instalacao";
+import { limparCacheStorage } from "./sw/limpezaDoCacheStorage";
+import { serviceWorkerDoApp } from "./sw/registro";
 import { anuncioDaComparacao, anuncioDoProduto } from "./utils/estadoDoVeredito";
 import { VISITANTE } from "./services/offlineCache";
 import {
@@ -252,6 +256,9 @@ function App() {
   // Anuncio do veredito para leitor de tela (v0.12.0): o texto da regiao viva
   // unica, e quantas vezes ja foi anunciado.
   const [anuncio, setAnuncio] = useState({ texto: "", vez: 0 });
+  // Versao nova do app esperando (v0.13.0) e convite para instalar.
+  const [versaoNova, setVersaoNova] = useState(false);
+  const [conviteInstalar, setConviteInstalar] = useState(() => conviteDeInstalacao.estado());
   const anunciar = useCallback((texto) => {
     if (!texto) return;
     setAnuncio((atual) => ({ texto, vez: atual.vez + 1 }));
@@ -304,6 +311,10 @@ function App() {
     // Voltar a visitante - saiu, conta excluida, sessao recusada - tira do
     // aparelho o cache de qualquer conta (v0.11.0).
     aoPerderSessao();
+    // E o Cache Storage (v0.13.0): o segundo armazenamento do aparelho. O shell
+    // do app fica; qualquer outra coisa sai. Nao espera: a volta a visitante nao
+    // trava por causa disso, como o aoPerderSessao acima.
+    limparCacheStorage();
     sessaoDoAparelhoRef.current = null;
     setSessaoDoAparelho(null);
     currentUserRef.current = null;
@@ -576,6 +587,14 @@ function App() {
   useEffect(() => {
     refreshCollections();
   }, [currentUser, refreshCollections]);
+
+  // SERVICE WORKER (v0.13.0): o aviso de versao nova e o convite para instalar.
+  useEffect(() => serviceWorkerDoApp.aoTerVersaoNova(setVersaoNova), []);
+  useEffect(() => conviteDeInstalacao.aoMudar(setConviteInstalar), []);
+  // Cada produto aberto conta para o convite de instalar - so um numero.
+  useEffect(() => {
+    if (product) conviteDeInstalacao.contarProdutoAberto();
+  }, [product]);
 
   // ANUNCIO DO VEREDITO (v0.12.0): o produto aberto, ou o veredito dele que
   // mudou, vai para a regiao viva - nome do produto e o estado, por escrito.
@@ -1860,6 +1879,11 @@ function App() {
           },
           onDismiss: dismissAlertInvite,
         }}
+        installInvite={{
+          visible: conviteInstalar.mostrar,
+          onInstall: () => conviteDeInstalacao.instalar(),
+          onDismiss: () => conviteDeInstalacao.dispensar(),
+        }}
       />
     );
   };
@@ -1888,6 +1912,7 @@ function App() {
         />
 
         <main id="conteudo" className="content" aria-label="Página atual">
+          <AvisoDeVersaoNova visivel={versaoNova} onAtualizar={() => serviceWorkerDoApp.aplicarAtualizacao()} />
           {offline ? (
             <OfflineNotice titulo="Sem internet">
               O app mostra só o que está guardado neste aparelho.{" "}

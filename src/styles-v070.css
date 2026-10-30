@@ -867,3 +867,23 @@ input[aria-disabled="true"]:not(:focus-visible) {
   color: rgba(245, 242, 234, 0.8);
   opacity: 1;
 }
+
+/* ---------------------------------------------------------------------------
+   Versao nova do app (v0.13.0)
+   ---------------------------------------------------------------------------
+   O aviso reusa o desenho do aviso "Sem internet" (.offline-notice: tinta escura
+   sobre o areia quente, contraste ja medido no A3t), com o botao principal do
+   app. A regiao existe sempre; vazia, nao ocupa espaco. */
+
+.update-notice {
+  margin-bottom: 16px;
+}
+
+.update-notice svg {
+  color: var(--brand);
+}
+
+.update-notice .primary-button {
+  align-self: flex-start;
+  margin-top: 8px;
+}

@@ -1,4 +1,4 @@
-# Arquitetura NutriScan v0.12.0
+# Arquitetura NutriScan v0.13.0
 
 ## Visao geral
 

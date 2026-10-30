@@ -1,4 +1,4 @@
-# API NutriScan v0.12.0
+# API NutriScan v0.13.0
 
 Base local: `http://localhost:3000/api`
 
@@ -18,7 +18,7 @@ Exemplo:
   "status": "ok",
   "database": "not_configured",
   "ai": "not_configured",
-  "version": "0.12.0"
+  "version": "0.13.0"
 }
 ```
 
@@ -772,6 +772,24 @@ Erros, alem dos de `POST /api/compare`:
 ```
 
 Os demais codigos `AI_*` sao os do assistente.
+
+## App instalavel (v0.13.0) - nenhuma rota nova, e a API nunca e guardada
+
+A v0.13.0 nao muda nenhuma rota, nenhum corpo e nenhum codigo de erro. O service
+worker do app (`/sw.js`) nao intercepta NENHUMA rota de `/api/` - nem
+`/api/health`: toda chamada vai direto para a rede, como sem service worker, e
+nenhuma resposta da API entra no Cache Storage. Sem rede, a chamada falha, e o
+cliente segue o caminho sem rede da v0.11.0.
+
+O backend passa a servir dois arquivos do app com cabecalho proprio:
+
+```text
+/sw.js                  text/javascript; charset=utf-8         Cache-Control: no-cache
+/manifest.webmanifest   application/manifest+json; charset=utf-8  Cache-Control: no-cache
+```
+
+Os outros arquivos do `dist/` continuam com o cache de 1 hora. Detalhes em
+[SERVICE_WORKER.md](SERVICE_WORKER.md).
 
 ## Acessibilidade do alerta (v0.12.0) - nenhuma rota nova
 

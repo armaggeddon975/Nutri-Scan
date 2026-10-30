@@ -64,7 +64,29 @@ function AlertInvite({ onReview, onDismiss }) {
   );
 }
 
-export function HomePage({ selectedAllergies, productAnalysis, onNavigate, onSearchAndOpen, alertInvite }) {
+// Convite para instalar (v0.13.0): so depois de alguns produtos abertos, e so
+// quando o navegador oferece instalar. Regras em src/sw/instalacao.js.
+function InstallInvite({ onInstall, onDismiss }) {
+  return (
+    <section className="alert-invite" aria-label="Instalar o NutriScan">
+      <p className="eyebrow">No seu celular</p>
+      <h2>Instale o NutriScan</h2>
+      <p>
+        Ele fica na tela inicial e abre como um app. Sem internet, mostra o que você já consultou neste aparelho.
+      </p>
+      <div className="alert-invite-actions">
+        <button className="primary-button" type="button" onClick={onInstall}>
+          Instalar
+        </button>
+        <button className="secondary-button" type="button" onClick={onDismiss}>
+          Agora não
+        </button>
+      </div>
+    </section>
+  );
+}
+
+export function HomePage({ selectedAllergies, productAnalysis, onNavigate, onSearchAndOpen, alertInvite, installInvite }) {
   const hasProfile = selectedAllergies.length > 0;
 
   return (
@@ -122,6 +144,8 @@ export function HomePage({ selectedAllergies, productAnalysis, onNavigate, onSea
       {alertInvite?.visible && (
         <AlertInvite onReview={alertInvite.onReview} onDismiss={alertInvite.onDismiss} />
       )}
+
+      {installInvite?.visible && <InstallInvite onInstall={installInvite.onInstall} onDismiss={installInvite.onDismiss} />}
 
       <section aria-label="Experimente" className="samples">
         <div className="samples-heading">

@@ -1,6 +1,916 @@
-# Relatorio de Auditoria - NutriScan v0.12.0
+# Relatorio de Auditoria - NutriScan v0.13.0
 
 Data: 2026-10-30
+
+## Escopo
+
+Entrada 0.12.0, saida 0.13.0. App instalavel e service worker. Minor: o app
+passa a abrir sem rede e a poder ser instalado. Nao ha migration, rota nova nem
+variavel nova.
+
+**O problema, pelo que era.** A v0.11.0 entregou o modo sem rede - o IndexedDB
+guarda produto e perfil, e o veredito e refeito no aparelho -, mas o APP nao era
+guardado. Sem rede, o navegador nao buscava o HTML, o JavaScript nem o CSS: o
+modo sem rede existia, funcionava, foi auditado e nao tinha como ser alcancado.
+
+**Isto nao e orientacao de saude nem de nutricao.** O relatorio descreve o que
+o software faz.
+
+**Preservado (secao 3).** `git diff` contra a v0.12.0 (commit `2399b45`):
+
+```text
+shared/ (motor, veredito, comparacao, codigo de barras)   vazio - prova abaixo, A15
+src/services/ (cache IndexedDB, consulta, sessao)         vazio
+scripts/verify-e2e.js, e2e-real.js, lib/ (gate E2E)       vazio
+src/components/assistant/, src/utils/estadoDoVeredito.js  vazio (acessibilidade da v0.12.0)
+src/styles.css (arquivo do design)                        vazio
+backend/src/                                              1 arquivo: app.js, os cabecalhos do
+                                                          sw.js e do manifesto (secao 8.2)
+scripts/verify-deploy.js                                  D9 a D12, so leitura (secao 8.2)
+```
+
+Codigo da entrega:
+
+```text
+NOVO  src/sw/politicaDeCache.js            a decisao: o que pode e o que nunca pode ser guardado
+NOVO  src/sw/service-worker.js             o service worker (gerado como /sw.js no build)
+NOVO  src/sw/montarServiceWorker.js        o build do sw.js: versao e lista do shell (Node)
+NOVO  src/sw/registro.js                   registro, aviso de versao nova, atualizar
+NOVO  src/sw/limpezaDoCacheStorage.js      a limpeza do Cache Storage na volta a visitante
+NOVO  src/sw/instalacao.js                 o convite para instalar
+NOVO  src/components/common/AvisoDeVersaoNova.jsx   o aviso "Há uma versão nova"
+NOVO  public/manifest.webmanifest           o manifesto
+NOVO  public/icon-192.png, icon-512.png, icon-maskable-512.png, apple-touch-icon.png
+      vite.config.js                       o plugin que gera dist/sw.js
+      index.html                           <link rel="manifest">, apple-touch-icon
+      src/main.jsx                         desenha o app e SO DEPOIS registra o service worker
+      src/App.jsx                          limpeza do Cache Storage na volta a visitante; aviso;
+                                           convite; contagem de produtos abertos
+      src/pages/Home/HomePage.jsx          o convite para instalar
+      src/styles-v070.css                  o aviso (reusa o desenho do aviso "Sem internet")
+      backend/src/app.js                   no-cache e tipo do sw.js e do manifesto
+      scripts/verify-deploy.js             D9 a D12
+```
+
+Testes: `backend/tests/serviceWorker.test.js` (novo, 33 testes),
+`backend/tests/helpers/ambienteDoServiceWorker.js` (novo), `verifyDeploy.test.js`
+(12 subgates, 4 defeitos novos, o backend real servindo os arquivos) e
+`deployDoc.test.js` (D1 a D12 documentados). `scripts/mutation-check.js`: 20
+mutantes novos (PW1 a PW20). `esbuild` 0.25.12 virou dependencia de
+desenvolvimento declarada - ja vinha instalado com o Vite, na mesma versao; nada
+novo foi baixado.
+
+## Estrategia por tipo de recurso
+
+```text
+recurso                          estrategia                   por que
+/api/* - toda a API              o service worker NAO TOCA    perfil, alergias, historico,
+                                 (so rede)                    favoritos, exportacao, comparacao,
+                                                              assistente e conta trazem dado de
+                                                              saude, sessao e veredito. Sem
+                                                              rede, a chamada falha e o app cai
+                                                              no caminho sem rede da v0.11.0
+/api/health                      o service worker NAO TOCA    diz o estado do servidor AGORA;
+                                                              guardado, mentiria
+escrita (POST, PUT, DELETE...)   o service worker NAO TOCA    escrita nunca e guardada nem
+                                                              repetida (regra da v0.11.0)
+outra origem (Open Food Facts)   o service worker NAO TOCA    dado de terceiro, nao confiavel;
+                                                              imagem ocupa espaco - decisao 6.1
+a pagina (navegacao)             rede primeiro; sem rede ou   online, sempre a versao publicada
+                                 apos 4 s, o index.html       (5.4); o shell guardado so entra
+                                 guardado DESTA versao        quando a rede nao responde. O HTML
+                                                              guardado nunca e regravado pela
+                                                              rede: aponta para os arquivos dele
+arquivo do build (JS, CSS,       cache primeiro               o nome do arquivo muda a cada
+fonte, icone, manifesto)                                      build: o guardado e sempre o certo,
+                                                              e servir do cache nao arrisca
+                                                              versao velha
+qualquer outra coisa da origem   o service worker NAO TOCA    nao e do shell
+(/sw.js, caminho desconhecido)
+```
+
+Nao ha estrategia unica: a pagina e rede primeiro porque servir HTML velho e o
+risco de 5.4; os arquivos do build sao cache primeiro porque o nome deles ja
+carrega a versao; e a API nem passa pelo service worker.
+
+## O que NUNCA e guardado, e como a regra e imposta em codigo
+
+A decisao esta num arquivo so, `src/sw/politicaDeCache.js`, usado pelo service
+worker E pela limpeza do logout - e e ele que os testes exercitam.
+
+1. **Camada 1 - nao interceptar.** `estrategiaPara` devolve `IGNORAR` para todo
+   caminho que comeca com `/api` (sem diferenciar maiuscula: `/API/PROFILE`
+   tambem), para escrita e para outra origem. Com `IGNORAR`, o service worker nao
+   chama `respondWith`: a requisicao vai a rede como se ele nao existisse, e
+   nada dela passa perto do Cache Storage.
+2. **Camada 2 - recusar na gravacao.** Toda gravacao, na instalacao e depois,
+   passa por `podeGuardar`, que exige: leitura, mesma origem, fora de `/api/`,
+   caminho NA LISTA do build, status 200, sem `Set-Cookie`, sem `Cache-Control:
+   no-store` ou `private`. Mesmo que a lista do shell incluisse por engano uma
+   rota de `/api/`, a gravacao recusa - e o P3 testa exatamente isso.
+3. **Exportacao (`/api/account/export`)**: coberta pelas duas camadas, em toda
+   grafia (P5). A resposta ainda vem com `no-store` do backend.
+4. **Set-Cookie**: no navegador, o service worker nem enxerga esse cabecalho; a
+   regra fica para a garantia nao depender disso (P4). E o `index.html` servido
+   com Set-Cookie faz a INSTALACAO falhar: nenhum shell com cookie assume.
+5. **Veredito**: so viaja em resposta de `/api/` (assistente, comparacao) - logo
+   nunca entra (P6).
+6. **Chave de API**: vive so no backend e nunca viaja numa resposta; o P18
+   procura a forma de chave no `sw.js`, em cada arquivo do build e em tudo o que
+   ficou guardado.
+
+Nenhuma resposta de `/api/` foi julgada segura para guardar. Nao ha nada a
+decidir ai (secao 5.1).
+
+## Logout e exclusao limpam os dois armazenamentos
+
+`restoreGuestSession` - por onde passam sair, conta excluida e sessao recusada
+(401) - chama o `aoPerderSessao()` da v0.11.0 (IndexedDB) e, logo depois,
+`limparCacheStorage()` (v0.13.0):
+
+- todo cache cujo nome nao e `nutriscan-shell-*` sai inteiro;
+- dentro do cache do shell, sai toda entrada que nao tem a FORMA de arquivo do
+  shell - `/index.html`, `/assets/<arquivo>.<js|css|woff2|png|...>` ou um icone/
+  manifesto da raiz, sem query string, fora de `/api/`.
+
+O shell fica: nao e de nenhuma conta, e e o que abre o app sem rede para a proxima
+pessoa do aparelho. As chamadas que os testes O9 e O10 da v0.11.0 exigem no App
+(`aoSairDaConta`, `aoExcluirConta`, `aoPerderSessao`) nao mudaram uma letra.
+
+## Invalidacao por versao
+
+- O nome do cache e `nutriscan-shell-<versao>`; a versao vem do `package.json`,
+  posta no `sw.js` pelo plugin do build. Sem versao, `nomeDoCache` lanca.
+- Versao nova = `sw.js` com bytes novos. O navegador confere o `sw.js` a cada
+  abertura do app: o backend o serve com `no-cache` e o registro usa
+  `updateViaCache: "none"`. Com o app aberto por dias (instalado), ele confere
+  tambem a cada volta para a tela, no maximo uma vez por hora.
+- A versao nova baixa o shell DELA inteiro, num cache novo, ao lado do antigo. Um
+  arquivo que falhe faz a instalacao falhar: shell pela metade nao assume.
+- Ao assumir, ela apaga todo cache que nao e o dela, e passa a servir.
+
+## Decisao de 5.4 - o momento seguro para atualizar
+
+**A pagina so recarrega por um toque da pessoa.** Nunca sozinha: ela pode estar
+no meio de um veredito, de uma comparacao ou digitando um codigo, e recarregar
+ali apagaria o que ela le - exatamente o que o prompt proibe.
+
+A versao nova se instala e ESPERA (sem `skipWaiting` na instalacao). Ela assume:
+
+- **sozinha, quando nenhuma aba da versao antiga estiver aberta** - a proxima
+  abertura do app. E o momento seguro por definicao: nao ha nada na tela;
+- **ou pelo toque em "Atualizar agora"**, no aviso "Há uma versão nova do
+  NutriScan. Atualize quando terminar o que está lendo. A tela recarrega." O
+  aviso fica no topo do conteudo, sem cobrir o veredito, numa regiao `polite`
+  que ja existe na pagina, ate a pessoa atualizar.
+
+Nao ha como ficar preso: o aviso nao some sozinho, e a proxima abertura atualiza
+de qualquer jeito. E, com rede, a PAGINA ja vem da rede a cada abertura - o que
+espera e o shell guardado para usar sem rede. Uma troca de controle que a pessoa
+nao pediu (a primeira instalacao assumindo, outra aba atualizando) nao recarrega
+esta aba.
+
+## Decisoes de 6.1 a 6.5
+
+- **6.1 O que cacheia.** O shell: HTML, JavaScript, CSS, fontes, icones,
+  manifesto. Nada de `/api/`. `/api/health`: nao (diz o estado de agora).
+  Imagens da Open Food Facts: nao - dado de terceiro, nao confiavel, cada imagem
+  ocupa espaco, e o modo sem rede da v0.11.0 ja tinha decidido nao guarda-las.
+- **6.2 Estrategias.** Tabela acima: rede primeiro com prazo para a pagina,
+  cache primeiro para o build, nada para a API.
+- **6.3 Manifesto e instalacao.** `name` e `short_name` "NutriScan", `id`,
+  `start_url` e `scope` "/", `display: standalone`, `orientation: portrait`,
+  `theme_color` `#3d472b` (o `--chrome` do design, o mesmo do `<meta
+  theme-color>`), `background_color` `#f5f2ea` (o `--bg`), `lang` pt-BR,
+  descricao. Icones: o `nutriscan-icon.svg` que ja existia, e PNG de 192, 512,
+  512 maskable e 180 (iPhone), desenhados com a geometria, as cores e a fonte
+  (Cormorant Garamond 600) do SVG - nenhuma marca nova. O maskable e o do iPhone
+  vao sem cantos, porque o sistema os recorta; o "N" fica dentro da zona segura.
+  **Convite**: nao na primeira visita. O `beforeinstallprompt` e segurado (o
+  Chrome mostraria uma barra sozinho de cara); o convite aparece na tela Inicio
+  so depois de 2 produtos abertos neste aparelho, e "Agora nao" dispensa de vez.
+- **6.4 Escopo.** `/sw.js`, escopo `/`: o app vive na raiz (as telas sao
+  `#scan`, `#conta`...), entao o escopo tem de incluir `/`. A API tambem fica
+  debaixo de `/` e nao da para tira-la do escopo - por isso a regra de `/api/`
+  esta no codigo, e o P16 confere o que NAO e interceptado.
+- **6.5 Tamanho.** Abaixo.
+
+## Tamanho do shell
+
+Do build real da v0.13.0, medido pelo P17 (os mesmos numeros na suite e na
+verificacao do navegador):
+
+```text
+pre-carregamento: 22 arquivos, 1169.0 KB
+sw.js: 7.9 KB
+```
+
+```text
+pre-carregado     22 arquivos, 1.169 KB
+  JavaScript        3 arquivos, 791 KB  (o app com o React, 358 KB; o leitor de codigo
+                                         de barras, 407 KB + 26 KB, carregado so quando
+                                         a camera abre)
+  CSS               1 arquivo, 43 KB
+  fontes            10 WOFF2 (latin e latin-ext), 156 KB
+  logo e icones     177 KB (a logo da barra, 134 KB, e o maior)
+  index.html e manifesto  2 KB
+fora do pre-carregamento   23 arquivos: faixas de fonte que o portugues nao usa
+                           (cirilico, grego, vietnamita) e o formato WOFF antigo.
+                           Guardados so se pedidos - nenhum navegador atual pede.
+```
+
+**Dentro do limite.** 1,17 MB e abaixo de "alguns megabytes": quase tudo e o
+proprio JavaScript do app, que o navegador baixaria de qualquer jeito na primeira
+abertura. O leitor de codigo de barras entra no pre-carregamento porque sem ele a
+camera nao funciona sem rede. O P17 trava o pre-carregamento em **1,5 MB**: folga
+para o crescimento normal, e pega inchaco (uma imagem grande, um pacote inteiro).
+
+## Decisoes de 8.1 e 8.2
+
+- **8.1 - sem subgate novo no E2E.** O service worker e comportamento de cliente
+  em contexto seguro; o gate E2E roda contra o backend real e nao tem navegador.
+  Um subgate ali provaria, no maximo, que o backend serve o `sw.js` - o que o
+  `verify:deploy` ja prova melhor. A verificacao fica nos testes que rodam o
+  `sw.js` do build real e no navegador. Os 23 requisitos continuam exigidos, um
+  a um (A13).
+- **8.2 - quatro subgates novos no `verify:deploy`**, todos por GET:
+  D9 (o HTML aponta um manifesto da propria origem, servido como manifesto, JSON
+  valido, com os campos de instalacao e icones de 192 e 512), D10 (cada icone
+  declarado e servido como imagem), D11 (`/sw.js` servido como JavaScript, e nao
+  como a pagina do fallback) e D12 (`/sw.js` sem cache longo: no-cache, no-store
+  ou max-age=0). D10 depende do D9 e D12 do D11, como o D8 do D7: sem o que
+  conferir, NOT_EXECUTED - nunca PASS. O P13 continua verde: o registro de
+  requisicoes so tem GET, alem da sonda declarada do D6.
+
+## Como os testes exercitam a logica real de decisao de cache
+
+`serviceWorker.test.js` constroi o app de verdade com o Vite (`vite.build`, a
+mesma `vite.config.js`, o mesmo plugin) numa pasta temporaria. O `sw.js` desse
+build - com `politicaDeCache.js` dentro - roda num contexto `vm` com os globais
+que o navegador da a um service worker, e recebe os eventos de verdade: install,
+activate, fetch, message. `Request`, `Response` e `Headers` sao os do Node, que
+seguem a especificacao Fetch.
+
+O Cache Storage do teste e um duble que SO GUARDA, com o corpo inteiro: quem
+decide o que entra, o que sai e quando e o codigo do service worker. A rede do
+teste serve os arquivos desse build e, para `/api/`, respostas com nome, e-mail,
+alergia, cookie de sessao e veredito PLANTADOS. Depois, o teste procura esses
+dados nas CHAVES e nos CORPOS de tudo que ficou guardado, e confere que cada corpo
+guardado e IDENTICO, byte a byte, a um arquivo do build.
+
+A limpeza do logout e testada com o IndexedDB do `fake-indexeddb` (o cache da
+v0.11.0, de verdade) e o duble do Cache Storage, os dois com dado plantado; o P7
+confere tambem, no fonte do App, que a volta a visitante chama as duas limpezas -
+como o O9 da v0.11.0 faz. O P12 e o P13 empacotam o `main.jsx` de verdade com o
+esbuild e o rodam com um `navigator` cujo registro falha, lanca ou nao existe:
+o app tem de ser desenhado ANTES de qualquer promessa resolver.
+
+O que o duble nao prova - o Cache Storage e o ciclo de vida do navegador - foi
+conferido no Chromium, abaixo.
+
+## Verificacao no navegador
+
+Build real (`npm run build`, 0.13.0), servido pelo backend local na porta 3200
+(`createApp`, com os cabecalhos novos), contra o PostgreSQL LOCAL, sem chave de
+IA, no Chromium do painel do ambiente. `http://127.0.0.1` e contexto seguro para
+service worker (a excecao de localhost), entao o service worker de verdade
+registrou, instalou e controlou a pagina. O Cache Storage inspecionado e o do
+proprio Chromium.
+
+```text
+registro            escopo http://127.0.0.1:3200/, script /sw.js, "activated", pagina controlada
+cache               "nutriscan-shell-0.13.0", 22 entradas = exatamente o pre-carregamento
+cabecalhos          /sw.js: text/javascript; charset=utf-8, Cache-Control no-cache
+                    /manifest.webmanifest: application/manifest+json; charset=utf-8, no-cache
+```
+
+**P3 e P6 - navegando autenticado.** Conta de teste descartavel criada no app
+local (e-mail @example.test, senha gerada dentro da pagina e nunca impressa).
+Pela interface: produto aberto (historico gravado), favoritado, comparacao com
+dois produtos, tela Meus produtos, alergia Amendoim marcada; pela pagina, a
+exportacao dos dados. No servidor: alergias milk e peanut, 1 no historico, 1
+favorito. Depois, o Cache Storage do Chromium, cru:
+
+```text
+caches                     ["nutriscan-shell-0.13.0"]
+entradas                   22, nenhuma de /api/
+nome / e-mail / perfil     0 ocorrencias em qualquer chave ou corpo
+  ("allergies":["milk","peanut"])
+cookie de sessao           0
+"milk", "peanut",          so em /assets/index-CICWKpTk.js (4, 2 e 9 vezes): o
+allergyVerdict             CODIGO do app - o catalogo de alergias e o nome do campo
+SHA-256 de cada corpo      22 de 22 identicos ao arquivo do build em dist/
+```
+
+Um corpo identico, byte a byte, a um arquivo do build nao pode ter dado de
+ninguem: o build e o mesmo para todo mundo.
+
+**P7 - logout real.** Antes de sair, foram PLANTADOS no Cache Storage, como o
+resto de uma versao defeituosa: um cache "dados-da-conta" com /api/history e o
+nome da pessoa, e /api/profile com nome e alergias dentro do cache do shell. O
+IndexedDB tinha o nome e "peanut". Depois de "Sair da conta" pela interface:
+
+```text
+caches         ["nutriscan-shell-0.13.0"] - o plantado saiu
+entradas       22, nenhuma de /api/, nenhuma com o nome
+IndexedDB      sem o nome, sem o e-mail, sem "peanut"
+```
+
+**P8 - exclusao real.** Entrou de novo, plantou-se de novo ("outra-coisa" com
+/api/favorites e o nome; /index.html?conta=<e-mail> no cache do shell). "Excluir
+minha conta", a caixa "Entendo que nao da para desfazer.", a senha, "Excluir
+para sempre":
+
+```text
+/api/auth/me   401 - a conta nao existe mais
+caches         ["nutriscan-shell-0.13.0"], 22 entradas, nenhuma com query, nenhuma com dado
+IndexedDB      sem o nome, sem o e-mail, sem "peanut"
+PG local       0 contas sw-verif-* (conferido por consulta)
+```
+
+**P1 - sem servidor, de verdade.** O servidor da porta 3200 foi DERRUBADO
+(conexao recusada, conferido). A pagina recarregada abriu: o HTML, o
+JavaScript, o CSS e a fonte Cormorant Garamond vieram do Cache Storage; o
+service worker estava no controle.
+
+**P2 - fim a fim sem rede.** Como visitante, com Leite/lactose marcado, a
+Nutella foi aberta com rede (o IndexedDB da v0.11.0 a guardou). Servidor
+derrubado, pagina recarregada pelo service worker, e a internet cortada do jeito
+que o navegador sinaliza (`navigator.onLine` falso e o evento "offline", feito
+no JavaScript da pagina - o Chromium do ambiente nao tem botao de modo aviao).
+Busca pelo codigo:
+
+```text
+aviso          "Sem internet - O app mostra só o que está guardado neste aparelho."
+produto        Nutella, "Do aparelho · guardado em 30/10/2026"
+veredito       "Nutella: Conflito com o seu perfil", classe danger
+origem         "Verificação do próprio app, feita agora neste aparelho."
+anuncio        "Nutella. Conflito com o seu perfil: Contém Leite/lactose."
+```
+
+Observacao: so derrubando o servidor, a Nutella ainda vinha da Open Food Facts,
+que o app consulta direto do navegador - o servidor do NutriScan fora nao e
+"sem internet". O P2 de verdade exigiu cortar os dois.
+
+**P9, P10, P11 - versao nova, de verdade.** Pagina aberta na 0.13.0 e marcada
+(variavel na janela). Publicada localmente uma versao de teste
+(`0.13.1-verificacao`: o package.json trocado so para o build e restaurado em
+seguida). O navegador conferiu o sw.js:
+
+```text
+versao nova           instalada e ESPERANDO ("installed"); os dois caches presentes
+aviso                 "Há uma versão nova do NutriScan. Atualize quando terminar o
+                      que está lendo. A tela recarrega. [Atualizar agora]"
+                      na regiao role=status, aria-live=polite
+4 s depois            a pagina NAO recarregou (a marca continuava)
+toque em Atualizar    a pagina recarregou UMA vez; a nova assumiu ("activated")
+depois                caches ["nutriscan-shell-0.13.1-verificacao"] - o da 0.13.0 saiu;
+                      /sw.js no ar e o da 0.13.1-verificacao; o aviso sumiu
+```
+
+Depois o build da 0.13.0 foi refeito e o navegador voltou a ela pelo mesmo
+caminho (aviso, toque): cache unico "nutriscan-shell-0.13.0".
+
+**Ressalva de metodo.** O painel do navegador do ambiente nao desenha quadros
+quando a janela esta escondida; parte dos cliques foi feita pelo DOM (o mesmo
+botao da tela, `click()`), sem mudar codigo do app.
+
+## A1 - P1 a P18, R1 a R8
+
+Presentes e verdes, sem banco e contra PostgreSQL real - 33 testes em
+`backend/tests/serviceWorker.test.js`:
+
+```text
+P1 sem rede, o HTML, o JavaScript e o CSS do app vem do cache
+P1 com rede, a pagina vem da rede - o shell guardado so entra sem ela
+P2 sem rede: o shell abre e o produto guardado volta com o veredito refeito
+P3 a regra: nenhuma rota de /api/ e interceptada, e nenhuma pode ser gravada
+P3 navegando autenticado, nenhum Cache Storage guarda resposta de /api/ - chaves e corpos
+P4 resposta com Set-Cookie nunca e guardada - nem de /api/, nem de arquivo do shell
+P5 /api/account/export nunca e guardada, em nenhuma grafia
+P6 o veredito nao aparece em nenhum Cache Storage
+P7 logout limpa o Cache Storage e o IndexedDB - os dois conferidos
+P8 exclusao de conta limpa o Cache Storage e o IndexedDB - so depois de o servidor confirmar
+P7 a limpeza tira o que nao e shell e deixa o shell, pela regra de politicaDeCache
+P9 versao nova publicada: o cache antigo e descartado e a versao nova passa a ser servida
+P9 a chave do cache e a versao do package.json - no build real
+P10 versao nova esperando: o app avisa, e o toque em Atualizar faz ela assumir
+P10 versao nova encontrada depois: o aviso aparece; com o app aberto por dias, ele confere de novo
+P10 o aviso de versao nova esta na tela, com o botao, e a regiao existe antes dele
+P11 a pagina nunca recarrega sozinha: so pelo toque em Atualizar
+P11 a versao nova nunca assume sozinha na instalacao - espera
+P12 com o registro do service worker falhando, o app carrega e funciona
+P13 navegador sem service worker, ou fora de contexto seguro: o app carrega e funciona
+P14 manifesto valido, com os campos decididos
+P15 todo icone declarado existe no projeto, no tamanho declarado
+P16 escopo '/': o service worker so intercepta a pagina e os arquivos do build
+P17 o tamanho do shell e reportado e fica dentro do teto
+P18 chave de API em nenhum cache de nenhum tipo, nem no sw.js, nem no build
+R1 regressao: cache IndexedDB da v0.11.0 sem veredito, logout limpa, perfil atual vence
+R2 regressao: acessibilidade da v0.12.0 - estado sem cor, ordem de leitura, aria-live polite
+R3 regressao: exploit C1 - o modelo negando o conflito nao entrega falso seguro
+R4 regressao: matriz de severidade nos quatro casos
+R5 regressao: comparacao sem contaminacao, explicacao amarrada pelo codigo
+R6 regressao: sem sessao, exportar, excluir e ler colecoes respondem 401
+R7 regressao: digito verificador, UPC-A canonicalizado e tetos da comparacao
+R8 regressao: JSON malformado e 400 sem detalhe; rota desconhecida e 404 de API
+```
+
+R1 a R8 executam de novo, pelo codigo real, no mesmo arquivo; as suites completas
+de cada um seguem no gate, verdes: R1 offline O1-O16; R2 accessibility A1t-A17;
+R3 allergyVerdict T1-T8; R4 alertLevel S1-S18; R5 comparison C1t-C16; R6 account
+E6-E8 e accountIntegration E1-E8; R7 barcode M1-M12 e N1; R8 bodyParseError
+O2a-O2e e productionHardening P5, P9.
+
+O `verifyDeploy.test.js` ganhou os defeitos de D9 a D12 (sem manifesto, manifesto
+incompleto, icone faltando, sw.js servido como pagina, sw.js com cache longo), a
+prova de que o D11 confere o mesmo caminho que o app registra, e D9 a D12 PASS
+contra o `createApp` real servindo um dist com manifesto, icones e sw.js.
+
+## A2 - validacao por mutacao
+
+Rodada completa, com banco, sobre o codigo entregue:
+
+```text
+RUN_DB_INTEGRATION_TESTS=true DATABASE_URL=<PostgreSQL LOCAL> DATABASE_SSL=false \
+  node scripts/mutation-check.js --com-banco
+```
+
+```text
+mortas 158 | nao executadas 0 | problemas 1 | linha de base: antes verde, depois verde
+
+REPROVADO: ha teste que nao detecta o defeito que deveria detectar.
+=== EXIT: 1 ===
+```
+
+**159 mutantes: 158 mortos, 1 sobrevivente (W1, o equivalente da v0.8.0), 0 nao
+executados.** A linha de base - as 19 suites sem mutacao, incluida a nova
+(`tests/serviceWorker.test.js`) - estava verde antes e depois. **Os 20 mutantes
+novos morreram todos.** O script sai com codigo 1 por causa do W1, e isso fica
+registrado como esta.
+
+### Os mutantes pedidos pelo prompt (P3, P7, P9, P12)
+
+```text
+pedido pelo prompt                                   mutante  teste que o pegou  resultado
+a regra de rota passa a cachear /api/ tambem         PW1      P3                 MORTA
+  (e a segunda camada, a gravacao, deixa de recusar) PW2      P3                 MORTA
+o logout deixa de limpar o Cache Storage             PW3      P7                 MORTA
+  (e a limpeza deixa de apagar o que nao e shell)    PW4      P7                 MORTA
+a chave de cache deixa de incluir a versao do app    PW5      P9                 MORTA
+  (e a versao nova deixa de apagar a antiga)         PW6      P9                 MORTA
+o app passa a depender do service worker p/ carregar PW7      P12                MORTA
+  (e o registro deixa a falha escapar como erro)     PW8      P12                MORTA
+```
+
+O que cada um injeta:
+
+- **PW1** - `politicaDeCache.js`: `estrategiaPara` devolve `DO_SHELL` (cache
+  primeiro) para `/api/` no lugar de IGNORAR.
+- **PW2** - a outra camada: `podeGuardar` deixa de recusar `/api/`. Com as duas
+  camadas, cada uma tem o seu mutante - e o P3 pega os dois, porque testa as duas
+  separadamente (a gravacao recusa `/api/` mesmo com a rota NA lista do shell).
+- **PW3** - `App.jsx`: a volta a visitante deixa de chamar `limparCacheStorage()`.
+- **PW4** - `limpezaDoCacheStorage.js`: os caches que nao sao do shell ficam.
+- **PW5** - `politicaDeCache.js`: `nomeDoCache` devolve so o prefixo, sem a versao.
+- **PW6** - `service-worker.js`: ao assumir, a versao nova nao apaga a antiga.
+- **PW7** - `main.jsx`: o app so e desenhado depois de o registro do service
+  worker dar certo.
+- **PW8** - `registro.js`: o `catch` do registro sai; a falha vira erro solto.
+
+### Os outros doze mutantes novos
+
+```text
+PW9   P4   resposta com Set-Cookie passa a poder ser guardada                    MORTA
+PW10  P11  a versao nova passa a assumir sozinha na instalacao                   MORTA
+PW11  P11  a pagina passa a recarregar em qualquer troca de controle             MORTA
+PW12  P3   a regra de /api/ passa a diferenciar maiuscula (/API/ escaparia)      MORTA
+PW13  P16  o service worker passa a interceptar outra origem                     MORTA
+PW14  P1   sem rede, a pagina deixa de cair no shell guardado                    MORTA
+PW15  P5   a exportacao passa a poder ser guardada se estiver na lista do shell  MORTA
+PW16  P15  o manifesto passa a declarar um icone que nao existe                  MORTA
+PW17  P17  todas as fontes passam a ser pre-carregadas                           MORTA
+PW18  8.2  o D12 passa a aceitar service worker com cache longo                  MORTA
+PW19  8.2  o D10 deixa de conferir se o icone e servido                          MORTA
+PW20  8.2  o backend volta a servir o sw.js com o cache de 1 hora                MORTA
+```
+
+Antes da rodada oficial, os 20 foram rodados sozinhos contra as suites deles: 20
+mortos. Dois testes foram endurecidos ANTES dessa rodada, porque eu ja via um
+mutante passando: o P5 passou a conferir cada grafia da exportacao com ela NA
+lista do shell (senao o PW15 sobreviveria), e o P16 passou a incluir outra origem
+com o mesmo caminho de um arquivo do shell (senao o PW13 sobreviveria).
+
+### O sobrevivente: W1, o mesmo da v0.8.0
+
+O W1 faz o repositorio da exportacao devolver a linha inteira de `users`, mas o
+servico monta o arquivo campo a campo - a exportacao nao muda, e o teste esta
+certo em passar. E equivalente, foi descrito na v0.8.0 com a demonstracao de que
+a suite estatica (`nunca usa SELECT *`) o pega, e esta versao nao mexeu nele nem
+no `mutation-check.js` por causa dele.
+
+### A rodada inteira
+
+Linha de base:
+
+```text
+[linha de base - antes] 19 suite(s), sem mutacao
+  VERDE    tests/productionHardening.test.js
+  VERDE    tests/verifyDeploy.test.js
+  VERDE    tests/renderSync.test.js
+  VERDE    tests/bodyParseError.test.js
+  VERDE    tests/productLookup.test.js
+  VERDE    tests/migrate.test.js
+  VERDE    tests/doctor.test.js
+  VERDE    tests/e2eGate.test.js
+  VERDE    tests/accountIntegration.test.js
+  VERDE    tests/barcode.test.js
+  VERDE    tests/collectionsIntegration.test.js
+  VERDE    tests/rateLimit.test.js
+  VERDE    tests/alertLevel.test.js
+  VERDE    tests/alertLevelIntegration.test.js
+  VERDE    tests/comparison.test.js
+  VERDE    tests/comparisonIntegration.test.js
+  VERDE    tests/offline.test.js
+  VERDE    tests/accessibility.test.js
+  VERDE    tests/serviceWorker.test.js
+```
+
+```text
+T1  P2   MORTA                  "P2 producao sem FRONTEND_ORIGIN nao sobe, e diz qual falta" falhou, como deveria
+T1b  P2   MORTA                  "P2 sem FRONTEND_ORIGIN, nem o createApp direto cai no default de localhost" falhou, como deveria
+T2  P5   MORTA                  "P5 erro do driver do banco nao chega ao cliente" falhou, como deveria
+T2b  P5   MORTA                  "P5 o detalhe do erro vai para o log do servidor" falhou, como deveria
+T3  P9   MORTA                  "P9 cada variavel obrigatoria ausente impede a subida, e a mensagem diz qual" falhou, como deveria
+T3b  P9   MORTA                  "P9 valor booleano nao reconhecido nao cai em default silencioso" falhou, como deveria
+T4  P12  MORTA                  "P12 versao no ar diferente da do repositorio reprova o D1" falhou, como deveria
+T5  P13  MORTA                  "P13 o registro de requisicoes do verify:deploy nao tem escrita" falhou, como deveria
+T5b  P13  MORTA                  "P13 contra o roteador REAL, nenhuma rota de escrita e alcancada" falhou, como deveria
+T6  P3   MORTA                  "P3 CORS devolve a origem configurada, nunca a do request" falhou, como deveria
+T7  P4   MORTA                  "P4 com trust proxy, req.ip segue o X-Forwarded-For e o balde acompanha" falhou, como deveria
+T8  P11  MORTA                  "P11 NOT_EXECUTED nao conta como PASS no agregado" falhou, como deveria
+T9  P11  MORTA                  "P11 o comando de verdade sai com codigo 1 quando um subgate falha" falhou, como deveria
+V1  S1/S4 MORTA                  "S1 render.yaml contem todas as obrigatorias de VARIAVEIS_OBRIGATORIAS_EM_PRODUCAO" falhou, como deveria
+V1b  S2   MORTA                  "S2 render.yaml nao declara variavel que o codigo nao le" falhou, como deveria
+V1c  S3   MORTA                  "S3 nenhuma credencial com valor literal no render.yaml" falhou, como deveria
+V2  O2a  MORTA                  "O2a JSON malformado responde 400, nao 500 - a medicao do auditor" falhou, como deveria
+V3  O2d  MORTA                  "O2d erro de biblioteca com statusCode arbitrario nao escolhe o status" falhou, como deveria
+V3b  O2d  MORTA                  "O2d copiar o type do body-parser nao basta para ganhar 400" falhou, como deveria
+V4  R7   MORTA                  "P13 o registro de requisicoes do verify:deploy nao tem escrita" falhou, como deveria
+U1  C2   MORTA                  "C2 a camera nunca transforma um codigo em outro" falhou, como deveria
+U2  C2   MORTA                  "C2 o App usa a leitura segura e nunca manda leitura da camera para a busca por nome" falhou, como deveria
+U3  C2   MORTA                  "C2 o App usa a leitura segura e nunca manda leitura da camera para a busca por nome" falhou, como deveria
+U4  O2e  MORTA                  "O2e corpo grande demais responde 413 fixo, sem a mensagem do leitor" falhou, como deveria
+U4b  O2e  MORTA                  "O2e copiar name, type e status do corpo grande nao basta para ganhar 413" falhou, como deveria
+U5  MODO MORTA                  "MODO NODE_ENV digitado errado nao sobe, e diz qual variavel" falhou, como deveria
+U5b  MODO MORTA                  "MODO NODE_ENV digitado errado nao sobe, e diz qual variavel" falhou, como deveria
+U6  MIG  MORTA                  "MIG migration que nao alcanca o banco falha dizendo por que" falhou, como deveria
+U7  MIG  MORTA                  "o doctor conta as mesmas migrations que o runner aplica, .sql e .js" falhou, como deveria
+U8  ORC  MORTA                  "o orcamento do gate usa os mesmos tetos do limitador, inclusive o por IP" falhou, como deveria
+W1  E2   MUTACAO SOBREVIVEU     a suite passou com o defeito aplicado
+W1b  E2   MORTA                  "E2 a exportacao nao contem o password_hash nem o salt reais - pelo valor" falhou, como deveria
+W2  E4   MORTA                  "E4 a exportacao de A nao contem nada de B, com B populado" falhou, como deveria
+W2b  E4   MORTA                  "E4 a exportacao de A nao contem nada de B, com B populado" falhou, como deveria
+W3  E5   MORTA                  "E5 userId no corpo, na query ou em cabecalho nao muda quem e exportado" falhou, como deveria
+W3b  E5   MORTA                  "E5 userId no corpo, na query ou em cabecalho nao muda quem e exportado" falhou, como deveria
+W4  D2   MORTA                  "D2 exclusao com senha errada nao remove nada" falhou, como deveria
+W5  D4   MORTA                  "D4 o schema montado SO pelas migrations tem ON DELETE CASCADE em toda FK para users" falhou, como deveria
+W5b  D4   MORTA                  "D4 o schema montado SO pelas migrations tem ON DELETE CASCADE em toda FK para users" falhou, como deveria
+W6  D8   MORTA                  "D8 falha simulada no meio da exclusao deixa o estado anterior intacto" falhou, como deveria
+W7  E8   MORTA                  "E8 a rota real recusa a exportacao acima do teto do usuario" falhou, como deveria
+W8  D9   MORTA                  "D9 a tentativa com senha errada gasta o mesmo balde do login" falhou, como deveria
+W9  D1   MORTA                  "D1 exclusao com a senha correta remove a conta e limpa o cookie" falhou, como deveria
+W10  E7   MORTA                  "E7 o arquivo nao leva e-mail nem nome, e a resposta nao pode ir para cache" falhou, como deveria
+W10b  E7   MORTA                  "E7 o arquivo nao leva e-mail nem nome, e a resposta nao pode ir para cache" falhou, como deveria
+W11  A11  MORTA                  "A11: o modo strict tem exatamente 23 requisitos, os 22 da v0.10.0 mais offlineCache" falhou, como deveria
+S1  N1a  MORTA                  "N1 o schema canonicaliza UPC-A para EAN-13" falhou, como deveria
+S1b  N1a  MORTA                  "N1a o mesmo produto em UPC-A e EAN-13 vira UMA linha canonica" falhou, como deveria
+S1c  N1c  MORTA                  "N1c requisicao DIRETA ao backend grava a forma canonica" falhou, como deveria
+S2  N1e  MORTA                  "N1e o schema nao altera EAN-13 nem EAN-8" falhou, como deveria
+S2b  N1d  MORTA                  "N1d codigo nao-EAN passa intacto pela canonicalizacao" falhou, como deveria
+S3  N1g  MORTA                  "N1g a migration funde as duas formas pela regra declarada" falhou, como deveria
+S4  N1g  MORTA                  "N1g a migration e idempotente e nao toca codigo nao-EAN" falhou, como deveria
+S5  R2   MORTA                  "N1 a canonicalizacao nao afrouxa a conferencia do digito" falhou, como deveria
+S6  N1   MORTA                  "N1 a canonicalizacao usa shared/barcode.js, sem copia local" falhou, como deveria
+P1  M1   MORTA                  "M1 codigos com digito verificador errado sao recusados pelo motivo certo" falhou, como deveria
+P1b  M1   MORTA                  "M1 codigos validos de EAN-13, EAN-8 e UPC-A sao aceitos" falhou, como deveria
+P2  M3   MORTA                  "M3 o backend recusa productCode com digito verificador invalido" falhou, como deveria
+P2b  M3   MORTA                  "M3 a regra do backend e estreita e nao quebra cadastro legitimo" falhou, como deveria
+P3  M4   MORTA                  "o caminho manual nao monta o resultado por conta propria" falhou, como deveria
+P3b  M4   MORTA                  "M2 codigo invalido nao chega a rede" falhou, como deveria
+P4  M5   MORTA                  "M5 o piso de risco vale no caminho manual" falhou, como deveria
+P5  M9   MORTA                  "M9 nao existe segunda implementacao do digito verificador" falhou, como deveria
+P5b  M9   MORTA                  "M9 backend e frontend usam a MESMA implementacao de shared/" falhou, como deveria
+P6  M7   MORTA                  "M7 UPC-A vira EAN-13 com zero a esquerda, e o produto e o mesmo" falhou, como deveria
+P7  M6   MORTA                  "M6 cada motivo de recusa tem mensagem propria" falhou, como deveria
+P8  M8   MORTA                  "M8 nenhum outro caractere e removido em silencio" falhou, como deveria
+P9  M10  MORTA                  "M10 o backend recusa gravar codigo com digito verificador invalido" falhou, como deveria
+N1  R1/R3 MORTA                  "R1 usuario dentro do teto mas IP estourado recebe 429" falhou, como deveria
+N1b  R3   MORTA                  "R3 multiplas contas do mesmo IP nao ultrapassam o teto por IP" falhou, como deveria
+N2  R2   MORTA                  "R2 IP dentro do teto mas usuario estourado recebe 429" falhou, como deveria
+N2b  R4   MORTA                  "R4 dois usuarios atras do MESMO IP mantem cotas separadas" falhou, como deveria
+N3  R4   MORTA                  "R4 a requisicao recusada pelo teto de usuario nao consome orcamento do IP" falhou, como deveria
+N4  R5   MORTA                  "R5 dados forjados no request nao conseguem balde de IP novo" falhou, como deveria
+N5  R5   MORTA                  "R5 um bloco IPv6 /64 nao vira infinitos baldes" falhou, como deveria
+M1  R6   MORTA                  "R6 os tres tetos por rota seguem nos valores declarados" falhou, como deveria
+M2  R7   MORTA                  "R7 o teto por IP esta no valor medido" falhou, como deveria
+M3  Q3   MORTA                  "Q3 nenhuma variavel de ambiente desliga os limitadores" falhou, como deveria
+M3b  Q4   MORTA                  "Q4 nenhum dos limitadores tem opcao de pular requisicao" falhou, como deveria
+M4  Q2   MORTA                  "Q2 em producao o teto por usuario recusa na requisicao seguinte ao teto" falhou, como deveria
+M6  R9   MORTA                  "I1 usuario A nao le historico nem favorito de B" falhou, como deveria
+M7  R9   MORTA                  "I2 usuario B nao remove item de A" falhou, como deveria
+X1  S2   MORTA                  "S2 alerta maximo + conflito declarado: piso urgent" falhou, como deveria
+X2  S3   MORTA                  "S3 alerta maximo + traco: conflito no veredito, piso caution" falhou, como deveria
+X3  S5   MORTA                  "S5 o modelo respondendo normal nao derruba o piso em nenhum dos casos" falhou, como deveria
+X4  S6   MORTA                  "S6 o modelo nao escreve nem influencia o nivel: campo de nivel vindo dele derruba a resposta" falhou, como deveria
+X5  S12  MORTA                  "S12 o banco recusa nivel invalido inserido direto em SQL - no banco e no schema das migrations" falhou, como deveria
+X6  S13  MORTA                  "S13 nenhuma tabela de colecao tem onde guardar nivel ou veredito - no banco e no schema das migrations" falhou, como deveria
+X6b  S13  MORTA                  "S13 nivel nao congelado: o item salvo nao muda e a leitura seguinte reflete o nivel novo" falhou, como deveria
+X7  S17  MORTA                  "S17 o log da tentativa de minimizacao e o mesmo com alerta padrao ou maximo" falhou, como deveria
+X8  S18  MORTA                  "S18 o payload enviado a Anthropic nao ganhou canal novo: o nivel nao vai nem no allergySnapshot" falhou, como deveria
+X9  A11  MORTA                  "A11: o modo strict tem exatamente 23 requisitos, os 22 da v0.10.0 mais offlineCache" falhou, como deveria
+X10  S9   MORTA                  "S9 nivel para alergia ausente do perfil e recusado pela validacao" falhou, como deveria
+X11  S1   MORTA                  "S1 nivel padrao + conflito declarado: piso caution, identico a v0.8.0" falhou, como deveria
+X12  S8   MORTA                  "S8 nivel desconhecido e recusado pela validacao" falhou, como deveria
+X13  S16  MORTA                  "S16 o nivel de A nao e visivel nem alteravel por B" falhou, como deveria
+Y1  C2t  MORTA                  "C2t produto em conflito com produto limpo: o limpo nao herda safety e o em conflito nao e rebaixado" falhou, como deveria
+Y2  C2t  MORTA                  "C2t produto em conflito com produto limpo: o limpo nao herda safety e o em conflito nao e rebaixado" falhou, como deveria
+Y3  C5t  MORTA                  "C5t explicacoes em ordem trocada: cada uma cai no produto certo, pelo codigo" falhou, como deveria
+Y4  C7t  MORTA                  "C7t o modelo nao escreve, nao altera e nao reordena veredito" falhou, como deveria
+Y5  C8t  MORTA                  "C8t produto sem dado de alergenico: a ausencia nao vira 'nao contem' em lugar nenhum" falhou, como deveria
+Y5b  C8t  MORTA                  "C8t produto sem dado de alergenico: a ausencia nao vira 'nao contem' em lugar nenhum" falhou, como deveria
+Y5c  C8t  MORTA                  "C8t produto sem dado de alergenico: a ausencia nao vira 'nao contem' em lugar nenhum" falhou, como deveria
+Y6  C6t  MORTA                  "C6t o modelo respondendo normal nao derruba o piso de nenhum dos dois" falhou, como deveria
+Y7  C9t  MORTA                  "C9t digito verificador invalido em qualquer dos dois e recusado antes de qualquer busca" falhou, como deveria
+Y8  C11  MORTA                  "C11 codigos iguais: recusados com mensagem clara, sem busca" falhou, como deveria
+Y8b  C11  MORTA                  "C11 codigos iguais: recusados com mensagem clara, sem busca" falhou, como deveria
+Y9  A11  MORTA                  "A11: o modo strict tem exatamente 23 requisitos, os 22 da v0.10.0 mais offlineCache" falhou, como deveria
+Y10  C13  MORTA                  "C13 a sessao de B com o id de A no corpo compara com o perfil de B" falhou, como deveria
+Y11  C15  MORTA                  "C15 o limitador cobre as duas rotas: comparacao 30/300 por 10 min, explicacao no balde do assistente" falhou, como deveria
+Z1  O3   MORTA                  "O3 o cache NAO contem allergyVerdict nem resultado do motor em nenhuma chave" falhou, como deveria
+Z2  O4   MORTA                  "O4 perfil alterado DEPOIS do cache: a leitura offline reflete o perfil NOVO" falhou, como deveria
+Z3  O9   MORTA                  "O9 LOGOUT limpa o cache: nenhuma chave e nenhum VALOR com o id de alergia ou o historico da conta" falhou, como deveria
+Z4  O11  MORTA                  "O11 o cache nunca contem senha, hash, salt, token, cookie, chave de API nem e-mail" falhou, como deveria
+Z5  O14  MORTA                  "O14 nenhuma escrita offline: favoritar e marcar alergia sem rede nao chamam o servidor, nao gravam e nao enfileiram" falhou, como deveria
+Z5b  O14  MORTA                  "O14 nenhuma escrita offline: favoritar e marcar alergia sem rede nao chamam o servidor, nao gravam e nao enfileiram" falhou, como deveria
+Z6  O2   MORTA                  "O2 produto NAO guardado + sem rede: 'nao disponivel offline', explicito - nunca resultado vazio nem aproximado" falhou, como deveria
+Z7  O7   MORTA                  "O7 codigo invalido offline e recusado pela mesma funcao, ANTES de consultar o cache" falhou, como deveria
+Z8  O8   MORTA                  "O8 UPC-A offline acha o produto guardado como EAN-13 - e o contrario" falhou, como deveria
+Z9  O10  MORTA                  "O10 exclusao de conta limpa o cache no aparelho - so depois de o servidor confirmar" falhou, como deveria
+Z10  O12  MORTA                  "O12 o cache de A nao e legivel por B no mesmo aparelho" falhou, como deveria
+Z11  O16  MORTA                  "O16 dado expirado nao e servido como valido: depois de 30 dias, e tratado como ausente, com o motivo" falhou, como deveria
+Z12  O15  MORTA                  "O15 a sessao 'sem resposta' usa o perfil do aparelho, marcado; 401 tira o cache" falhou, como deveria
+Z13  A11  MORTA                  "A11: o modo strict tem exatamente 23 requisitos, os 22 da v0.10.0 mais offlineCache" falhou, como deveria
+AC1  A1t  MORTA                  "A1t sem cor, os quatro estados do veredito continuam distinguiveis por texto" falhou, como deveria
+AC2  A2t  MORTA                  "A2t cada alergenico do veredito vem com o seu estado escrito" falhou, como deveria
+AC3  A3t  MORTA                  "A3t contraste calculado dos tokens reais: texto 4.5, texto grande 3, indicador 3" falhou, como deveria
+AC4  A3t  MORTA                  "A3t contraste calculado dos tokens reais: texto 4.5, texto grande 3, indicador 3" falhou, como deveria
+AC5  A5t  MORTA                  "A5t a regiao de anuncio e polite, existe antes do veredito e recebe o estado primeiro" falhou, como deveria
+AC6  A5t  MORTA                  "A5t a regiao de anuncio e polite, existe antes do veredito e recebe o estado primeiro" falhou, como deveria
+AC7  A6t  MORTA                  "A6t no assistente, na tela do produto e na comparacao, o veredito vem antes" falhou, como deveria
+AC8  A7t  MORTA                  "A7t na comparacao, coluna, veredito e cabecalho de tabela dizem o nome do produto" falhou, como deveria
+AC9  A11  MORTA                  "A11 os alvos de toque do caminho do alerta tem 24x24 CSS px ou mais" falhou, como deveria
+AC10  A11  MORTA                  "A11 os alvos de toque do caminho do alerta tem 24x24 CSS px ou mais" falhou, como deveria
+AC11  A9t  MORTA                  "A9t o anel de foco existe, tem 2px e nenhum campo do caminho o perde" falhou, como deveria
+AC12  A10  MORTA                  "A10 a folga de rolagem cobre a barra de cima e as abas, no celular e no computador" falhou, como deveria
+AC13  A13  MORTA                  "A13 cada motivo de recusa e distinto, ligado ao campo e anunciado uma vez" falhou, como deveria
+AC14  A17  MORTA                  "A17 nome de produto vindo da Open Food Facts chega como texto, nunca como HTML" falhou, como deveria
+AC15  A8t  MORTA                  "A8t todo controle do caminho do alerta e nativo, alcancavel e sem armadilha" falhou, como deveria
+PW1  P3   MORTA                  "P3 a regra: nenhuma rota de /api/ e interceptada, e nenhuma pode ser gravada" falhou, como deveria
+PW2  P3   MORTA                  "P3 a regra: nenhuma rota de /api/ e interceptada, e nenhuma pode ser gravada" falhou, como deveria
+PW3  P7   MORTA                  "P7 logout limpa o Cache Storage e o IndexedDB - os dois conferidos" falhou, como deveria
+PW4  P7   MORTA                  "P7 logout limpa o Cache Storage e o IndexedDB - os dois conferidos" falhou, como deveria
+PW5  P9   MORTA                  "P9 versao nova publicada: o cache antigo e descartado e a versao nova passa a ser servida" falhou, como deveria
+PW6  P9   MORTA                  "P9 versao nova publicada: o cache antigo e descartado e a versao nova passa a ser servida" falhou, como deveria
+PW7  P12  MORTA                  "P12 com o registro do service worker falhando, o app carrega e funciona" falhou, como deveria
+PW8  P12  MORTA                  "P12 com o registro do service worker falhando, o app carrega e funciona" falhou, como deveria
+PW9  P4   MORTA                  "P4 resposta com Set-Cookie nunca e guardada - nem de /api/, nem de arquivo do shell" falhou, como deveria
+PW10  P11  MORTA                  "P11 a versao nova nunca assume sozinha na instalacao - espera" falhou, como deveria
+PW11  P11  MORTA                  "P11 a pagina nunca recarrega sozinha: so pelo toque em Atualizar" falhou, como deveria
+PW12  P3   MORTA                  "P3 a regra: nenhuma rota de /api/ e interceptada, e nenhuma pode ser gravada" falhou, como deveria
+PW13  P16  MORTA                  "P16 escopo '/': o service worker so intercepta a pagina e os arquivos do build" falhou, como deveria
+PW14  P1   MORTA                  "P1 sem rede, o HTML, o JavaScript e o CSS do app vem do cache" falhou, como deveria
+PW15  P5   MORTA                  "P5 /api/account/export nunca e guardada, em nenhuma grafia" falhou, como deveria
+PW16  P15  MORTA                  "P15 todo icone declarado existe no projeto, no tamanho declarado" falhou, como deveria
+PW17  P17  MORTA                  "P17 o tamanho do shell e reportado e fica dentro do teto" falhou, como deveria
+PW18  8.2  MORTA                  "P11 cada defeito derruba o seu subgate e o agregado" falhou, como deveria
+PW19  8.2  MORTA                  "P11 cada defeito derruba o seu subgate e o agregado" falhou, como deveria
+PW20  8.2  MORTA                  "D9 a D12 contra o backend REAL: manifesto, icones e service worker servidos certo" falhou, como deveria
+mortas 158 | nao executadas 0 | problemas 1 | linha de base: antes verde, depois verde
+```
+
+```text
+[linha de base - depois] 19 suite(s), sem mutacao
+  VERDE    tests/productionHardening.test.js
+  VERDE    tests/verifyDeploy.test.js
+  VERDE    tests/renderSync.test.js
+  VERDE    tests/bodyParseError.test.js
+  VERDE    tests/productLookup.test.js
+  VERDE    tests/migrate.test.js
+  VERDE    tests/doctor.test.js
+  VERDE    tests/e2eGate.test.js
+  VERDE    tests/accountIntegration.test.js
+  VERDE    tests/barcode.test.js
+  VERDE    tests/collectionsIntegration.test.js
+  VERDE    tests/rateLimit.test.js
+  VERDE    tests/alertLevel.test.js
+  VERDE    tests/alertLevelIntegration.test.js
+  VERDE    tests/comparison.test.js
+  VERDE    tests/comparisonIntegration.test.js
+  VERDE    tests/offline.test.js
+  VERDE    tests/accessibility.test.js
+  VERDE    tests/serviceWorker.test.js
+```
+
+## A7 a A11
+
+```text
+A7  npm run build                          sucesso (vite 6.4.5; dist/sw.js da 0.13.0, 7,9 KB)
+A8  npm --prefix backend test              493 testes, 418 pass, 0 fail, 75 skipped
+                                           (os pulados exigem PostgreSQL, IA real ou
+                                           Open Food Facts real - todos declarados
+                                           NAO EXECUTADO, nenhum PASS)
+A9  suite contra PostgreSQL real (local)   493 testes, 490 pass, 0 fail, 3 skipped
+                                           (1 IA real, 2 Open Food Facts real)
+A10 npm audit --audit-level=moderate       frontend: found 0 vulnerabilities
+    npm --prefix backend audit (moderate)  backend:  found 0 vulnerabilities
+A11 npm run verify:release                 exit 0, na primeira execucao - doctor, build, testes
+                                           (493 / 418 pass / 0 fail / 75 skipped),
+                                           os dois audits com 0 e "secret scan - 0
+                                           real secrets"
+```
+
+O A9 rodou com `RUN_DB_INTEGRATION_TESTS=true` contra o PostgreSQL LOCAL (porta
+5433), com `DATABASE_URL` definida no comando - nunca contra o banco de producao.
+
+## A12 - `verify:e2e`
+
+**PASS, exit code 0, na primeira execucao**, com PostgreSQL real e Claude real -
+2 chamadas pagas. Os 23 requisitos em `PASSED`, `ok: true`. A saida literal, a
+tabela de subgates, a contagem por balde e o `E2E_LAST_RUN.json` integral estao no
+`E2E_REPORT.md`. Nao ha migration nova: o doctor leu "4/4 applied". Nenhum
+subgate novo (decisao 8.1); o gate tem diff vazio contra a v0.12.0.
+
+## A13 - os 23 requisitos antigos continuam exigidos, um a um
+
+Prova por execucao, sobre o `E2E_LAST_RUN.json` desta versao: cada requisito,
+sozinho em `NOT_EXECUTED`, reprova o modo strict - e so ele.
+
+```text
+requisitos no modo strict (flag da IA ligada): 23
+faltando no E2E_LAST_RUN.json desta versao: []
+
+requisito                valor no relatorio   NOT_EXECUTED sozinho reprova
+backendProcess           STARTED_BY_RUNNER    sim, e so ele
+database                 EXECUTED             sim, e so ele
+migrations               EXECUTED_IDEMPOTENT  sim, e so ele
+auth                     PASSED               sim, e so ele
+sessionSchema            PASSED               sim, e so ele
+multiDevice              PASSED               sim, e so ele
+isolation                PASSED               sim, e so ele
+logout                   PASSED               sim, e so ele
+assistantAuthority       PASSED               sim, e so ele
+deterministicEngine      PASSED               sim, e so ele
+fallback                 PASSED               sim, e so ele
+privacy                  PASSED               sim, e so ele
+historySync              PASSED               sim, e so ele
+favoritesSync            PASSED               sim, e so ele
+verdictFreshness         PASSED               sim, e so ele
+manualCodeLookup         PASSED               sim, e so ele
+accountExport            PASSED               sim, e so ele
+accountDeletion          PASSED               sim, e so ele
+severityVerdict          PASSED               sim, e so ele
+anthropicReal            EXECUTED_GENERIC_AND_PRODUCT sim, e so ele
+assistantAuthenticated   PASSED               sim, e so ele
+productComparison        PASSED               sim, e so ele
+offlineCache             PASSED               sim, e so ele
+
+os 23 da v0.11.0 presentes: 23 de 23
+requisitos alem dos 23: []
+falhas: 0
+```
+
+`scripts/lib/e2eGate.js` tem diff vazio contra a v0.12.0.
+
+## Limpeza do banco depois do gate
+
+Residuo **0** em todos os padroes de teste, e nenhuma linha orfa, depois do gate.
+A conta de teste da verificacao no navegador (`sw-verif-*@example.test`, no
+PostgreSQL LOCAL) foi excluida pela propria tela de exclusao - era o teste P8 -, e
+uma consulta confirmou 0 contas `sw-verif-*`. Saida completa do gate no
+`E2E_REPORT.md`.
+
+## A14 - `verify:deploy` continua somente leitura
+
+`verify:deploy` ganhou D9 a D12 (secao 8.2), todos por GET. O registro de
+requisicoes do P13 segue sem escrita, e o P13 contra o roteador real segue verde.
+
+```text
+verify:deploy simulado (local, http)   FAIL, exit 1 - 11 PASS, D2 FAIL (sem TLS local);
+                                       D9, D10, D11 e D12 em PASS
+verify:deploy REAL (somente leitura)   FAIL, exit 1 - 7 PASS; D1 FAIL ("repositorio declara
+                                       0.13.0 e o deploy anuncia 0.7.0"); D9 FAIL (sem
+                                       manifesto); D11 FAIL (/sw.js devolve a pagina,
+                                       text/html); D10 e D12 NOT_EXECUTED
+```
+
+Os FAIL sao os esperados: no ar esta a 0.7.0. O D11 contra o deploy real pegou
+exatamente o defeito para o qual existe - o fallback do app devolvendo a pagina no
+lugar do service worker. Saidas literais no `E2E_REPORT.md`.
+
+## A15 - `shared/` inalterado
+
+```text
+git diff --stat 2399b45 -- shared/   (v0.12.0)
+(vazio = nenhuma linha mudou)
+
+git status --short -- shared/
+(vazio = nada fora do commit)
+
+arquivo                              objeto git no commit 2399b45              objeto git da arvore entregue             igual  fim de linha na copia
+shared/allergenEngine.js             f57650364eb23e75583c4f83063bfcc0289e35df  f57650364eb23e75583c4f83063bfcc0289e35df  sim    CRLF
+shared/allergens.js                  8e806b817f45ea7b83e3e1d6d573452dd8b1a318  8e806b817f45ea7b83e3e1d6d573452dd8b1a318  sim    CRLF
+shared/allergyVerdict.js             9b64b377c9854a2169516af1ada09923cec1b80e  9b64b377c9854a2169516af1ada09923cec1b80e  sim    CRLF
+shared/barcode.js                    9d405872450fddcb26c78514ecc99ed884c32167  9d405872450fddcb26c78514ecc99ed884c32167  sim    CRLF
+shared/productAllergenAdapter.js     a624d9cb880583d5a448a814d27e8c4c4c87f2d6  a624d9cb880583d5a448a814d27e8c4c4c87f2d6  sim    CRLF
+shared/productComparison.js          cc396178169758edb29af88886cd104ad67fd23a  cc396178169758edb29af88886cd104ad67fd23a  sim    CRLF
+shared/text.js                       9d10de1e52a6759757a20dcc7acef71b493e0272  9d10de1e52a6759757a20dcc7acef71b493e0272  sim    CRLF
+
+arquivos em shared/: 7
+core.autocrlf = true
+```
+
+Os sete arquivos de `shared/` tem o MESMO objeto git do commit da v0.12.0
+(`2399b45`): conteudo identico, byte a byte, depois da normalizacao de fim de
+linha que o git faz (`core.autocrlf = true`; a copia de trabalho no Windows esta
+em CRLF, o repositorio em LF). O `git diff` e vazio e nada esta fora do commit.
+
+## A16 - varredura do nome antigo
+
+```text
+=== varredura de 'nutriva' (sem diferenciar maiuscula), fora de node_modules, dist, .git e releases
+./AUDIT_REPORT.md
+./backend/tests/productName.test.js
+./CHANGELOG.md
+=== ocorrencias por arquivo
+./AUDIT_REPORT.md:21
+./backend/tests/productName.test.js:3
+./CHANGELOG.md:24
+```
+
+O nome antigo aparece so em `backend/tests/productName.test.js`, o teste que o
+procura, e nas secoes historicas do `AUDIT_REPORT.md` e do `CHANGELOG.md` - a
+contagem do AUDIT_REPORT subiu de 20 para 21 porque o relatorio arquivado da
+v0.12.0 transcreve a propria varredura.
+
+## A17 - versao nos sete pontos
+
+```text
+package.json                                       0.13.0
+backend/package.json                               0.13.0
+package-lock.json (raiz e packages[""])            0.13.0 / 0.13.0
+backend/package-lock.json (raiz e packages[""])    0.13.0 / 0.13.0
+GET /api/health (app real, em memoria)             0.13.0
+README.md (titulo)                                 # NutriScan v0.13.0
+CHANGELOG.md (entrada mais recente)                ## NutriScan v0.13.0 - 2026-10-30
+```
+
+O `/api/health` foi lido de verdade, numa instancia do app em memoria; a versao
+dele vem do `package.json` (fonte unica, P8 da v0.7.5).
+
+## Observacoes descritas e NAO alteradas - para decisao
+
+1. **Mesma versao, build diferente.** O nome do cache e a versao. Um build
+   republicado sem subir a versao reaproveita o cache; as regras do projeto mandam
+   subir a versao a cada entrega. Acrescentar um hash do build ao nome resolveria
+   - fica para decisao.
+2. **Cota de armazenamento.** O navegador pode apagar o Cache Storage de um app
+   pouco usado; ai o app volta a precisar de rede para abrir. Nao medido.
+3. **Primeira abertura sem rede**: impossivel por construcao - o shell so e
+   guardado depois de uma abertura com rede.
+4. **Herdados**: o chat diz "sem conflito" para produto sem dado de alergenico
+   (v0.10.0); os textos de conduta do assistente (v0.9.0); a tela Conta rola de
+   lado em 320 px; o possivel anuncio em dobro (v0.12.0).
+
+## O que esta versao NAO prova
+
+- **Instalacao em aparelho real: NAO VERIFICADO.** Ninguem instalou o app num
+  Android ou num iPhone. O convite e o pedido do navegador foram testados com
+  dubles; o manifesto, os icones e o service worker, no Chromium do ambiente.
+- **Service worker em HTTPS real: NAO VERIFICADO.** Rodou em `http://127.0.0.1`,
+  que o navegador trata como seguro. O D2, que exige HTTPS, segue em FAIL no alvo
+  simulado.
+- **Leitor de tela real: NAO VERIFICADO**, como na v0.12.0 - inclusive para o
+  aviso de versao nova.
+- **Toque em aparelho real: NAO VERIFICADO.**
+- **A camera em hardware: NAO EXECUTADO.**
+- **O deploy real da 0.13.0: NAO EXECUTADO.** Nada foi publicado; no ar esta a
+  0.7.0.
+- **Safari e Firefox**: nao abertos.
+
+## Historico de auditorias anteriores
+
+## Auditoria da v0.12.0 - 2026-10-30
 
 ## Escopo
 
@@ -1001,8 +1911,6 @@ como manda a secao 16.
 - **Outros navegadores:** so o Chromium do painel do ambiente foi aberto.
 - **Conformidade WCAG: nao declarada.** Adequacao clinica e conformidade
   juridica tambem nao.
-
-## Historico de auditorias anteriores
 
 ## Auditoria da v0.11.0 - 2026-10-16
 

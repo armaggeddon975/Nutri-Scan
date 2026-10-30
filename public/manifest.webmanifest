@@ -1,0 +1,21 @@
+{
+  "id": "/",
+  "name": "NutriScan",
+  "short_name": "NutriScan",
+  "description": "Leia o código de barras de um alimento e veja ingredientes, tabela nutricional e alergênicos do seu perfil.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#3d472b",
+  "background_color": "#f5f2ea",
+  "categories": ["food", "health"],
+  "icons": [
+    { "src": "/nutriscan-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

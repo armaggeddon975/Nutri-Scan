@@ -1,5 +1,85 @@
 # Changelog
 
+## NutriScan v0.13.0 - 2026-10-30
+
+App instalavel e service worker. Minor: o app passa a abrir sem rede e a poder
+ser instalado na tela inicial. Nao ha migration, rota nova nem variavel nova; o
+`verify:deploy` ganhou quatro subgates de leitura.
+
+Isto descreve o que o software faz. Nao e orientacao de saude nem de nutricao.
+
+### O projeto segue NAO PUBLICADO
+
+As versoes 0.7.1 a 0.13.0 nunca foram ao ar. O servico `nutriscan` no Render
+continua rodando a **0.7.0**. Esta versao nao publica nada - e o service worker
+so roda sob HTTPS, entao a parte dele que depende do deploy segue NAO COMPROVADA.
+
+### O problema, pelo que era
+
+A v0.11.0 entregou o modo sem rede: o IndexedDB guarda os produtos e o perfil, e
+o veredito e refeito no aparelho. Mas o APP nao era guardado: sem rede, o
+navegador nao conseguia buscar o HTML, o JavaScript nem o CSS, e a pessoa via
+erro de conexao. O modo sem rede existia, funcionava, foi auditado - e nao tinha
+como ser alcancado, exatamente na situacao para a qual foi construido.
+
+### O que entrou
+
+- **Service worker** (`src/sw/`, gerado no build como `/sw.js`). Guarda SO o
+  shell do app - HTML, JavaScript, CSS, fontes, icones, manifesto -, com a lista
+  tirada do proprio build. Pre-carregamento de 22 arquivos, 1.169 KB.
+- **Estrategia por tipo**: a pagina vem da rede primeiro (sem rede ou depois de
+  4 s, o shell guardado); os arquivos do build vem do cache; a API inteira, a
+  Open Food Facts e toda escrita o service worker nem toca.
+- **Nada de `/api/` no Cache Storage.** Perfil, alergias, historico,
+  favoritos, exportacao, comparacao, assistente, conta, /api/health: so rede. A
+  regra esta num lugar so (`politicaDeCache.js`) e e imposta duas vezes: o
+  service worker nao intercepta `/api/`, e a gravacao recusa de novo `/api/`,
+  Set-Cookie, `no-store`, `private` e tudo que nao seja arquivo do build.
+- **Logout, exclusao e sessao recusada limpam os dois armazenamentos**: o
+  IndexedDB, como desde a v0.11.0, e o Cache Storage.
+- **Versao nova**: cache por versao do package.json; a nova se instala ao lado,
+  assume e apaga a antiga. A pagina nunca recarrega sozinha: um aviso ("Há uma
+  versão nova do NutriScan") oferece "Atualizar agora", e a proxima abertura do
+  app atualiza de qualquer jeito.
+- **Instalavel**: `manifest.webmanifest` com as cores da identidade, e icones
+  PNG de 192, 512, 512 maskable e 180 - o mesmo "N" do `nutriscan-icon.svg`. O
+  convite para instalar aparece na tela Inicio so depois de 2 produtos abertos.
+- **Sem service worker, o app funciona como na v0.12.0** - navegador sem suporte,
+  http fora de localhost ou registro falhando.
+- **`verify:deploy`: D9 a D12**, so leitura: manifesto valido, icones
+  declarados servidos, `sw.js` como JavaScript e sem cache longo. O backend
+  serve o `sw.js` e o manifesto com `Cache-Control: no-cache`.
+
+### Decisoes
+
+- **Recarregar so por toque da pessoa**: ela pode estar lendo um veredito.
+- **Imagens da Open Food Facts nao sao guardadas**: dado de terceiro, nao
+  confiavel, e cada uma ocupa espaco.
+- **`/api/health` nao e guardado**: diz o estado do servidor agora.
+- **Sem subgate novo no E2E**: service worker e comportamento de cliente em
+  contexto seguro; o gate roda contra o backend. A verificacao fica nos testes
+  que rodam o `sw.js` do build e no navegador.
+
+### Testes e mutacao
+
+P1-P18 e R1-R8 em `backend/tests/serviceWorker.test.js`: o app e construido de
+verdade com o Vite, e o `sw.js` desse build roda num ambiente com os eventos do
+navegador. `scripts/mutation-check.js` ganhou 20 mutantes (PW1-PW20). Os testes
+do `verify:deploy` passaram de 8 para 12 subgates. `esbuild` 0.25.12 virou
+dependencia de desenvolvimento declarada (ja vinha com o Vite). Resultado em
+`AUDIT_REPORT.md`; o que e guardado e o que fica aberto, em
+[docs/SERVICE_WORKER.md](docs/SERVICE_WORKER.md).
+
+### O que esta versao NAO prova
+
+- A instalacao num celular de verdade: **NAO VERIFICADO**.
+- O service worker sob HTTPS real: **NAO VERIFICADO** - conferido em
+  `http://127.0.0.1`, que o navegador trata como seguro.
+- A experiencia com leitor de tela real e o toque em aparelho real: **NAO
+  VERIFICADO**, como na v0.12.0.
+- A leitura da camera em aparelho real: **NAO EXECUTADO**.
+- O deploy real da 0.13.0: **NAO EXECUTADO**.
+
 ## NutriScan v0.12.0 - 2026-10-30
 
 Acessibilidade do alerta de alergia (WCAG 2.2 AA, no caminho do alerta). Minor:
