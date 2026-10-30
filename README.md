@@ -1,4 +1,4 @@
-# NutriScan v0.11.0
+# NutriScan v0.12.0
 
 NutriScan e um app web para consultar alimentos por nome ou codigo de barras,
 ver tabela nutricional, identificar ingredientes sensiveis e conversar com um
@@ -35,6 +35,7 @@ Com isso, `{ traces: "milk" }` e tratado como traco, enquanto
 - Alerta maximo por alergia: o aviso mais forte, inclusive para "pode conter" (v0.9.0).
 - Comparar dois produtos lado a lado, cada um com o proprio veredito (v0.10.0).
 - Rever sem internet os produtos ja abertos neste aparelho, com o veredito refeito na hora (v0.11.0).
+- Alerta de alergia que chega sem depender de cor, anunciado ao leitor de tela (v0.12.0).
 
 ## Requisitos
 
@@ -332,6 +333,25 @@ informacao de seguranca errada em abril, quando a pessoa marca uma alergia nova.
 O veredito e sempre recalculado pelo motor deterministico na hora de exibir, com
 o perfil atual.
 
+## Acessibilidade do alerta (v0.12.0)
+
+O veredito de alergia precisa CHEGAR a quem usa leitor de tela, tem baixa visao
+ou nao distingue cores - nao so estar certo.
+
+- **O estado e escrito**, nunca so colorido: "Conflito com o seu perfil",
+  "Pode conter traços", "Sem conflito com o seu perfil", "Não avaliado" - e cada
+  alergenico diz "Contém" ou "Pode conter".
+- **O veredito e anunciado** ao leitor de tela quando um produto abre, quando a
+  alergia muda e quando a comparacao fica pronta, sem interromper o que ele
+  estiver lendo.
+- **Na comparacao, cada veredito diz de qual produto e.**
+- **O foco nao se perde**: fica no controle acionado, vai para o titulo quando a
+  tela troca, e nao fica escondido atras das barras fixas.
+
+Nao e declaracao de conformidade WCAG: a verificacao com leitor de tela real
+continua aberta. O que foi coberto, por qual teste, e o que falta estao em
+[docs/ACESSIBILIDADE.md](docs/ACESSIBILIDADE.md).
+
 ## Sem internet (v0.11.0)
 
 O sinal cai justamente no supermercado. Com o app aberto, sem internet, a pessoa
@@ -479,7 +499,7 @@ escrito para quem publica: o que preencher no painel, como as migrations
 entram, como verificar o resultado e o que fazer quando um subgate falha. As
 decisoes de HTTPS, cookie e migrations tambem estao la.
 
-As versoes 0.7.1 a 0.11.0 ainda nao foram publicadas; o servico no ar roda a
+As versoes 0.7.1 a 0.12.0 ainda nao foram publicadas; o servico no ar roda a
 0.7.0.
 
 ### Variaveis obrigatorias em producao
@@ -653,6 +673,7 @@ como `sem proteinas do leite`. Se o rotulo tambem trouxer `leite`, `whey`,
 - [Nivel de alerta por alergia](docs/NIVEL_DE_ALERTA.md)
 - [Comparacao de dois produtos](docs/COMPARACAO.md)
 - [Usar o app sem internet](docs/OFFLINE.md)
+- [Acessibilidade do alerta de alergia](docs/ACESSIBILIDADE.md)
 - [Nutri Assistente IA](docs/AI_ASSISTANT.md)
 - [Relatorio de auditoria](AUDIT_REPORT.md)
 - [Relatorio E2E](E2E_REPORT.md)

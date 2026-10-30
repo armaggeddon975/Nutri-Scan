@@ -1,6 +1,1010 @@
-# Relatorio de Auditoria - NutriScan v0.11.0
+# Relatorio de Auditoria - NutriScan v0.12.0
 
-Data: 2026-10-16
+Data: 2026-10-30
+
+## Escopo
+
+Entrada 0.11.0, saida 0.12.0. Acessibilidade do alerta de alergia, no nivel AA da
+WCAG 2.2, no caminho do alerta. Minor: muda como o veredito e APRESENTADO. Nao ha
+migration, rota nova nem variavel nova.
+
+**Isto nao e declaracao de conformidade WCAG.** Conformidade exige auditoria
+humana com tecnologia assistiva real, e ela nao foi feita. O relatorio diz quais
+criterios foram cobertos por teste, quais foram conferidos no navegador e quais
+nao foram verificados. Tambem nao e orientacao de saude nem de nutricao.
+
+**O problema, pelo que era.** Onze versoes garantiram que o veredito esteja
+CORRETO. Nenhuma garantiu que ele CHEGUE a pessoa. O motor calculava certo, e a
+tela entregava o alerta por cor, por leitura visual e por posicao.
+
+**Preservado sem refatoracao (secao 3).** `git diff` contra a v0.11.0 (commit
+`61f0661`):
+
+```text
+shared/ (motor, veredito, comparacao, codigo de barras)        vazio
+scripts/verify-e2e.js, e2e-real.js, lib/ (gate E2E)            vazio
+scripts/verify-deploy.js, verify-release.js, version-check.js  vazio
+scripts/doctor.js                                              vazio
+src/services/ (cache offline, consulta, sessao)                vazio
+src/styles.css (arquivo do design)                             vazio
+backend/src/                                                   2 arquivos - so a troca do zod 3
+                                                               pelo zod 4, por seguranca (A9)
+```
+
+Codigo de producao da entrega, todo no cliente:
+
+```text
+NOVO  src/utils/estadoDoVeredito.js             o estado em palavras: fonte unica do bloco e do anuncio
+NOVO  src/components/common/AnuncioDoVeredito.jsx  a regiao viva unica, polite
+      src/components/assistant/AllergyVerdict.jsx  quatro estados por texto; grupo com nome
+      src/components/food/ProductAnalysis.jsx      o bloco do motor para todo produto
+      src/pages/Compare/ComparePage.jsx            nome do produto no bloco, na coluna e na tabela
+      src/pages/Assistant/AssistantPage.jsx        rotulo visivel; h3; ocupado sem disabled
+      src/pages/Scanner/ScannerPage.jsx            um botao so; ocupado sem disabled; status calado
+      src/pages/Search/SearchPage.jsx              recusa do codigo ligada ao campo
+      src/components/common/StatusLine.jsx         modo calado; a mesma mensagem e lida de novo
+      src/components/common/PageHeader.jsx         h1 por tela; titulo focavel
+      src/components/allergies/AllergyPicker.jsx   nivel do cabecalho conforme a tela
+      src/components/allergies/AlertLevelPicker.jsx  nome completo na caixa; nivel do cabecalho
+      src/pages/Account/AccountPage.jsx            h5 no cartao da Conta
+      src/pages/Home/HomePage.jsx                  titulo focavel
+      src/App.jsx                                  veredito de todo produto, anuncio, foco na troca
+                                                   de tela, recusa do codigo marca o campo
+      src/styles-v070.css                          so acrescimo; o styles.css do design intocado
+```
+
+Testes e mutacao: `backend/tests/accessibility.test.js` (novo, 24 testes) e
+`scripts/mutation-check.js` (15 mutantes novos, AC1 a AC15). Documento novo:
+`docs/ACESSIBILIDADE.md`.
+
+## 6.1 - A cor nunca e o unico sinal (1.4.1)
+
+**Antes.** O bloco de veredito so existia no assistente e na comparacao, e so
+para conflito, traco e sem conflito; "nao avaliado" nao renderizava nada. Na tela
+do produto - onde o alerta mais chega - nao havia bloco do motor: a lista
+"Alertas do perfil" montava o proprio texto a partir da analise. Ali:
+
+- o alergenico declarado aparecia so como "Leite/lactose", numa etiqueta
+  vermelha - o estado estava na cor;
+- quem nao marcou nenhuma alergia lia "Sem conflito com o perfil", sem que nada
+  tivesse sido conferido - o motor diz `not_evaluated` nesse caso.
+
+**O que mudou.** Um titulo por estado, que E o estado: "Conflito com o seu
+perfil" (ou "Alerta máximo: conflito com o seu perfil"), "Pode conter traços",
+"Sem conflito com o seu perfil", "Não avaliado" - este com o motivo. Cada
+alergenico diz o seu estado: "Contém Leite/lactose", "Pode conter Amendoim",
+"· alerta máximo". A tela do produto mostra o MESMO bloco, com o veredito do
+motor, calculado por `avaliarNoAparelho` - a funcao que o modo sem rede usa
+desde a v0.11.0 - para todo produto. O icone ficou decorativo.
+
+**O conteudo do veredito nao mudou.** O bloco le `status`, `conflicts`,
+`traces`, `minimumSafety`, `reason` e `alert`, e nada mais; o texto do estado sai
+de `src/utils/estadoDoVeredito.js`, que nao acrescenta campo ao veredito.
+
+**Teste.** A1t tira toda a cor da arvore renderizada - classe, estilo inline e
+os icones - e confere que os quatro estados seguem distintos, que o texto de
+cada um diz o estado e que o titulo e o estado; faz o mesmo na comparacao. A2t
+confere que nenhuma etiqueta e so o nome do alergenico.
+
+## 6.2 - Contraste (1.4.3, 1.4.11)
+
+**Antes.** Dois pares reprovavam:
+
+```text
+linha "Verificação do próprio app..." (15px, opacidade 0.85)
+  tom de tracos                                     3.89:1   minimo 4.5
+  tom de sem conflito                               3.97:1   minimo 4.5
+dica da busca do topo ("Buscar alimento", 18px)     4.40:1   minimo 4.5
+```
+
+**O que mudou.** Em `src/styles-v070.css`, sem tocar o arquivo de design: a
+linha de origem com a tinta cheia (`opacity: 1`): 5.17 e 5.38. A dica do topo em
+creme a 80%: 4.99 - e ainda mais clara que o texto digitado (6.71), para seguir
+lendo como dica. A borda do campo da comparacao, o unico campo do caminho com
+borda desenhada, passou de 1.58:1 para 5.53:1 (`--ink-3`). O criterio nao foi
+afrouxado.
+
+**Temas.** O app tem um tema so, claro (`color-scheme: light`). O A3t falha se
+um tema escuro aparecer em qualquer dos dois CSS sem ser medido.
+
+**Como e calculado.** O A3t le os dois CSS como o navegador: na ordem do
+`main.jsx`, a ultima declaracao vencendo; resolve `var()` contra os tokens reais
+de `:root`; mistura transparencia (rgba e opacidade) sobre o fundo; aplica a
+formula de luminancia relativa da WCAG. As cores de cada par saem do seletor
+real que as declara - nao de uma lista de tokens escrita no teste.
+
+```text
+par                                                        valor   minimo  tipo
+------------------------------------------------------------------------------------
+veredito danger: titulo (24px)                             6.04:1  3       texto grande
+veredito danger: motivo e alerta (17px)                    6.04:1  4.5     texto
+veredito danger: origem (15px, opacidade 1)                6.04:1  4.5     texto
+veredito warning: titulo (24px)                            5.17:1  3       texto grande
+veredito warning: motivo e alerta (17px)                   5.17:1  4.5     texto
+veredito warning: origem (15px, opacidade 1)               5.17:1  4.5     texto
+veredito safe: titulo (24px)                               5.38:1  3       texto grande
+veredito safe: motivo e alerta (17px)                      5.38:1  4.5     texto
+veredito safe: origem (15px, opacidade 1)                  5.38:1  4.5     texto
+veredito neutral: titulo (24px)                            8.52:1  3       texto grande
+veredito neutral: motivo e alerta (17px)                   8.52:1  4.5     texto
+veredito neutral: origem (15px, opacidade 1)               8.52:1  4.5     texto
+etiqueta de risco (Contém/Pode conter)                     6.91:1  4.5     texto
+erro do campo sobre --bg                                   6.45:1  4.5     texto
+dica do campo sobre --bg                                   5.53:1  4.5     texto
+erro do campo sobre --surface                              6.91:1  4.5     texto
+dica do campo sobre --surface                              5.92:1  4.5     texto
+erro do campo sobre --surface-2                            5.89:1  4.5     texto
+dica do campo sobre --surface-2                            5.05:1  4.5     texto
+linha de status success                                    5.38:1  4.5     texto
+linha de status warning                                    5.17:1  4.5     texto
+linha de status error                                      6.04:1  4.5     texto
+linha de status neutra                                     9.99:1  4.5     texto
+comparacao: falta de dado (compare-missing)                5.67:1  4.5     texto
+comparacao: 'Do aparelho'                                  5.67:1  4.5     texto
+comparacao: mensagem de aviso                              5.30:1  4.5     texto
+comparacao: texto do campo                                 15.85:1 4.5     texto
+aviso sem rede: titulo                                     14.46:1 4.5     texto
+aviso sem rede: texto                                      9.12:1  4.5     texto
+rotulo do campo (busca e camera)                           9.33:1  4.5     texto
+rotulo da pergunta ao assistente                           9.99:1  4.5     texto
+texto digitado no campo                                    13.52:1 4.5     texto
+dica dentro do campo (placeholder)                         5.05:1  4.5     texto
+sobretitulo da tela                                        5.53:1  4.5     texto
+botao principal                                            5.94:1  4.5     texto
+botao secundario                                           13.52:1 4.5     texto
+botao de busca do campo                                    5.94:1  4.5     texto
+botao de enviar pergunta                                   5.94:1  4.5     texto
+sugestao de pergunta                                       8.52:1  4.5     texto
+escolha em Meus produtos                                   8.52:1  4.5     texto
+linha de alergia                                           15.85:1 4.5     texto
+linha de alergia marcada                                   6.41:1  4.5     texto
+linha de alerta maximo marcada                             6.04:1  4.5     texto
+alergia escolhida (etiqueta)                               6.41:1  4.5     texto
+titulo de grupo de alergias (14px)                         5.05:1  4.5     texto
+texto do nivel de alerta                                   9.99:1  4.5     texto
+aba inativa (rotulo 14px)                                  5.46:1  4.5     texto
+aba ativa                                                  8.79:1  4.5     texto
+busca do topo: texto                                       6.71:1  4.5     texto
+busca do topo: dica                                        4.99:1  4.5     texto
+anel de foco sobre --bg                                    5.31:1  3       indicador
+anel de foco sobre --surface                               5.69:1  3       indicador
+anel de foco sobre --surface-2                             4.85:1  3       indicador
+anel de foco sobre --danger-soft                           4.97:1  3       indicador
+anel de foco sobre --warn-soft                             5.19:1  3       indicador
+anel de foco sobre --ok-soft                               5.04:1  3       indicador
+anel de foco sobre --brand-soft                            4.55:1  3       indicador
+anel de foco nas barras escuras                            8.79:1  3       indicador
+anel da busca do topo                                      8.79:1  3       indicador
+borda do campo da comparacao sobre --bg                    5.53:1  3       indicador
+borda do campo da comparacao sobre o campo                 5.92:1  3       indicador
+caixa de alergia marcada                                   5.69:1  3       indicador
+caixa de alerta maximo marcada                             6.04:1  3       indicador
+```
+
+63 pares, 0 abaixo do minimo. O tema e um so (claro).
+
+**Fora da regra, e por que:**
+
+- icones em salvia (`--sage`, 2.93:1 sobre o creme): decorativos, com
+  `aria-hidden`; o texto ao lado diz o mesmo;
+- borda rosada da etiqueta de risco (`--danger-line`, 1.68:1): decorativa; a
+  etiqueta e identificada pelo texto "Contém ...";
+- fundo dos campos do design (areia sobre creme, cerca de 1.1:1): o 1.4.11 nao
+  exige contorno quando o rotulo identifica o campo, e todo campo do caminho tem
+  rotulo (A12); o foco desenha o anel de 2px (A9t).
+
+## 6.3 - Leitor de tela recebe o alerta (1.3.1, 4.1.2, 4.1.3)
+
+**Antes.** O bloco era `role="status"` - uma regiao viva que nascia junto com o
+texto, e dentro do log do assistente, que ja e regiao viva. Na tela do produto,
+nada anunciava o veredito. Na comparacao, so a posicao dizia de quem era cada
+veredito.
+
+**O que mudou.**
+
+- **Papel e nome:** o bloco e `role="group"`, com nome pelo titulo -
+  "Nutella: Conflito com o seu perfil". O nome do produto vai num trecho
+  invisivel (`sr-only`), para quem ouve dois blocos na mesma tela.
+- **Anuncio:** uma regiao viva UNICA, `#anuncio-do-veredito`, montada uma vez no
+  app, fora das telas, e nunca desmontada. Recebe o texto quando um produto abre
+  (camera, codigo digitado, busca, lista), quando o veredito do produto aberto
+  muda (alergia ou nivel alterado) e quando a comparacao fica pronta - completa
+  ou com um lado faltando. O texto poe o estado primeiro.
+- **Ordem de leitura:** o veredito antes do texto do modelo no DOM - no
+  assistente, na tela do produto (logo depois do nome, antes de tabela,
+  ingredientes e pontos de atencao) e em cada coluna da comparacao.
+- **Comparacao:** a coluna se chama "Primeiro produto: Nutella"; o bloco,
+  "Nutella: Conflito com o seu perfil"; os cabecalhos "Primeiro" e "Segundo"
+  das tabelas levam o nome, que o leitor le junto com cada celula. O anuncio
+  diz "Primeiro produto, Nutella. Conflito com o seu perfil: ...".
+- **O assistente** segue anunciando pelo proprio log (`role="log"`,
+  `aria-live="polite"`), com o veredito antes da resposta. Ali a regiao unica
+  nao e usada: seria o mesmo alerta lido duas vezes.
+
+## Decisao de politeness
+
+**`polite`, e nao `assertive`.** O anuncio do veredito responde a uma acao da
+propria pessoa - ela acabou de escanear, digitar ou comparar e esta esperando o
+resultado. `polite` e lido assim que o leitor termina a frase em curso, sem
+cortar nada. `assertive` interromperia a leitura no meio; num app em que cada
+produto aberto traz um veredito, interromper toda vez o tornaria insuportavel, e
+um alerta que a pessoa aprende a silenciar e um alerta que deixa de chegar.
+
+Nada no app e `assertive`. O unico anuncio que interrompe e o `role="alert"` do
+erro de codigo digitado, que existe desde a v0.7.3 e e travado pelo M12: ali a
+pessoa acabou de enviar e o envio foi recusado - e o campo dela. Com esse erro na
+tela, a linha de status cala (`aria-live="off"`), para a recusa nao ser lida duas
+vezes.
+
+**Por que uma regiao so.** Leitor de tela anuncia mudanca numa regiao que ja
+existia; uma regiao que nasce junto com o texto pode ficar muda. Por isso a
+regiao vive no app inteiro e esta no primeiro HTML, vazia (A5t, sobre o App
+renderizado). O mesmo veredito anunciado duas vezes seguidas - o mesmo produto
+reaberto - muda um espaco no fim, para ser lido de novo.
+
+## Decisao de destino do foco
+
+**Depois de uma acao, o foco FICA no controle acionado**, e o resultado chega
+pela regiao viva. Enviar o codigo, comparar, marcar uma alergia: o foco nao se
+move. Mover o foco para o veredito tiraria a pessoa do campo onde ela
+provavelmente vai digitar o proximo codigo - no supermercado, um produto atras
+do outro - e faria o leitor reler a pagina a partir do bloco.
+
+**Quando a tela troca, o foco vai para o titulo da tela nova** (`h2` com
+`tabIndex=-1`, `data-titulo-da-tela`). Antes, o botao que a pessoa acionava
+sumia com a troca - "Comparar com outro produto", por exemplo - e o foco caia no
+`<body>`: o leitor recomecava do topo da pagina. Na primeira carga o foco fica
+onde o navegador o poe.
+
+**Para isso funcionar, nada que a pessoa acabou de usar pode sumir:**
+
+- os controles que esperam resposta usam `aria-disabled` (e `readOnly` no campo)
+  em vez de `disabled`, que tirava o foco do controle e o jogava no `<body>`; o
+  envio repetido e barrado no codigo;
+- o botao da camera e um elemento so, que alterna entre "Ligar câmera" e
+  "Desligar câmera" - eram dois, e a camera desliga sozinha depois de ler.
+
+## 6.4 - Foco e teclado (2.1.1, 2.4.3, 2.4.7, 2.4.11)
+
+**Antes.** Quatro campos do design trocavam o anel de foco (`outline: none`) por
+uma borda de 1px e um halo claro; a caixa do seletor de alergias e a busca do
+topo tambem. Os controles ocupados usavam `disabled`. A barra de cima e as abas,
+fixas, podiam cobrir o campo focado.
+
+**O que mudou.** O anel de 2px volta nesses campos (`:focus-visible`) e nas
+caixas que envolvem o campo (`:focus-within`), em creme na barra escura. A
+pagina tem `scroll-padding` com a altura medida de cada barra: 9.5rem (152px) em
+cima no celular, 7rem (112px) no computador; embaixo, a altura das abas mais o
+recorte do iPhone mais 16px. A folga de cima e em `rem` para crescer junto com a
+letra do navegador. Nenhum controle nao nativo, nenhum `tabindex` positivo,
+nenhuma armadilha de foco.
+
+**Medido no navegador** (build real, 375x812, comparacao com dois produtos):
+Tab real sete vezes e Shift+Tab quatro - 11 de 11 focos visiveis, nenhum sob as
+barras. Controle negativo, com a folga zerada so na pagina inspecionada: o botao
+"Explicar as diferenças" ficou em 764-812, sob as abas (736); o campo de cima
+ficou em 0, sob a barra (145). Com a folga: 672-720 e 152.
+
+**Teste.** A8t (controles nativos, sem tabindex positivo, `tabindex=-1` so nos
+titulos, ocupado sem `disabled`, botao da camera estavel, lista de alergias com
+`aria-expanded`); A9t (o anel global existe; toda regra que zera o outline tem o
+anel devolvido depois, no mesmo seletor ou na caixa que envolve o campo; nenhum
+outline inline); A10 (a folga cobre as barras, no celular e no computador, e a
+folga menor vale exatamente onde as abas somem).
+
+## 6.5 - Alvo de toque (2.5.8)
+
+**Antes e depois:** ja estava correto - o design usa 48px de toque. Nada mudou
+alem do botao da camera, que manteve o tamanho.
+
+**Medido no navegador**, build real, sem rolagem lateral em nenhuma tela:
+
+```text
+largura   tela                          alvos   menor lado
+320 px    Inicio                           24        48 px
+320 px    Camera                           11        48 px
+320 px    Comparar (com dois produtos)     15        48 px
+320 px    Alergias                        207        40 px
+320 px    Assistente                       13        48 px
+375 px    Produto (Nutella aberta)         22        45 px
+```
+
+Caixas de marcar contam pela linha inteira (o rotulo e o alvo). **No CSS** (A11),
+o tamanho declarado de cada alvo do caminho:
+
+```text
+Ligar/Desligar câmera, Comparar, Escanear                  altura             56 px
+Abrir este produto (comparação)                            altura             48 px
+botões da comparação                                       altura             48 px
+Buscar / Buscar código (só ícone na câmera)                altura             56 px
+Buscar / Buscar código (só ícone na câmera)                largura (padding)  48 px
+Perguntar ao assistente (só ícone)                         altura             56 px
+Perguntar ao assistente (só ícone)                         largura (padding)  48 px
+sugestão de pergunta                                       altura             48 px
+Meus produtos (comparação)                                 altura             48 px
+Tentar de novo                                             altura             48 px
+aba de navegação                                           altura             48 px
+conta (topo, só ícone)                                     altura             48 px
+conta (topo, só ícone)                                     largura            48 px
+linha de alergia e de alerta máximo (o rótulo é o alvo)    altura             52 px
+remover alergia (×)                                        altura             32 px
+remover alergia (×)                                        largura            32 px
+abrir lista de alergias                                    altura             40 px
+abrir lista de alergias                                    largura            40 px
+campo de busca/código                                      altura             56 px
+campo da pergunta                                          altura             56 px
+campo da comparação                                        altura             48 px
+campo de buscar alergia                                    altura             48 px
+busca do topo                                              altura             54 px
+```
+
+## 6.6 - Formulario e erro (3.3.1, 3.3.2, 3.3.3)
+
+**Antes.** O campo de codigo da camera ja tinha `<label>` e erro ligado por
+`aria-describedby`, com `role="alert"` (v0.7.3, M12) - mas a linha de status
+anunciava a mesma recusa de novo. A busca, que tambem aceita codigo, nao ligava
+a recusa ao campo. A pergunta ao assistente nao tinha rotulo visivel. As caixas
+de alerta maximo se chamavam so "Leite/lactose".
+
+**O que mudou.** A recusa do codigo marca o campo na busca tambem
+(`aria-invalid`, `aria-describedby`, `role="alert"`); com o erro no campo, a
+linha de status cala. "Nao encontrado" e resultado, nao erro de digitacao: nao
+marca o campo. Rotulo visivel "Sua pergunta". As caixas de alerta maximo se
+chamam "Alerta máximo para Leite/lactose".
+
+**Medido no navegador**, os quatro motivos na camera - vazio, letra, tamanho e
+digito verificador - com mensagens diferentes, `role="alert"`, ligados ao campo
+junto com a dica, `aria-invalid="true"`, a linha de status em `aria-live="off"`
+e o foco no campo. Na busca, o mesmo com o digito verificador.
+
+**Teste.** A12 (rotulo visivel associado em cada campo; o filtro do seletor de
+alergias, campo de busca com lupa, tem nome acessivel que contem o texto
+visivel - 2.5.3); A13 (os quatro motivos distintos, ligados, anunciados uma vez,
+na camera e na busca); A14 (nome e estado de cada caixa de alergia e de alerta
+maximo).
+
+## 6.7 - Movimento (2.3.3)
+
+**Ja estava correto.** O design ja tinha `prefers-reduced-motion: reduce` para
+`*`, `::before` e `::after` - animacao, transicao e rolagem suave. A camera nao
+comunica estado por animacao: o botao e a linha de status dizem o estado em
+texto, e o icone que gira e decorativo. A15 trava as duas coisas.
+
+## 6.8 - Idioma e estrutura (3.1.1, 1.3.1)
+
+**Antes.** `lang="pt-BR"` ja estava. As telas comecavam em `h2` (o design desenha
+o titulo da tela no tamanho de `h2`), e havia pulos: "Nutri Assistente" em `h4`
+direto abaixo do `h2`; os grupos do seletor de alergias em `h5`; o titulo do
+nivel de alerta em `h4`.
+
+**O que mudou.** Cada tela tem um `h1` invisivel ("NutriScan: Buscar") e desce
+sem pular: "Nutri Assistente" e `h3`; os grupos e o nivel de alerta sao `h3` na
+tela de Alergias e `h5` no cartao da Conta, abaixo do `h4` dele. O estilo segue
+pela classe: o tamanho na tela nao mudou. Landmarks: `header`, duas `nav` com
+nome, um `main`, rodape, link "Pular para o conteúdo". A16 confere as cinco
+telas do caminho renderizadas.
+
+## Decisao sobre o subgate do gate E2E
+
+**Nenhum subgate novo.** O gate E2E roda contra o backend real; acessibilidade e
+comportamento do cliente - o HTML que a tela gera, o CSS, o foco, o anuncio. Um
+subgate contra o backend real nao provaria nada disso: a API nao mudou nenhum
+campo, e o `allergyVerdict` que ela devolve e o mesmo. A verificacao fica onde
+prova alguma coisa: nos testes que renderizam o JSX real (A1t a A17) e no
+navegador, sobre o build real (acima). **Proposta, nao implementada:** um gate de
+navegador de verdade (Playwright com axe, por exemplo) que abra o app, escaneie
+por codigo e leia a arvore de acessibilidade do Chromium - complementaria os
+testes, sem substituir o leitor de tela real.
+
+Os 23 requisitos continuam exigidos, um a um - A12, abaixo.
+
+## Como os testes inspecionam a arvore renderizada
+
+`accessibility.test.js` empacota com esbuild o JSX REAL de `src/` - o App
+inteiro, as telas e os componentes - e renderiza com `renderToStaticMarkup`,
+como o `assistantPageRender.test.js` faz desde a v0.6.8. Os vereditos dos testes
+saem do motor de `shared/` (`buildAllergyVerdict`, `compareProducts`,
+`avaliarNoAparelho`), nunca escritos a mao. As assercoes leem o HTML que sai:
+papel, `aria-*`, ids e para quem apontam, texto visivel e texto so de leitor,
+ordem no documento, atributos de campo. O A1t remove do HTML renderizado a
+classe, o estilo e os icones antes de comparar os quatro estados.
+
+O CSS e lido como o navegador o le (A3t, A9t, A10, A11, A15): os dois arquivos,
+na ordem do `main.jsx`, `@media` respeitado, a ultima declaracao vencendo, `var()`
+resolvido contra os tokens reais.
+
+Leituras de codigo-fonte que restam, marcadas como complemento: a ordem de
+importacao do CSS no `main.jsx`, e a busca de `dangerouslySetInnerHTML` e
+`innerHTML` no A17. Nenhuma assercao de comportamento e feita sobre o fonte.
+
+O que os testes NAO provam: que a experiencia com leitor de tela e boa. Eles
+provam que a informacao esta exposta.
+
+## A1 - A1t a A17, R1 a R7
+
+Presentes e verdes, sem banco e contra PostgreSQL real:
+
+```text
+A1t  sem cor, os quatro estados do veredito continuam distinguiveis por texto       1.4.1
+A2t  cada alergenico do veredito vem com o seu estado escrito                       1.4.1, 1.3.1
+A3t  contraste calculado dos tokens reais: texto 4.5, texto grande 3, indicador 3   1.4.3, 1.4.11
+A4t  o bloco de veredito e um grupo com nome: o estado, e o produto quando ha       4.1.2, 1.3.1
+A5t  a regiao de anuncio e polite, existe antes do veredito e recebe o estado        4.1.3
+     primeiro
+A6t  no assistente, na tela do produto e na comparacao, o veredito vem antes        1.3.2
+A7t  na comparacao, coluna, veredito e cabecalho de tabela dizem o nome do produto  1.3.1, 4.1.2
+A8t  todo controle do caminho do alerta e nativo, alcancavel e sem armadilha        2.1.1, 2.1.2, 2.4.3
+A9t  o anel de foco existe, tem 2px e nenhum campo do caminho o perde               2.4.7, 1.4.11
+A10  a folga de rolagem cobre a barra de cima e as abas, no celular e no computador 2.4.11
+A11  os alvos de toque do caminho do alerta tem 24x24 CSS px ou mais                2.5.8
+A12  os campos do caminho do alerta tem <label> visivel associado                   1.3.1, 3.3.2, 2.5.3
+A13  cada motivo de recusa e distinto, ligado ao campo e anunciado uma vez          3.3.1, 3.3.3, 4.1.3
+A14  cada alergia e cada nivel de alerta tem nome e estado acessiveis               4.1.2
+A15  com movimento reduzido, nada anima; a camera nao depende de animacao           2.3.3
+A16  lang pt-BR, cabecalhos sem pular nivel e landmarks                             3.1.1, 1.3.1
+A17  nome de produto vindo da Open Food Facts chega como texto, nunca como HTML      seguranca
+```
+
+O A10 usa duas alturas MEDIDAS no navegador - a barra de cima tem altura de
+conteudo, que o CSS sozinho nao da: 145px no celular, 93px no computador.
+
+R1 a R7 executam de novo, pelo codigo real, no mesmo arquivo; as suites completas
+de cada um continuam no gate e estao verdes:
+
+```text
+R1  exploit C1: o modelo negando o conflito nao entrega falso seguro   suite: allergyVerdict T1-T8
+R2  matriz de severidade nos quatro casos                              alertLevel S1-S18, offline O5
+R3  comparacao sem contaminacao, explicacao amarrada pelo codigo       comparison C1t-C16
+R4  o cache offline nao guarda veredito e o logout o limpa             offline O1-O16
+R5  sem sessao, exportar, excluir e ler colecoes respondem 401         account E6-E8; com banco
+                                                                       accountIntegration E1-E8,
+                                                                       isolamento I1-I4
+R6  digito verificador, UPC-A canonicalizado e tetos da comparacao     barcode M1-M12, N1, C15
+R7  JSON malformado e 400 sem detalhe; rota desconhecida e 404 de API  bodyParseError O2a-O2e,
+                                                                       productionHardening P5, P9
+```
+
+## A2 - validacao por mutacao
+
+Rodada completa, com banco, sobre o codigo entregue:
+
+```text
+RUN_DB_INTEGRATION_TESTS=true DATABASE_URL=<PostgreSQL LOCAL> DATABASE_SSL=false \
+  node scripts/mutation-check.js --com-banco
+```
+
+```text
+mortas 138 | nao executadas 0 | problemas 1 | linha de base: antes verde, depois verde
+
+REPROVADO: ha teste que nao detecta o defeito que deveria detectar.
+=== EXIT: 1 ===
+```
+
+**139 mutantes: 138 mortos, 1 sobrevivente (W1, o equivalente da v0.8.0), 0 nao
+executados.** A linha de base - as 18 suites sem mutacao, incluida a nova
+(`tests/accessibility.test.js`) - estava verde antes e depois. **Os 15 mutantes
+novos morreram todos.** O script sai com codigo 1 por causa do W1, e isso fica
+registrado como esta - nao foi mexido para passar.
+
+### Os mutantes pedidos pelo prompt (A1t, A3t, A5t, A6t, A11)
+
+```text
+pedido pelo prompt                                    mutante  teste que o pegou  resultado
+o estado passa a ser comunicado so por classe de cor  AC1      A1t                MORTA
+um par de cores cai abaixo do minimo de contraste     AC3      A3t                MORTA
+                                                      AC4      A3t                MORTA
+a regiao de anuncio perde o aria-live                 AC5      A5t                MORTA
+                                                      AC6      A5t                MORTA
+o veredito e renderizado depois do texto do modelo    AC7      A6t                MORTA
+um alvo de toque cai abaixo de 24px                   AC9      A11                MORTA
+                                                      AC10     A11                MORTA
+```
+
+O que cada um injeta:
+
+- **AC1** - `AllergyVerdict.jsx`: o titulo vira "Verificação do app" nos quatro
+  estados; so a classe de cor (`danger`, `warning`, `safe`, `neutral`) os
+  distingue.
+- **AC3** - `styles-v070.css`: a linha de origem volta a opacidade 0.85 - o tom
+  de tracos cai para 3.89:1.
+- **AC4** - a dica da busca do topo volta ao creme a 72% - 4.40:1.
+- **AC5** - `AnuncioDoVeredito.jsx`: a regiao perde `aria-live="polite"`.
+- **AC6** - `App.jsx`: a regiao deixa de ser montada no app; nasceria junto com
+  o texto, e nada a anuncia.
+- **AC7** - `AssistantPage.jsx`: o bloco de veredito passa para depois da
+  resposta do modelo.
+- **AC9** - `styles.css`: o botao de remover alergia (×) cai de 32 para 20 px.
+  A mutacao e temporaria; o arquivo de design voltou intacto.
+- **AC10** - o "Abrir este produto" da comparacao cai para 20 px de altura.
+
+### Os outros sete mutantes novos
+
+```text
+AC2   A2t  a etiqueta de risco volta a ser so o nome do alergenico          MORTA
+AC8   A7t  a coluna da comparacao perde o nome do produto                   MORTA
+AC11  A9t  o campo de codigo perde o anel de foco devolvido                 MORTA
+AC12  A10  a folga de rolagem sob a barra de cima some                      MORTA
+AC13  A13  a recusa do codigo na busca deixa de ser anunciada               MORTA
+AC14  A17  o nome do produto entra como HTML no rotulo do veredito          MORTA
+AC15  A8t  o campo do assistente volta a usar disabled enquanto espera      MORTA
+```
+
+(AC1 a AC15: 15 mutantes.) Antes da rodada oficial, os 15 foram rodados sozinhos
+contra a suite nova: 15 mortos.
+
+### O sobrevivente: W1, o mesmo da v0.8.0
+
+O W1 faz o repositorio da exportacao devolver a linha inteira de `users`, mas o
+servico monta o arquivo campo a campo - a exportacao nao muda, e o teste esta
+certo em passar. E equivalente, foi descrito na v0.8.0 com a demonstracao de que
+a suite estatica (`nunca usa SELECT *`) o pega, e esta versao nao mexeu nele nem
+no `mutation-check.js` por causa dele.
+
+### A troca do zod nao deixou ancora quebrada
+
+Antes da rodada, cada um dos 139 mutantes foi conferido: a ancora de cada um
+aparece exatamente uma vez no arquivo de destino. Nenhum mutante antigo mirava
+as linhas que o zod 4 obrigou a mudar.
+
+### A rodada inteira
+
+Linha de base:
+
+```text
+[linha de base - antes] 18 suite(s), sem mutacao
+  VERDE    tests/productionHardening.test.js
+  VERDE    tests/verifyDeploy.test.js
+  VERDE    tests/renderSync.test.js
+  VERDE    tests/bodyParseError.test.js
+  VERDE    tests/productLookup.test.js
+  VERDE    tests/migrate.test.js
+  VERDE    tests/doctor.test.js
+  VERDE    tests/e2eGate.test.js
+  VERDE    tests/accountIntegration.test.js
+  VERDE    tests/barcode.test.js
+  VERDE    tests/collectionsIntegration.test.js
+  VERDE    tests/rateLimit.test.js
+  VERDE    tests/alertLevel.test.js
+  VERDE    tests/alertLevelIntegration.test.js
+  VERDE    tests/comparison.test.js
+  VERDE    tests/comparisonIntegration.test.js
+  VERDE    tests/offline.test.js
+  VERDE    tests/accessibility.test.js
+```
+
+```text
+T1  P2   MORTA                  "P2 producao sem FRONTEND_ORIGIN nao sobe, e diz qual falta" falhou, como deveria
+T1b  P2   MORTA                  "P2 sem FRONTEND_ORIGIN, nem o createApp direto cai no default de localhost" falhou, como deveria
+T2  P5   MORTA                  "P5 erro do driver do banco nao chega ao cliente" falhou, como deveria
+T2b  P5   MORTA                  "P5 o detalhe do erro vai para o log do servidor" falhou, como deveria
+T3  P9   MORTA                  "P9 cada variavel obrigatoria ausente impede a subida, e a mensagem diz qual" falhou, como deveria
+T3b  P9   MORTA                  "P9 valor booleano nao reconhecido nao cai em default silencioso" falhou, como deveria
+T4  P12  MORTA                  "P12 versao no ar diferente da do repositorio reprova o D1" falhou, como deveria
+T5  P13  MORTA                  "P13 o registro de requisicoes do verify:deploy nao tem escrita" falhou, como deveria
+T5b  P13  MORTA                  "P13 contra o roteador REAL, nenhuma rota de escrita e alcancada" falhou, como deveria
+T6  P3   MORTA                  "P3 CORS devolve a origem configurada, nunca a do request" falhou, como deveria
+T7  P4   MORTA                  "P4 com trust proxy, req.ip segue o X-Forwarded-For e o balde acompanha" falhou, como deveria
+T8  P11  MORTA                  "P11 NOT_EXECUTED nao conta como PASS no agregado" falhou, como deveria
+T9  P11  MORTA                  "P11 o comando de verdade sai com codigo 1 quando um subgate falha" falhou, como deveria
+V1  S1/S4 MORTA                  "S1 render.yaml contem todas as obrigatorias de VARIAVEIS_OBRIGATORIAS_EM_PRODUCAO" falhou, como deveria
+V1b  S2   MORTA                  "S2 render.yaml nao declara variavel que o codigo nao le" falhou, como deveria
+V1c  S3   MORTA                  "S3 nenhuma credencial com valor literal no render.yaml" falhou, como deveria
+V2  O2a  MORTA                  "O2a JSON malformado responde 400, nao 500 - a medicao do auditor" falhou, como deveria
+V3  O2d  MORTA                  "O2d erro de biblioteca com statusCode arbitrario nao escolhe o status" falhou, como deveria
+V3b  O2d  MORTA                  "O2d copiar o type do body-parser nao basta para ganhar 400" falhou, como deveria
+V4  R7   MORTA                  "P13 o registro de requisicoes do verify:deploy nao tem escrita" falhou, como deveria
+U1  C2   MORTA                  "C2 a camera nunca transforma um codigo em outro" falhou, como deveria
+U2  C2   MORTA                  "C2 o App usa a leitura segura e nunca manda leitura da camera para a busca por nome" falhou, como deveria
+U3  C2   MORTA                  "C2 o App usa a leitura segura e nunca manda leitura da camera para a busca por nome" falhou, como deveria
+U4  O2e  MORTA                  "O2e corpo grande demais responde 413 fixo, sem a mensagem do leitor" falhou, como deveria
+U4b  O2e  MORTA                  "O2e copiar name, type e status do corpo grande nao basta para ganhar 413" falhou, como deveria
+U5  MODO MORTA                  "MODO NODE_ENV digitado errado nao sobe, e diz qual variavel" falhou, como deveria
+U5b  MODO MORTA                  "MODO NODE_ENV digitado errado nao sobe, e diz qual variavel" falhou, como deveria
+U6  MIG  MORTA                  "MIG migration que nao alcanca o banco falha dizendo por que" falhou, como deveria
+U7  MIG  MORTA                  "o doctor conta as mesmas migrations que o runner aplica, .sql e .js" falhou, como deveria
+U8  ORC  MORTA                  "o orcamento do gate usa os mesmos tetos do limitador, inclusive o por IP" falhou, como deveria
+W1  E2   MUTACAO SOBREVIVEU     a suite passou com o defeito aplicado
+W1b  E2   MORTA                  "E2 a exportacao nao contem o password_hash nem o salt reais - pelo valor" falhou, como deveria
+W2  E4   MORTA                  "E4 a exportacao de A nao contem nada de B, com B populado" falhou, como deveria
+W2b  E4   MORTA                  "E4 a exportacao de A nao contem nada de B, com B populado" falhou, como deveria
+W3  E5   MORTA                  "E5 userId no corpo, na query ou em cabecalho nao muda quem e exportado" falhou, como deveria
+W3b  E5   MORTA                  "E5 userId no corpo, na query ou em cabecalho nao muda quem e exportado" falhou, como deveria
+W4  D2   MORTA                  "D2 exclusao com senha errada nao remove nada" falhou, como deveria
+W5  D4   MORTA                  "D4 o schema montado SO pelas migrations tem ON DELETE CASCADE em toda FK para users" falhou, como deveria
+W5b  D4   MORTA                  "D4 o schema montado SO pelas migrations tem ON DELETE CASCADE em toda FK para users" falhou, como deveria
+W6  D8   MORTA                  "D8 falha simulada no meio da exclusao deixa o estado anterior intacto" falhou, como deveria
+W7  E8   MORTA                  "E8 a rota real recusa a exportacao acima do teto do usuario" falhou, como deveria
+W8  D9   MORTA                  "D9 a tentativa com senha errada gasta o mesmo balde do login" falhou, como deveria
+W9  D1   MORTA                  "D1 exclusao com a senha correta remove a conta e limpa o cookie" falhou, como deveria
+W10  E7   MORTA                  "E7 o arquivo nao leva e-mail nem nome, e a resposta nao pode ir para cache" falhou, como deveria
+W10b  E7   MORTA                  "E7 o arquivo nao leva e-mail nem nome, e a resposta nao pode ir para cache" falhou, como deveria
+W11  A11  MORTA                  "A11: o modo strict tem exatamente 23 requisitos, os 22 da v0.10.0 mais offlineCache" falhou, como deveria
+S1  N1a  MORTA                  "N1 o schema canonicaliza UPC-A para EAN-13" falhou, como deveria
+S1b  N1a  MORTA                  "N1a o mesmo produto em UPC-A e EAN-13 vira UMA linha canonica" falhou, como deveria
+S1c  N1c  MORTA                  "N1c requisicao DIRETA ao backend grava a forma canonica" falhou, como deveria
+S2  N1e  MORTA                  "N1e o schema nao altera EAN-13 nem EAN-8" falhou, como deveria
+S2b  N1d  MORTA                  "N1d codigo nao-EAN passa intacto pela canonicalizacao" falhou, como deveria
+S3  N1g  MORTA                  "N1g a migration funde as duas formas pela regra declarada" falhou, como deveria
+S4  N1g  MORTA                  "N1g a migration e idempotente e nao toca codigo nao-EAN" falhou, como deveria
+S5  R2   MORTA                  "N1 a canonicalizacao nao afrouxa a conferencia do digito" falhou, como deveria
+S6  N1   MORTA                  "N1 a canonicalizacao usa shared/barcode.js, sem copia local" falhou, como deveria
+P1  M1   MORTA                  "M1 codigos com digito verificador errado sao recusados pelo motivo certo" falhou, como deveria
+P1b  M1   MORTA                  "M1 codigos validos de EAN-13, EAN-8 e UPC-A sao aceitos" falhou, como deveria
+P2  M3   MORTA                  "M3 o backend recusa productCode com digito verificador invalido" falhou, como deveria
+P2b  M3   MORTA                  "M3 a regra do backend e estreita e nao quebra cadastro legitimo" falhou, como deveria
+P3  M4   MORTA                  "o caminho manual nao monta o resultado por conta propria" falhou, como deveria
+P3b  M4   MORTA                  "M2 codigo invalido nao chega a rede" falhou, como deveria
+P4  M5   MORTA                  "M5 o piso de risco vale no caminho manual" falhou, como deveria
+P5  M9   MORTA                  "M9 nao existe segunda implementacao do digito verificador" falhou, como deveria
+P5b  M9   MORTA                  "M9 backend e frontend usam a MESMA implementacao de shared/" falhou, como deveria
+P6  M7   MORTA                  "M7 UPC-A vira EAN-13 com zero a esquerda, e o produto e o mesmo" falhou, como deveria
+P7  M6   MORTA                  "M6 cada motivo de recusa tem mensagem propria" falhou, como deveria
+P8  M8   MORTA                  "M8 nenhum outro caractere e removido em silencio" falhou, como deveria
+P9  M10  MORTA                  "M10 o backend recusa gravar codigo com digito verificador invalido" falhou, como deveria
+N1  R1/R3 MORTA                  "R1 usuario dentro do teto mas IP estourado recebe 429" falhou, como deveria
+N1b  R3   MORTA                  "R3 multiplas contas do mesmo IP nao ultrapassam o teto por IP" falhou, como deveria
+N2  R2   MORTA                  "R2 IP dentro do teto mas usuario estourado recebe 429" falhou, como deveria
+N2b  R4   MORTA                  "R4 dois usuarios atras do MESMO IP mantem cotas separadas" falhou, como deveria
+N3  R4   MORTA                  "R4 a requisicao recusada pelo teto de usuario nao consome orcamento do IP" falhou, como deveria
+N4  R5   MORTA                  "R5 dados forjados no request nao conseguem balde de IP novo" falhou, como deveria
+N5  R5   MORTA                  "R5 um bloco IPv6 /64 nao vira infinitos baldes" falhou, como deveria
+M1  R6   MORTA                  "R6 os tres tetos por rota seguem nos valores declarados" falhou, como deveria
+M2  R7   MORTA                  "R7 o teto por IP esta no valor medido" falhou, como deveria
+M3  Q3   MORTA                  "Q3 nenhuma variavel de ambiente desliga os limitadores" falhou, como deveria
+M3b  Q4   MORTA                  "Q4 nenhum dos limitadores tem opcao de pular requisicao" falhou, como deveria
+M4  Q2   MORTA                  "Q2 em producao o teto por usuario recusa na requisicao seguinte ao teto" falhou, como deveria
+M6  R9   MORTA                  "I1 usuario A nao le historico nem favorito de B" falhou, como deveria
+M7  R9   MORTA                  "I2 usuario B nao remove item de A" falhou, como deveria
+X1  S2   MORTA                  "S2 alerta maximo + conflito declarado: piso urgent" falhou, como deveria
+X2  S3   MORTA                  "S3 alerta maximo + traco: conflito no veredito, piso caution" falhou, como deveria
+X3  S5   MORTA                  "S5 o modelo respondendo normal nao derruba o piso em nenhum dos casos" falhou, como deveria
+X4  S6   MORTA                  "S6 o modelo nao escreve nem influencia o nivel: campo de nivel vindo dele derruba a resposta" falhou, como deveria
+X5  S12  MORTA                  "S12 o banco recusa nivel invalido inserido direto em SQL - no banco e no schema das migrations" falhou, como deveria
+X6  S13  MORTA                  "S13 nenhuma tabela de colecao tem onde guardar nivel ou veredito - no banco e no schema das migrations" falhou, como deveria
+X6b  S13  MORTA                  "S13 nivel nao congelado: o item salvo nao muda e a leitura seguinte reflete o nivel novo" falhou, como deveria
+X7  S17  MORTA                  "S17 o log da tentativa de minimizacao e o mesmo com alerta padrao ou maximo" falhou, como deveria
+X8  S18  MORTA                  "S18 o payload enviado a Anthropic nao ganhou canal novo: o nivel nao vai nem no allergySnapshot" falhou, como deveria
+X9  A11  MORTA                  "A11: o modo strict tem exatamente 23 requisitos, os 22 da v0.10.0 mais offlineCache" falhou, como deveria
+X10  S9   MORTA                  "S9 nivel para alergia ausente do perfil e recusado pela validacao" falhou, como deveria
+X11  S1   MORTA                  "S1 nivel padrao + conflito declarado: piso caution, identico a v0.8.0" falhou, como deveria
+X12  S8   MORTA                  "S8 nivel desconhecido e recusado pela validacao" falhou, como deveria
+X13  S16  MORTA                  "S16 o nivel de A nao e visivel nem alteravel por B" falhou, como deveria
+Y1  C2t  MORTA                  "C2t produto em conflito com produto limpo: o limpo nao herda safety e o em conflito nao e rebaixado" falhou, como deveria
+Y2  C2t  MORTA                  "C2t produto em conflito com produto limpo: o limpo nao herda safety e o em conflito nao e rebaixado" falhou, como deveria
+Y3  C5t  MORTA                  "C5t explicacoes em ordem trocada: cada uma cai no produto certo, pelo codigo" falhou, como deveria
+Y4  C7t  MORTA                  "C7t o modelo nao escreve, nao altera e nao reordena veredito" falhou, como deveria
+Y5  C8t  MORTA                  "C8t produto sem dado de alergenico: a ausencia nao vira 'nao contem' em lugar nenhum" falhou, como deveria
+Y5b  C8t  MORTA                  "C8t produto sem dado de alergenico: a ausencia nao vira 'nao contem' em lugar nenhum" falhou, como deveria
+Y5c  C8t  MORTA                  "C8t produto sem dado de alergenico: a ausencia nao vira 'nao contem' em lugar nenhum" falhou, como deveria
+Y6  C6t  MORTA                  "C6t o modelo respondendo normal nao derruba o piso de nenhum dos dois" falhou, como deveria
+Y7  C9t  MORTA                  "C9t digito verificador invalido em qualquer dos dois e recusado antes de qualquer busca" falhou, como deveria
+Y8  C11  MORTA                  "C11 codigos iguais: recusados com mensagem clara, sem busca" falhou, como deveria
+Y8b  C11  MORTA                  "C11 codigos iguais: recusados com mensagem clara, sem busca" falhou, como deveria
+Y9  A11  MORTA                  "A11: o modo strict tem exatamente 23 requisitos, os 22 da v0.10.0 mais offlineCache" falhou, como deveria
+Y10  C13  MORTA                  "C13 a sessao de B com o id de A no corpo compara com o perfil de B" falhou, como deveria
+Y11  C15  MORTA                  "C15 o limitador cobre as duas rotas: comparacao 30/300 por 10 min, explicacao no balde do assistente" falhou, como deveria
+Z1  O3   MORTA                  "O3 o cache NAO contem allergyVerdict nem resultado do motor em nenhuma chave" falhou, como deveria
+Z2  O4   MORTA                  "O4 perfil alterado DEPOIS do cache: a leitura offline reflete o perfil NOVO" falhou, como deveria
+Z3  O9   MORTA                  "O9 LOGOUT limpa o cache: nenhuma chave e nenhum VALOR com o id de alergia ou o historico da conta" falhou, como deveria
+Z4  O11  MORTA                  "O11 o cache nunca contem senha, hash, salt, token, cookie, chave de API nem e-mail" falhou, como deveria
+Z5  O14  MORTA                  "O14 nenhuma escrita offline: favoritar e marcar alergia sem rede nao chamam o servidor, nao gravam e nao enfileiram" falhou, como deveria
+Z5b  O14  MORTA                  "O14 nenhuma escrita offline: favoritar e marcar alergia sem rede nao chamam o servidor, nao gravam e nao enfileiram" falhou, como deveria
+Z6  O2   MORTA                  "O2 produto NAO guardado + sem rede: 'nao disponivel offline', explicito - nunca resultado vazio nem aproximado" falhou, como deveria
+Z7  O7   MORTA                  "O7 codigo invalido offline e recusado pela mesma funcao, ANTES de consultar o cache" falhou, como deveria
+Z8  O8   MORTA                  "O8 UPC-A offline acha o produto guardado como EAN-13 - e o contrario" falhou, como deveria
+Z9  O10  MORTA                  "O10 exclusao de conta limpa o cache no aparelho - so depois de o servidor confirmar" falhou, como deveria
+Z10  O12  MORTA                  "O12 o cache de A nao e legivel por B no mesmo aparelho" falhou, como deveria
+Z11  O16  MORTA                  "O16 dado expirado nao e servido como valido: depois de 30 dias, e tratado como ausente, com o motivo" falhou, como deveria
+Z12  O15  MORTA                  "O15 a sessao 'sem resposta' usa o perfil do aparelho, marcado; 401 tira o cache" falhou, como deveria
+Z13  A11  MORTA                  "A11: o modo strict tem exatamente 23 requisitos, os 22 da v0.10.0 mais offlineCache" falhou, como deveria
+AC1  A1t  MORTA                  "A1t sem cor, os quatro estados do veredito continuam distinguiveis por texto" falhou, como deveria
+AC2  A2t  MORTA                  "A2t cada alergenico do veredito vem com o seu estado escrito" falhou, como deveria
+AC3  A3t  MORTA                  "A3t contraste calculado dos tokens reais: texto 4.5, texto grande 3, indicador 3" falhou, como deveria
+AC4  A3t  MORTA                  "A3t contraste calculado dos tokens reais: texto 4.5, texto grande 3, indicador 3" falhou, como deveria
+AC5  A5t  MORTA                  "A5t a regiao de anuncio e polite, existe antes do veredito e recebe o estado primeiro" falhou, como deveria
+AC6  A5t  MORTA                  "A5t a regiao de anuncio e polite, existe antes do veredito e recebe o estado primeiro" falhou, como deveria
+AC7  A6t  MORTA                  "A6t no assistente, na tela do produto e na comparacao, o veredito vem antes" falhou, como deveria
+AC8  A7t  MORTA                  "A7t na comparacao, coluna, veredito e cabecalho de tabela dizem o nome do produto" falhou, como deveria
+AC9  A11  MORTA                  "A11 os alvos de toque do caminho do alerta tem 24x24 CSS px ou mais" falhou, como deveria
+AC10  A11  MORTA                  "A11 os alvos de toque do caminho do alerta tem 24x24 CSS px ou mais" falhou, como deveria
+AC11  A9t  MORTA                  "A9t o anel de foco existe, tem 2px e nenhum campo do caminho o perde" falhou, como deveria
+AC12  A10  MORTA                  "A10 a folga de rolagem cobre a barra de cima e as abas, no celular e no computador" falhou, como deveria
+AC13  A13  MORTA                  "A13 cada motivo de recusa e distinto, ligado ao campo e anunciado uma vez" falhou, como deveria
+AC14  A17  MORTA                  "A17 nome de produto vindo da Open Food Facts chega como texto, nunca como HTML" falhou, como deveria
+AC15  A8t  MORTA                  "A8t todo controle do caminho do alerta e nativo, alcancavel e sem armadilha" falhou, como deveria
+mortas 138 | nao executadas 0 | problemas 1 | linha de base: antes verde, depois verde
+```
+
+```text
+[linha de base - depois] 18 suite(s), sem mutacao
+  VERDE    tests/productionHardening.test.js
+  VERDE    tests/verifyDeploy.test.js
+  VERDE    tests/renderSync.test.js
+  VERDE    tests/bodyParseError.test.js
+  VERDE    tests/productLookup.test.js
+  VERDE    tests/migrate.test.js
+  VERDE    tests/doctor.test.js
+  VERDE    tests/e2eGate.test.js
+  VERDE    tests/accountIntegration.test.js
+  VERDE    tests/barcode.test.js
+  VERDE    tests/collectionsIntegration.test.js
+  VERDE    tests/rateLimit.test.js
+  VERDE    tests/alertLevel.test.js
+  VERDE    tests/alertLevelIntegration.test.js
+  VERDE    tests/comparison.test.js
+  VERDE    tests/comparisonIntegration.test.js
+  VERDE    tests/offline.test.js
+  VERDE    tests/accessibility.test.js
+```
+
+## A3 e A4 - tabela de contraste e decisoes
+
+A tabela de contraste esta em 6.2. As decisoes de politeness (6.3) e de destino
+do foco (6.4) estao acima, com o motivo.
+
+## A5 - subgate E2E
+
+Nao cabe, e esta justificado acima. Os 23 requisitos continuam exigidos (A12).
+
+## Verificacao no navegador
+
+Build real (`npm run build`), servido pelo backend local na porta 3200 contra
+o PostgreSQL LOCAL, sem chave de IA, no navegador embutido do ambiente
+(Chromium), em tamanho de celular emulado. Codigos reais da Open Food Facts.
+
+**Uma ressalva de metodo, dita antes:** o painel do navegador do ambiente nao
+desenha quadros (`requestAnimationFrame` parado), e a rolagem suave do design
+(`html { scroll-behavior: smooth }`) nao anda sem quadro. Para medir o foco por
+Tab real, a rolagem suave foi trocada por `auto` SO NA PAGINA INSPECIONADA, por
+estilo inline no console - nenhum arquivo do app mudou. O controle negativo da
+folga tambem foi feito assim (folga zerada so na pagina).
+
+```text
+o que                                         medido
+barras                                        topo 145 px (320 a 959 px), 93 px (>= 960 px);
+                                              abas 76 px
+folga aplicada                                topo 152 px / 112 px; base 92 px / 16 px
+foco ao trocar de tela                        h2 [data-titulo-da-tela] em Buscar, Alergias,
+                                              Comparar, Camera, Assistente; 1a carga: <body>
+foco depois da acao                           marcar alergia: na caixa; comparar: no campo;
+                                              recusa do codigo: no campo
+2.4.11, comparacao 375x812                    Tab x7 + Shift+Tab x4: 11 de 11 visiveis
+controle negativo (folga zerada na pagina)    "Explicar as diferenças" 764-812 sob as abas (736);
+                                              campo de cima em 0, sob a barra (145)
+com a folga                                   672-720 e 152
+anuncio - Nutella aberta, sem alergia         "Nutella. Não avaliado. Você não marcou alergias.
+                                              O app não conferiu conflito."
+anuncio - marcar Leite/lactose                "Nutella. Conflito com o seu perfil: Contém
+                                              Leite/lactose."
+anuncio - comparar Nutella x Coca-Cola        "Comparação pronta. Primeiro produto, Nutella.
+                                              Conflito com o seu perfil: Contém Leite/lactose.
+                                              Segundo produto, Coca-Cola Original. Sem conflito
+                                              com o seu perfil."
+comparacao - colunas                          "Primeiro produto: Nutella" / "Segundo produto:
+                                              Coca-Cola Original"
+comparacao - grupos                           "Nutella: Conflito com o seu perfil" / "Coca-Cola
+                                              Original: Sem conflito com o seu perfil"
+comparacao - cabecalhos                       "Primeiro: Nutella", "Segundo: Coca-Cola Original"
+recusa na camera - vazio                      "Digite um alimento ou código de barras."
+recusa na camera - letra (12a45678)           "O código de barras tem só números. Confira o que
+                                              você digitou."
+recusa na camera - tamanho (20 digitos)       "Esse código tem 20 números. Um código de barras
+                                              tem 8, 12 ou 13. Confira na embalagem."
+recusa na camera - digito (3017624010702)     "Esse código não existe. Confira número por número
+                                              na embalagem."
+  as quatro                                   role="alert", ligadas ao campo com a dica,
+                                              aria-invalid="true", status em aria-live="off"
+recusa na busca (3017624010702)               o mesmo, ligada ao campo da busca
+estrutura                                     lang pt-BR; h1 por tela; Assistente h1>h2>h3;
+                                              Alergias h1>h2>h3; produto h3 > h4
+landmarks                                     header, nav (2, com nome), main, footer
+alvos                                         ver 6.5; nenhum abaixo de 40 px; sem rolagem
+                                              lateral a 320 px
+```
+
+Fora de escopo, observado: na camera, "12345" (menos de 6 digitos) vira busca por
+nome, e nao recusa por tamanho - comportamento anterior, descrito em Observacoes.
+
+## Dependencias corrigidas para o A9
+
+Duas semanas depois da v0.11.0, o `npm audit` passou a acusar quatro avisos. O A9
+exige zero no nivel moderate, entao foram corrigidos - com a versao corrigida
+mais antiga que existia:
+
+```text
+frontend  vite         6.4.3  -> 6.4.5   GHSA-698v, GHSA-r825, GHSA-587h (launch-editor),
+                                         GHSA-9jrq, GHSA-rq7h (alta) e GHSA-8g5g (moderada)
+                                         6.4.4 corrigia os cinco primeiros; o sexto so na 6.4.5
+backend   body-parser  1.20.8 -> 1.20.9  GHSA-27r3 (alta) - a unica versao corrigida, de 22/10
+backend   qs           6.16.0 -> 6.16.2  GHSA-6pq8 (moderada) - escolha do npm audit fix
+backend   zod          3.25.76 -> 4.6.7  GHSA-mrhx (alta) - a linha 3 nao tem correcao
+```
+
+**A troca do zod 3 pelo 4 mexeu no backend, e foi conferida.** O zod 4 removeu
+tres formas usadas aqui (`required_error`, `invalid_type_error` e o `z.record` de
+um argumento); as mensagens em portugues foram mantidas uma a uma. E o
+`z.record` do zod 4 passou a DESCARTAR em silencio a chave `__proto__`, em vez de
+recusa-la: o S9 (nivel de alerta com chave fora do catalogo) quebrou com isso, e
+quebrou certo. O servidor nunca ficou exposto - a chave some -, mas o contrato e
+recusar. As chaves cruas agora sao conferidas contra o catalogo antes do zod, com
+a mensagem de sempre; o S9 voltou a verde sem ser alterado. O SDK da Anthropic
+aceita `zod` 3 ou 4. O gate E2E foi executado de novo depois da troca (A11).
+
+## A6 a A10
+
+```text
+A6  npm run build                          sucesso (vite 6.4.5)
+A7  npm --prefix backend test              458 testes, 383 pass, 0 fail, 75 skipped
+                                           (os pulados exigem PostgreSQL, IA real ou
+                                           Open Food Facts real - todos declarados
+                                           NAO EXECUTADO, nenhum PASS)
+A8  suite contra PostgreSQL real (local)   458 testes, 455 pass, 0 fail, 3 skipped
+                                           (1 IA real, 2 Open Food Facts real)
+A9  npm audit --audit-level=moderate       frontend: found 0 vulnerabilities
+    npm --prefix backend audit (moderate)  backend:  found 0 vulnerabilities
+A10 npm run verify:release                 exit 0, na primeira execucao - doctor, build, testes
+                                           (458 / 383 pass / 0 fail / 75 skipped),
+                                           os dois audits com 0 e "secret scan - 0
+                                           real secrets"
+```
+
+O A8 rodou com `RUN_DB_INTEGRATION_TESTS=true` contra o PostgreSQL LOCAL (porta
+5433), com `DATABASE_URL` definida no comando - nunca contra o banco de producao.
+
+## A11 - `verify:e2e`
+
+**PASS, exit code 0**, com PostgreSQL real e Claude real - 2 chamadas pagas. Os
+23 requisitos em `PASSED`, `ok: true`. **Duas execucoes:** a primeira, com o
+codigo de acessibilidade pronto, passou; depois dela vieram as correcoes de
+dependencia (o zod mexe na validacao do backend), e o gate rodou de novo sobre o
+codigo entregue - essa e a oficial, tambem PASS. A saida literal, a tabela de
+subgates, a contagem por balde, o `E2E_LAST_RUN.json` integral e o motivo das
+duas execucoes estao no `E2E_REPORT.md`. Nao ha migration nova: o doctor leu
+"4/4 applied". Nenhum subgate novo (decisao acima); o gate tem diff vazio.
+
+## A12 - os 23 requisitos antigos continuam exigidos, um a um
+
+Prova por execucao, sobre o `E2E_LAST_RUN.json` da execucao oficial: cada
+requisito, sozinho em `NOT_EXECUTED`, reprova o modo strict - e so ele.
+
+```text
+requisitos no modo strict (flag da IA ligada): 23
+faltando no E2E_LAST_RUN.json desta versao: []
+
+requisito                valor no relatorio   NOT_EXECUTED sozinho reprova
+backendProcess           STARTED_BY_RUNNER    sim, e so ele
+database                 EXECUTED             sim, e so ele
+migrations               EXECUTED_IDEMPOTENT  sim, e so ele
+auth                     PASSED               sim, e so ele
+sessionSchema            PASSED               sim, e so ele
+multiDevice              PASSED               sim, e so ele
+isolation                PASSED               sim, e so ele
+logout                   PASSED               sim, e so ele
+assistantAuthority       PASSED               sim, e so ele
+deterministicEngine      PASSED               sim, e so ele
+fallback                 PASSED               sim, e so ele
+privacy                  PASSED               sim, e so ele
+historySync              PASSED               sim, e so ele
+favoritesSync            PASSED               sim, e so ele
+verdictFreshness         PASSED               sim, e so ele
+manualCodeLookup         PASSED               sim, e so ele
+accountExport            PASSED               sim, e so ele
+accountDeletion          PASSED               sim, e so ele
+severityVerdict          PASSED               sim, e so ele
+anthropicReal            EXECUTED_GENERIC_AND_PRODUCT sim, e so ele
+assistantAuthenticated   PASSED               sim, e so ele
+productComparison        PASSED               sim, e so ele
+offlineCache             PASSED               sim, e so ele
+
+os 23 da v0.11.0 presentes: 23 de 23
+requisitos alem dos 23: []
+falhas: 0
+```
+
+A v0.12.0 nao acrescenta nem remove requisito: `scripts/lib/e2eGate.js` tem diff
+vazio, e os testes que travam o total ("exatamente 23") e cada requisito antigo
+continuam verdes na suite.
+
+## Limpeza do banco depois do gate
+
+Residuo **0** em todos os padroes de teste, e nenhuma linha orfa, conferido
+depois da execucao oficial. Saida completa no `E2E_REPORT.md`.
+
+## A13 - `verify:deploy` inalterado e somente leitura
+
+`git diff` do `scripts/verify-deploy.js` contra a v0.11.0: vazio. A v0.12.0 nao
+tem rota nova; o P13 continua verde.
+
+```text
+verify:deploy simulado (local, http)   FAIL, exit 1 - 7 PASS, D2 FAIL (sem TLS local)
+verify:deploy REAL (somente leitura)   1a execucao: FAIL, exit 1 - 7 PASS, D1 FAIL
+                                       "nao foi possivel consultar: This operation was
+                                       aborted" (servico do Render dormindo)
+                                       2a execucao: FAIL, exit 1 - 7 PASS, D1 FAIL
+                                       "repositorio declara 0.12.0 e o deploy anuncia 0.7.0"
+```
+
+Os FAIL sao os esperados. Os sete PASS do real medem a 0.7.0. No simulado, o D8
+inspecionou os bundles desta versao: nenhum segredo. Saidas literais no
+`E2E_REPORT.md`.
+
+## A14 - varredura do nome antigo
+
+```text
+=== varredura de 'nutriva' (sem diferenciar maiuscula), fora de node_modules, dist, .git e releases
+./AUDIT_REPORT.md
+./backend/tests/productName.test.js
+./CHANGELOG.md
+=== ocorrencias por arquivo
+./AUDIT_REPORT.md:20
+./backend/tests/productName.test.js:3
+./CHANGELOG.md:24
+```
+
+O nome antigo aparece so em `backend/tests/productName.test.js`, o teste que o
+procura, e nas secoes historicas do `AUDIT_REPORT.md` e do `CHANGELOG.md` - como
+na v0.11.0.
+
+## A15 - versao nos sete pontos
+
+```text
+package.json                                       0.12.0
+backend/package.json                               0.12.0
+package-lock.json (raiz e packages[""])            0.12.0 / 0.12.0
+backend/package-lock.json (raiz e packages[""])    0.12.0 / 0.12.0
+GET /api/health (app real, em memoria)             0.12.0
+README.md (titulo)                                 # NutriScan v0.12.0
+CHANGELOG.md (entrada mais recente)                ## NutriScan v0.12.0 - 2026-10-30
+```
+
+O `/api/health` foi lido de verdade, numa instancia do app em memoria; a versao
+dele vem do `package.json` (fonte unica, P8).
+
+## Observacoes descritas e NAO corrigidas - para decisao
+
+Fora da secao 6, ou dentro dela mas fora do que a versao pode mudar. Descritas,
+como manda a secao 16.
+
+1. **Codigo com menos de 6 digitos digitado na camera vira busca por nome**, e
+   nao recusa por tamanho: "12345" procura um alimento chamado "12345". Com 6 ou
+   mais digitos, a recusa por tamanho funciona. Era assim antes; mudar e regra
+   de consulta, nao de apresentacao.
+2. **Anuncio em dobro possivel.** Ao abrir um produto, a linha de status
+   ("Nutella carregado.") e a regiao do veredito falam em seguida - duas
+   mensagens `polite`, a segunda com o estado. Ao marcar uma alergia com produto
+   aberto, a lista de alergias escolhidas (`aria-live` desde antes) e o veredito
+   mudam juntos. So o leitor de tela real dira se isso incomoda; calar a linha
+   de status ao abrir produto seria a correcao, se incomodar.
+3. **O chat ainda diz "sem conflito" para produto sem dado de alergenico**
+   (v0.10.0): o veredito do assistente e o do backend, que nao recebe
+   `allergenDataAvailable`. Mudar isso e mudar o veredito, que esta versao nao
+   pode.
+4. **Telas fora do escopo** - conta, exportacao, exclusao, historico, favoritos,
+   entrar, cadastrar - nao foram auditadas. Herdado: a tela Conta rola de lado em
+   320 px.
+5. **Ampliacao de texto e reflow (1.4.4, 1.4.10)** nao estavam na lista e nao
+   foram testados.
+6. **A prop `alertLevels` da tela do produto ficou sem uso**: o nivel de alerta
+   agora chega pelo veredito. Mantida para nao mudar a interface do componente.
+
+## O que esta versao NAO prova
+
+- **Leitor de tela real: NAO VERIFICADO.** Nenhum teste ouviu NVDA, JAWS,
+  VoiceOver ou TalkBack. A informacao esta exposta - papel, nome, regiao viva,
+  ordem -, mas se o alerta e bem recebido e verificacao humana, aberta. O roteiro
+  esta em `docs/ACESSIBILIDADE.md`.
+- **Toque em aparelho real: NAO VERIFICADO.** Alvos medidos no navegador do
+  ambiente, em tamanho de celular emulado.
+- **A camera em hardware real: NAO EXECUTADO.**
+- **O deploy real da 0.12.0: NAO EXECUTADO.** Nada foi publicado; no ar esta a
+  0.7.0.
+- **Outros navegadores:** so o Chromium do painel do ambiente foi aberto.
+- **Conformidade WCAG: nao declarada.** Adequacao clinica e conformidade
+  juridica tambem nao.
+
+## Historico de auditorias anteriores
+
+## Auditoria da v0.11.0 - 2026-10-16
 
 ## Escopo
 
@@ -841,8 +1845,6 @@ Fora da secao 6. Descritas, como manda a secao 15.
 - **HTTPS da 0.11.0: NAO COMPROVADO** - o alvo simulado nao tem TLS.
 - **Adequacao clinica e conformidade juridica: nao declaradas**, e nao sao algo
   que teste prove.
-
-## Historico de auditorias anteriores
 
 ## Auditoria da v0.10.0 - 2026-10-16
 

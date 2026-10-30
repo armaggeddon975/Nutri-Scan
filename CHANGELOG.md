@@ -1,5 +1,100 @@
 # Changelog
 
+## NutriScan v0.12.0 - 2026-10-30
+
+Acessibilidade do alerta de alergia (WCAG 2.2 AA, no caminho do alerta). Minor:
+muda como o veredito e apresentado. Nao ha migration, rota nova nem variavel
+nova, e o conteudo do veredito nao mudou.
+
+Isto descreve o que o software faz. Nao e orientacao de saude nem de nutricao.
+Esta versao NAO declara o NutriScan em conformidade com a WCAG: conformidade
+exige auditoria humana com tecnologia assistiva real, que nao foi feita.
+
+### O projeto segue NAO PUBLICADO
+
+As versoes 0.7.1 a 0.12.0 nunca foram ao ar. O servico `nutriscan` no Render
+continua rodando a **0.7.0**. Esta versao nao publica nada.
+
+### O problema, pelo que era
+
+Onze versoes garantiram que o veredito de alergia esteja CORRETO. Nenhuma
+garantiu que ele CHEGUE a pessoa.
+
+O motor calculava certo, e a tela entregava o alerta por cor e por leitura
+visual. Na tela do produto, o alergenico em conflito aparecia como uma etiqueta
+vermelha com o nome - "Leite/lactose" -, sem dizer "contem". Quem nao marcou
+nenhuma alergia lia "Sem conflito com o perfil", sem que nada tivesse sido
+conferido. Nada anunciava o veredito a quem usa leitor de tela depois de
+escanear ou digitar o codigo. Na comparacao, so a posicao na tela dizia de qual
+produto era cada veredito. Num app de alergia, alerta que nao chega e alerta que
+nao existe.
+
+### O que entrou
+
+- **O estado escrito.** O bloco de veredito tem um titulo por estado - "Conflito
+  com o seu perfil", "Pode conter traços", "Sem conflito com o seu perfil",
+  "Não avaliado" (com o motivo) - e cada alergenico diz "Contém" ou "Pode
+  conter". A cor virou reforco.
+- **A tela do produto mostra o veredito do motor**, para todo produto, no lugar
+  da lista "Alertas do perfil", que montava o proprio texto.
+- **O veredito e anunciado.** Uma regiao viva unica, `polite`, recebe o estado
+  quando um produto abre, quando a alergia muda com o produto aberto e quando a
+  comparacao fica pronta - o estado primeiro, depois os alergenicos.
+- **Cada veredito com o seu produto**, para quem nao ve a tela: o bloco, a coluna
+  da comparacao e os cabecalhos das tabelas levam o nome do produto.
+- **Foco.** Fica no controle acionado; vai para o titulo quando a tela troca.
+  Os controles ocupados usam `aria-disabled` em vez de `disabled`, que jogava
+  o foco no `<body>`. O botao da camera virou um so. O anel de foco volta nos
+  campos onde o design o tirava. A pagina rola o campo focado para fora das
+  barras fixas.
+- **Erro do codigo** ligado ao campo tambem na busca, e lido uma vez so.
+- **Cabecalhos sem pular nivel**, rotulo visivel na pergunta ao assistente,
+  nome completo nas caixas de alerta maximo.
+- **Dois contrastes reprovados, corrigidos:** a linha de origem do veredito
+  (3.89:1 e 3.97:1 -> 5.17 e 5.38) e a dica da busca do topo (4.40 -> 4.99).
+
+O `styles.css` de design nao foi tocado: as correcoes estao em
+`src/styles-v070.css`.
+
+### Decisoes
+
+- **`polite`, e nao `assertive`:** o anuncio responde a uma acao da propria
+  pessoa; `assertive` interromperia a leitura toda vez que um produto abre.
+- **O foco nao vai para o veredito:** a pessoa fica no campo onde pode digitar o
+  proximo codigo; o veredito chega pela regiao viva.
+- **Sem subgate novo no E2E:** acessibilidade e comportamento do cliente; um
+  subgate contra o backend real nao provaria nada dela. A verificacao fica nos
+  testes de renderizacao e no navegador. Os 23 requisitos continuam exigidos,
+  um a um.
+
+### Testes e mutacao
+
+A1t-A17 e R1-R7 em `backend/tests/accessibility.test.js`, sobre a arvore
+renderizada (JSX real, esbuild) e o CSS real. `scripts/mutation-check.js`
+ganhou 15 mutantes (AC1-AC15). Resultado em `AUDIT_REPORT.md`; o que cada teste
+cobre esta em [docs/ACESSIBILIDADE.md](docs/ACESSIBILIDADE.md).
+
+### Descrito e NAO alterado - para decisao
+
+- **Codigo com menos de 6 digitos** digitado na camera vira busca por nome, e
+  nao recusa por tamanho. Era assim antes.
+- **Anuncio em dobro possivel:** a linha de status ("Nutella carregado.") e a
+  regiao do veredito falam em seguida; a lista de alergias escolhidas e o
+  veredito, tambem. So o leitor de tela real dira se incomoda.
+- **O chat ainda diz "sem conflito" para produto sem dado de alergenico**, como
+  descrito na v0.10.0.
+- **Telas fora do escopo** - conta, exportacao, exclusao, historico, favoritos,
+  entrar, cadastrar - nao foram auditadas.
+
+### O que esta versao NAO prova
+
+- A experiencia com leitor de tela real (NVDA, VoiceOver, TalkBack): **NAO
+  VERIFICADO**. Os testes provam que a informacao esta exposta.
+- O toque em aparelho real: **NAO VERIFICADO** - alvos medidos no navegador do
+  ambiente, em tamanho de celular.
+- A leitura da camera em aparelho real: **NAO EXECUTADO**.
+- O deploy real da 0.12.0: **NAO EXECUTADO** - nada foi publicado.
+
 ## NutriScan v0.11.0 - 2026-10-16
 
 Leitura sem rede: rever, sem internet, o que ja passou por este aparelho. Minor:

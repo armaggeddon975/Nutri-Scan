@@ -152,11 +152,13 @@ export function AccountPage({
               <ShieldAlert size={18} aria-hidden="true" />
               <h4>Alergias desse perfil</h4>
             </div>
-            <AllergyPicker selectedAllergies={selectedAllergies} onToggleAllergy={onToggleAllergy} />
+            {/* Dentro do cartao, abaixo do h4 "Alergias desse perfil": h5. */}
+            <AllergyPicker selectedAllergies={selectedAllergies} onToggleAllergy={onToggleAllergy} TituloDoGrupo="h5" />
             <AlertLevelPicker
               selectedAllergies={selectedAllergies}
               alertLevels={alertLevels}
               onSetAlertLevel={onSetAlertLevel}
+              Titulo="h5"
             />
           </article>
 

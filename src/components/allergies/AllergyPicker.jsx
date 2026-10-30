@@ -27,7 +27,8 @@ function groupOptions(options) {
 // A lista abre para baixo, no fluxo da pagina, em vez de flutuar por cima:
 // popover dentro de cartao e cortado pelo `overflow` e briga com o teclado do
 // celular. Empurrar o conteudo e mais simples e nao esconde nada.
-export function AllergyPicker({ selectedAllergies, onToggleAllergy }) {
+// `TituloDoGrupo` (v0.12.0): h3 na tela de Alergias, h5 no cartao da Conta.
+export function AllergyPicker({ selectedAllergies, onToggleAllergy, TituloDoGrupo = "h3" }) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const rootRef = useRef(null);
@@ -132,7 +133,7 @@ export function AllergyPicker({ selectedAllergies, onToggleAllergy }) {
         {groups.length ? (
           groups.map((group) => (
             <section className="allergy-picker-group" key={group.id} aria-label={group.label}>
-              <h5 className="allergy-picker-group-title">{group.label}</h5>
+              <TituloDoGrupo className="allergy-picker-group-title">{group.label}</TituloDoGrupo>
               <div className="allergy-picker-group-items">
                 {group.options.map((option) => (
                   <label key={option.id} className="check-row">

@@ -55,18 +55,24 @@ export function ScannerPage({
           <div className="scan-frame" aria-hidden="true" />
         </div>
         <div className="scan-controls">
-          {scannerState === "idle" ? (
-            <button className="primary-button" onClick={onStartScanner}>
-              <Camera size={20} aria-hidden="true" />
-              Ligar câmera
-            </button>
-          ) : (
-            <div className="scan-actions">
-              <button className="secondary-button" onClick={onStopScanner}>
+          {/* UM botao so para ligar e desligar (v0.12.0), no mesmo lugar da
+              arvore. Eram dois elementos diferentes: ao ligar a camera - e ao ela
+              desligar sozinha depois de ler o codigo - o botao focado sumia e o
+              foco caia no <body>. Agora o foco fica onde a pessoa estava. */}
+          <div className="scan-actions">
+            <button
+              type="button"
+              className={scannerState === "idle" ? "primary-button" : "secondary-button"}
+              onClick={scannerState === "idle" ? onStartScanner : onStopScanner}
+            >
+              {scannerState === "idle" ? (
+                <Camera size={20} aria-hidden="true" />
+              ) : (
                 <CameraOff size={20} aria-hidden="true" />
-                Desligar câmera
-              </button>
-              {torch.available && (
+              )}
+              {scannerState === "idle" ? "Ligar câmera" : "Desligar câmera"}
+            </button>
+            {scannerState !== "idle" && torch.available && (
                 <button
                   className="secondary-button"
                   onClick={onToggleTorch}
@@ -79,14 +85,14 @@ export function ScannerPage({
                   )}
                   {torch.on ? "Desligar lanterna" : "Ligar lanterna"}
                 </button>
-              )}
-            </div>
-          )}
+            )}
+          </div>
 
           {/* O campo fica SEMPRE visivel, e nao so quando a camera falha.
               Muita gente prefere digitar: e mais rapido que enquadrar uma
               embalagem amassada, e funciona sem permissao de camera. */}
-          <form className="search-card" onSubmit={onSubmitSearch}>
+          {/* Ocupado: o botao fica com aria-disabled, e o envio e barrado aqui. */}
+          <form className="search-card" onSubmit={(event) => (buscando ? event.preventDefault() : onSubmitSearch(event))}>
             <label htmlFor={ID_CAMPO}>Ou digite o código</label>
             <div className="input-row">
               <input
@@ -103,7 +109,7 @@ export function ScannerPage({
                 aria-invalid={temErro || undefined}
                 onChange={(event) => onQueryChange(event.target.value)}
               />
-              <button type="submit" aria-label="Buscar código" disabled={buscando}>
+              <button type="submit" aria-label="Buscar código" aria-disabled={buscando || undefined}>
                 <Search size={20} aria-hidden="true" />
               </button>
             </div>
@@ -128,7 +134,9 @@ export function ScannerPage({
             )}
           </form>
 
-          <StatusLine status={status} />
+          {/* Com o erro no campo, quem anuncia e o campo (role="alert"); a linha
+              de status fica na tela, calada, para a recusa nao ser lida duas vezes. */}
+          <StatusLine status={status} silenciosa={temErro} />
         </div>
       </section>
       {productAnalysis}

@@ -29,22 +29,36 @@ function valorNutricional(valor, unidade) {
   return `${formatNumber(valor)} ${unidade}`;
 }
 
+function nomeDoProduto(produto) {
+  return produto.name || `Código ${produto.code}`;
+}
+
+// O MESMO bloco nos quatro estados (v0.12.0) - "nao avaliado" incluido, com o
+// motivo -, e o nome do produto no nome acessivel do bloco: quem nao ve as duas
+// colunas lado a lado ouve de qual produto e cada veredito.
 function VereditoDoProduto({ produto }) {
   const veredito = produto.allergyVerdict;
-  if (produto.allergenData === "not_informed" || veredito?.reason === "no_allergen_data") {
-    return <p className="compare-missing">Sem dados de alergênicos. Confira o rótulo físico.</p>;
-  }
-  if (veredito?.reason === "no_profile_allergies") {
-    return <p className="compare-missing">Você não marcou alergias. O app não conferiu conflito.</p>;
-  }
-  return <AllergyVerdict verdict={veredito} origem="Verificação do próprio app, só para este produto." />;
+  return (
+    <>
+      <AllergyVerdict
+        verdict={veredito}
+        rotulo={nomeDoProduto(produto)}
+        origem="Verificação do próprio app, só para este produto."
+      />
+      {/* Sem alergia marcada E sem dado no rotulo: o bloco diz a primeira coisa; a
+          segunda continua escrita. */}
+      {produto.allergenData === "not_informed" && veredito?.reason !== "no_allergen_data" ? (
+        <p className="compare-missing">Sem dados de alergênicos. Confira o rótulo físico.</p>
+      ) : null}
+    </>
+  );
 }
 
 function ColunaDoProduto({ produto, onAbrirProduto }) {
   return (
-    <article className="compare-col" aria-label={`${TITULO_DO_LADO[produto.slot]} produto`}>
+    <article className="compare-col" aria-label={`${TITULO_DO_LADO[produto.slot]} produto: ${nomeDoProduto(produto)}`}>
       <p className="eyebrow">{TITULO_DO_LADO[produto.slot]}</p>
-      <h3>{produto.name || `Código ${produto.code}`}</h3>
+      <h3>{nomeDoProduto(produto)}</h3>
       {produto.brand && <p className="compare-brand">{produto.brand}</p>}
       {/* Sem internet (v0.11.0): o produto saiu do aparelho, e a coluna diz de quando. */}
       {produto.guardadoEm ? (
@@ -72,15 +86,25 @@ function ColunaQueFaltou({ lado, consulta }) {
         ? `Sem internet. O produto ${consulta.codigo} não está guardado neste aparelho.`
         : `Não encontrei o produto ${consulta.codigo} na Open Food Facts.`;
   return (
-    <article className="compare-col compare-col-missing" aria-label={`${TITULO_DO_LADO[lado]} produto`}>
+    <article className="compare-col compare-col-missing" aria-label={`${TITULO_DO_LADO[lado]} produto: código ${consulta.codigo}`}>
       <p className="eyebrow">{TITULO_DO_LADO[lado]}</p>
       <p className="compare-missing">{mensagem}</p>
     </article>
   );
 }
 
+function CabecalhoDoLado({ lado, produto }) {
+  return (
+    <th scope="col">
+      {TITULO_DO_LADO[lado]}
+      {produto ? <span className="sr-only">{`: ${nomeDoProduto(produto)}`}</span> : null}
+    </th>
+  );
+}
+
 function Diferencas({ comparacao }) {
   const { allergens, nutrition } = comparacao.differences;
+  const [produtoA, produtoB] = comparacao.products;
   const algumSemDado = comparacao.products.some((produto) => produto.allergenData === "not_informed");
 
   return (
@@ -93,8 +117,8 @@ function Diferencas({ comparacao }) {
           <thead>
             <tr>
               <th scope="col">Alergênico</th>
-              <th scope="col">Primeiro</th>
-              <th scope="col">Segundo</th>
+              <CabecalhoDoLado lado="a" produto={produtoA} />
+              <CabecalhoDoLado lado="b" produto={produtoB} />
             </tr>
           </thead>
           <tbody>
@@ -119,8 +143,8 @@ function Diferencas({ comparacao }) {
           <thead>
             <tr>
               <th scope="col">Nutriente</th>
-              <th scope="col">Primeiro</th>
-              <th scope="col">Segundo</th>
+              <CabecalhoDoLado lado="a" produto={produtoA} />
+              <CabecalhoDoLado lado="b" produto={produtoB} />
             </tr>
           </thead>
           <tbody>
@@ -165,6 +189,7 @@ export function ComparePage({
         className="compare-form"
         onSubmit={(event) => {
           event.preventDefault();
+          if (carregando) return;
           onComparar();
         }}
       >
@@ -205,17 +230,15 @@ export function ComparePage({
             <Camera size={20} aria-hidden="true" />
             Escanear
           </button>
-          <button className="primary-button" type="submit" disabled={carregando}>
+          <button className="primary-button" type="submit" aria-disabled={carregando || undefined}>
             {carregando ? "Comparando..." : "Comparar"}
           </button>
         </div>
       </form>
 
-      {mensagem && (
-        <p className={`compare-message ${mensagem.type}`} role="status">
-          {mensagem.text}
-        </p>
-      )}
+      <p className={`compare-message ${mensagem?.type ?? ""}`} role="status">
+        {mensagem?.text ?? ""}
+      </p>
 
       {parcial && (
         <section className="compare-grid" aria-label="Produtos comparados">
@@ -240,7 +263,14 @@ export function ComparePage({
           <Diferencas comparacao={resultado} />
 
           <div className="compare-explain">
-            <button className="secondary-button" type="button" onClick={onExplicar} disabled={explicando}>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => {
+                if (!explicando) onExplicar();
+              }}
+              aria-disabled={explicando || undefined}
+            >
               {explicando ? "Pedindo explicação..." : "Explicar as diferenças"}
             </button>
           </div>

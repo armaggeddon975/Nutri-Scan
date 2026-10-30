@@ -1,9 +1,9 @@
-# Publicar o NutriScan - v0.11.0
+# Publicar o NutriScan - v0.12.0
 
 Este documento e para **quem vai publicar**, nao para quem escreveu o codigo.
 Siga na ordem. Nenhum passo pede para adivinhar.
 
-**Situacao hoje:** as versoes 0.7.1 a 0.11.0 nunca foram publicadas. O servico
+**Situacao hoje:** as versoes 0.7.1 a 0.12.0 nunca foram publicadas. O servico
 `nutriscan` no Render ainda roda a 0.7.0.
 
 Nenhum valor real de credencial aparece aqui. Onde houver `<...>`, troque pelo
@@ -387,6 +387,23 @@ Depois de publicar, para conferir a mao (sem conta, ou com uma descartavel):
 
 O `verify:deploy` nao toca nisso: ele so le, e as rotas de comparacao sao
 `POST`.
+
+### Acessibilidade do alerta (v0.12.0)
+
+A v0.12.0 **nao traz migration**, **nao tem variavel nova** e **nao muda
+nenhuma rota**: e so o cliente. O `verify:deploy` nao toca nisso.
+
+Depois de publicar, para conferir a mao (com uma conta descartavel), de
+preferencia com o leitor de tela do celular ligado (TalkBack ou VoiceOver):
+
+1. Marque Leite/lactose e abra um produto com leite pelo codigo: o bloco deve
+   dizer "Conflito com o seu perfil" e "Contém Leite/lactose", e o leitor deve
+   anunciar o produto e o estado sem que voce procure.
+2. Digite um codigo com o ultimo digito trocado: o erro deve ser lido uma vez.
+3. Compare dois produtos: cada veredito deve ser lido com o nome do seu produto.
+
+O roteiro completo da verificacao humana esta em
+[ACESSIBILIDADE.md](ACESSIBILIDADE.md).
 
 ### Uso sem rede (v0.11.0)
 

@@ -27,7 +27,7 @@ const productSchema = z
     ingredients_text: z.string().optional(),
     allergens: z.union([z.array(z.string()), z.string()]).optional(),
     traces: z.union([z.array(z.string()), z.string()]).optional(),
-    nutriments: z.record(z.any()).optional(),
+    nutriments: z.record(z.string(), z.any()).optional(),
     nutriscore: z.string().optional(),
     nutriscore_grade: z.string().optional(),
     quantity: z.string().optional(),

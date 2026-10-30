@@ -64,6 +64,13 @@ const COMPARACAO_ROTAS = "backend/src/routes/compareRoutes.js";
 const OFFLINE_CACHE = "src/services/offlineCache.js";
 const OFFLINE_LOOKUP = "src/services/offlineLookup.js";
 const OFFLINE_SESSAO = "src/services/offlineSession.js";
+const VEREDITO_JSX = "src/components/assistant/AllergyVerdict.jsx";
+const ANUNCIO_JSX = "src/components/common/AnuncioDoVeredito.jsx";
+const ASSISTENTE_JSX = "src/pages/Assistant/AssistantPage.jsx";
+const COMPARACAO_JSX = "src/pages/Compare/ComparePage.jsx";
+const BUSCA_JSX = "src/pages/Search/SearchPage.jsx";
+const CSS_DESIGN = "src/styles.css";
+const CSS_V070 = "src/styles-v070.css";
 
 const SUITE_BARCODE = "tests/barcode.test.js";
 const SUITE_LOOKUP = "tests/productLookup.test.js";
@@ -82,6 +89,7 @@ const SUITE_NIVEL_BANCO = "tests/alertLevelIntegration.test.js";
 const SUITE_COMPARACAO = "tests/comparison.test.js";
 const SUITE_COMPARACAO_BANCO = "tests/comparisonIntegration.test.js";
 const SUITE_OFFLINE = "tests/offline.test.js";
+const SUITE_ACESSIBILIDADE = "tests/accessibility.test.js";
 
 const COMPOSICAO = "  return [porUsuario, porIp];";
 
@@ -1581,6 +1589,176 @@ const MUTACOES = [
     para: "",
     suite: SUITE_GATE,
     deveQuebrar: "A11: o modo strict tem exatamente 23 requisitos, os 22 da v0.10.0 mais offlineCache",
+    banco: false,
+  },
+  // -------------------------------------------------------------------------
+  // v0.12.0 - acessibilidade do alerta de alergia. AC1 (A1t), AC3 (A3t), AC5
+  // (A5t), AC7 (A6t) e AC9 (A11) sao os obrigatorios; os demais travam o resto
+  // da secao 6.
+  // -------------------------------------------------------------------------
+  {
+    id: "AC1",
+    requisito: "A1t",
+    descricao: "o estado do veredito passa a ser comunicado so pela classe de cor (titulo igual nos quatro)",
+    arquivo: VEREDITO_JSX,
+    de: "        {tituloDoEstado(verdict)}\n      </p>",
+    para: "        Verificação do app\n      </p>",
+    suite: SUITE_ACESSIBILIDADE,
+    deveQuebrar: "A1t sem cor, os quatro estados do veredito continuam distinguiveis por texto",
+    banco: false,
+  },
+  {
+    id: "AC2",
+    requisito: "A2t",
+    descricao: "a etiqueta de risco volta a ser so o nome do alergenico, sem o estado",
+    arquivo: VEREDITO_JSX,
+    de: "              {textoDoRisco(risk, verdict.status)}",
+    para: "              {risk.label}",
+    suite: SUITE_ACESSIBILIDADE,
+    deveQuebrar: "A2t cada alergenico do veredito vem com o seu estado escrito",
+    banco: false,
+  },
+  {
+    id: "AC3",
+    requisito: "A3t",
+    descricao: "a origem do veredito volta a opacidade 0.85: o tom de tracos cai para 3.89:1",
+    arquivo: CSS_V070,
+    de: ".allergy-verdict-origin {\n  opacity: 1;\n}",
+    para: ".allergy-verdict-origin {\n  opacity: 0.85;\n}",
+    suite: SUITE_ACESSIBILIDADE,
+    deveQuebrar: "A3t contraste calculado dos tokens reais: texto 4.5, texto grande 3, indicador 3",
+    banco: false,
+  },
+  {
+    id: "AC4",
+    requisito: "A3t",
+    descricao: "a dica da busca do topo volta ao creme a 72%: 4.40:1",
+    arquivo: CSS_V070,
+    de: "  color: rgba(245, 242, 234, 0.8);\n  opacity: 1;",
+    para: "  color: var(--chrome-ink-2);\n  opacity: 1;",
+    suite: SUITE_ACESSIBILIDADE,
+    deveQuebrar: "A3t contraste calculado dos tokens reais: texto 4.5, texto grande 3, indicador 3",
+    banco: false,
+  },
+  {
+    id: "AC5",
+    requisito: "A5t",
+    descricao: "a regiao de anuncio do veredito perde o aria-live",
+    arquivo: ANUNCIO_JSX,
+    de: " aria-live=\"polite\" aria-atomic=\"true\">",
+    para: " aria-atomic=\"true\">",
+    suite: SUITE_ACESSIBILIDADE,
+    deveQuebrar: "A5t a regiao de anuncio e polite, existe antes do veredito e recebe o estado primeiro",
+    banco: false,
+  },
+  {
+    id: "AC6",
+    requisito: "A5t",
+    descricao: "o app deixa de montar a regiao de anuncio (ela nasceria junto com o texto)",
+    arquivo: APP,
+    de: "      <AnuncioDoVeredito texto={anuncio.texto} vez={anuncio.vez} />\n",
+    para: "",
+    suite: SUITE_ACESSIBILIDADE,
+    deveQuebrar: "A5t a regiao de anuncio e polite, existe antes do veredito e recebe o estado primeiro",
+    banco: false,
+  },
+  {
+    id: "AC7",
+    requisito: "A6t",
+    descricao: "o veredito passa a ser renderizado depois do texto do modelo",
+    arquivo: ASSISTENTE_JSX,
+    de: "              {message.role === \"assistant\" && <AllergyVerdict verdict={message.verdict} />}\n              <p className={`chat-message ${message.role}`}>\n                {message.role === \"assistant\" && message.source && (\n                  <span className=\"chat-source\">\n                    {message.source === \"local\" ? \"Resposta local\" : \"Nutri IA\"}\n                  </span>\n                )}\n                {message.text}\n              </p>",
+    para: "              <p className={`chat-message ${message.role}`}>\n                {message.role === \"assistant\" && message.source && (\n                  <span className=\"chat-source\">\n                    {message.source === \"local\" ? \"Resposta local\" : \"Nutri IA\"}\n                  </span>\n                )}\n                {message.text}\n              </p>\n              {message.role === \"assistant\" && <AllergyVerdict verdict={message.verdict} />}",
+    suite: SUITE_ACESSIBILIDADE,
+    deveQuebrar: "A6t no assistente, na tela do produto e na comparacao, o veredito vem antes",
+    banco: false,
+  },
+  {
+    id: "AC8",
+    requisito: "A7t",
+    descricao: "a coluna da comparacao perde o nome do produto no nome acessivel",
+    arquivo: COMPARACAO_JSX,
+    de: " produto: ${nomeDoProduto(produto)}`}>",
+    para: " produto`}>",
+    suite: SUITE_ACESSIBILIDADE,
+    deveQuebrar: "A7t na comparacao, coluna, veredito e cabecalho de tabela dizem o nome do produto",
+    banco: false,
+  },
+  {
+    id: "AC9",
+    requisito: "A11",
+    descricao: "o botao de remover alergia cai para 20x20 px",
+    arquivo: CSS_DESIGN,
+    de: "  place-items: center;\n  width: 32px;\n  height: 32px;",
+    para: "  place-items: center;\n  width: 20px;\n  height: 20px;",
+    suite: SUITE_ACESSIBILIDADE,
+    deveQuebrar: "A11 os alvos de toque do caminho do alerta tem 24x24 CSS px ou mais",
+    banco: false,
+  },
+  {
+    id: "AC10",
+    requisito: "A11",
+    descricao: "o botao 'Abrir este produto' da comparacao cai para 20px de altura",
+    arquivo: CSS_V070,
+    de: ".compare-col .secondary-button {\n  min-height: var(--touch);",
+    para: ".compare-col .secondary-button {\n  min-height: 20px;",
+    suite: SUITE_ACESSIBILIDADE,
+    deveQuebrar: "A11 os alvos de toque do caminho do alerta tem 24x24 CSS px ou mais",
+    banco: false,
+  },
+  {
+    id: "AC11",
+    requisito: "A9t",
+    descricao: "o campo de codigo perde o anel de foco devolvido (fica o outline: none do design)",
+    arquivo: CSS_V070,
+    de: ".input-row input:focus-visible,\n.field-with-icon input:focus-visible,",
+    para: ".field-with-icon input:focus-visible,",
+    suite: SUITE_ACESSIBILIDADE,
+    deveQuebrar: "A9t o anel de foco existe, tem 2px e nenhum campo do caminho o perde",
+    banco: false,
+  },
+  {
+    id: "AC12",
+    requisito: "A10",
+    descricao: "a folga de rolagem sob a barra de cima some",
+    arquivo: CSS_V070,
+    de: "  scroll-padding-top: var(--folga-do-topo, 9.5rem);\n",
+    para: "",
+    suite: SUITE_ACESSIBILIDADE,
+    deveQuebrar: "A10 a folga de rolagem cobre a barra de cima e as abas, no celular e no computador",
+    banco: false,
+  },
+  {
+    id: "AC13",
+    requisito: "A13",
+    descricao: "a recusa do codigo na busca deixa de ser anunciada (sem role=alert)",
+    arquivo: BUSCA_JSX,
+    de: "          <p id={ID_ERRO} className=\"field-error\" role=\"alert\">",
+    para: "          <p id={ID_ERRO} className=\"field-error\">",
+    suite: SUITE_ACESSIBILIDADE,
+    deveQuebrar: "A13 cada motivo de recusa e distinto, ligado ao campo e anunciado uma vez",
+    banco: false,
+  },
+  {
+    id: "AC14",
+    requisito: "A17",
+    descricao: "o nome do produto passa a entrar como HTML no rotulo acessivel do veredito",
+    arquivo: VEREDITO_JSX,
+    de: "{rotulo ? <span className=\"sr-only\">{`${rotulo}: `}</span> : null}",
+    para: "{rotulo ? <span className=\"sr-only\" dangerouslySetInnerHTML={{ __html: `${rotulo}: ` }} /> : null}",
+    suite: SUITE_ACESSIBILIDADE,
+    deveQuebrar: "A17 nome de produto vindo da Open Food Facts chega como texto, nunca como HTML",
+    banco: false,
+  },
+  {
+    id: "AC15",
+    requisito: "A8t",
+    descricao: "o campo do assistente volta a usar disabled enquanto espera (o foco cai no <body>)",
+    arquivo: ASSISTENTE_JSX,
+    de: "            readOnly={assistantLoading}\n",
+    para: "            disabled={assistantLoading}\n",
+    suite: SUITE_ACESSIBILIDADE,
+    deveQuebrar: "A8t todo controle do caminho do alerta e nativo, alcancavel e sem armadilha",
     banco: false,
   },
 ];

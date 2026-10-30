@@ -94,6 +94,8 @@ import {
 import { codigoLidoPelaCamera, isBarcodeQuery, normalizeText } from "./utils/text";
 import { hashPassword, hasSecureCrypto, legacyHashPassword } from "./utils/security";
 import { OfflineNotice } from "./components/common/OfflineNotice";
+import { AnuncioDoVeredito } from "./components/common/AnuncioDoVeredito";
+import { anuncioDaComparacao, anuncioDoProduto } from "./utils/estadoDoVeredito";
 import { VISITANTE } from "./services/offlineCache";
 import {
   avaliarNoAparelho,
@@ -247,6 +249,13 @@ function App() {
   const confirmedAlertLevelsRef = useRef({});
   const [alertInviteSeen, setAlertInviteSeen] = useState(true);
   const [comparacao, setComparacao] = useState(COMPARACAO_VAZIA);
+  // Anuncio do veredito para leitor de tela (v0.12.0): o texto da regiao viva
+  // unica, e quantas vezes ja foi anunciado.
+  const [anuncio, setAnuncio] = useState({ texto: "", vez: 0 });
+  const anunciar = useCallback((texto) => {
+    if (!texto) return;
+    setAnuncio((atual) => ({ texto, vez: atual.vez + 1 }));
+  }, []);
   const comparacaoRef = useRef(COMPARACAO_VAZIA);
   // Os dois produtos da ultima comparacao completa: a explicacao manda estes,
   // e nao o que estiver digitado no formulario.
@@ -411,15 +420,20 @@ function App() {
   // Produto lido do aparelho: o veredito e refeito AGORA, pelo motor de
   // `shared/`, com o perfil que o app tem neste momento - nunca lido do cache,
   // que nao o guarda (v0.11.0).
-  const vereditoDoAparelho = useMemo(
+  //
+  // v0.12.0: o mesmo calculo vale para TODO produto aberto - da rede, da base
+  // local ou do aparelho. A tela do produto mostra o estado por escrito no topo,
+  // e o anuncio para leitor de tela le daqui. E apresentacao: o veredito e o do
+  // motor de `shared/`, sem campo a mais nem a menos.
+  const vereditoDoProduto = useMemo(
     () =>
-      origemDoProduto?.fonte === "aparelho" && product
+      product
         ? avaliarNoAparelho(product, {
             profileAllergies: selectedAllergies,
             alertLevels: currentUser ? alertLevels : {},
           }).allergyVerdict
         : null,
-    [origemDoProduto, product, selectedAllergies, alertLevels, currentUser],
+    [product, selectedAllergies, alertLevels, currentUser],
   );
   const allergyScan = useMemo(
     () => scanAllergies(product, selectedAllergies),
@@ -492,6 +506,20 @@ function App() {
     window.scrollTo({ top: 0, behavior: "instant" });
   }, [activePage]);
 
+  // FOCO QUANDO A TELA TROCA (v0.12.0). O foco vai para o titulo da tela nova:
+  // quem navega por teclado ou leitor de tela comeca a tela pelo comeco, em vez
+  // de ficar num botao que sumiu - o "Comparar com outro produto", por exemplo,
+  // some ao abrir a comparacao, e o foco caia no <body>. Na primeira carga o
+  // foco fica onde o navegador o pos.
+  const primeiraTelaRef = useRef(true);
+  useEffect(() => {
+    if (primeiraTelaRef.current) {
+      primeiraTelaRef.current = false;
+      return;
+    }
+    document.querySelector("#conteudo [data-titulo-da-tela]")?.focus({ preventScroll: true });
+  }, [activePage]);
+
   // O cache de produto fica so com o que esta no historico ou nos favoritos.
   const podarCacheDoAparelho = (dono, historico, favoritos, anterioresA) => {
     const mantidos = [...(historico || []), ...(favoritos || [])].map((item) => item.productCode).filter(Boolean);
@@ -548,6 +576,23 @@ function App() {
   useEffect(() => {
     refreshCollections();
   }, [currentUser, refreshCollections]);
+
+  // ANUNCIO DO VEREDITO (v0.12.0): o produto aberto, ou o veredito dele que
+  // mudou, vai para a regiao viva - nome do produto e o estado, por escrito.
+  useEffect(() => {
+    if (product && vereditoDoProduto) anunciar(anuncioDoProduto(getProductName(product), vereditoDoProduto));
+  }, [product, vereditoDoProduto, anunciar]);
+
+  // A comparacao pronta - completa ou com um lado faltando.
+  useEffect(() => {
+    if (comparacao.resultado) anunciar(anuncioDaComparacao(comparacao.resultado.products));
+  }, [comparacao.resultado, anunciar]);
+  useEffect(() => {
+    const parcial = comparacao.parcial;
+    if (!parcial) return;
+    const produtos = ["a", "b"].map((lado) => parcial[lado].produto).filter(Boolean);
+    anunciar(anuncioDaComparacao(produtos));
+  }, [comparacao.parcial, anunciar]);
 
   // Registrar a consulta acontece em um lugar so, quando o produto abre. O
   // servidor deduplica por produto, entao reabrir o mesmo item atualiza a data
@@ -741,7 +786,7 @@ function App() {
 
       lastDetectedRef.current = "";
       if (doAparelho.estado === CODIGO_INVALIDO) {
-        setStatus({ type: "warning", message: doAparelho.mensagem });
+        setStatus({ type: "warning", message: doAparelho.mensagem, campo: true });
         return;
       }
 
@@ -877,7 +922,7 @@ function App() {
 
       if (resultado.estado === CODIGO_INVALIDO) {
         lastDetectedRef.current = "";
-        setStatus({ type: "warning", message: resultado.mensagem });
+        setStatus({ type: "warning", message: resultado.mensagem, campo: true });
         return;
       }
 
@@ -1655,7 +1700,7 @@ function App() {
       onToggleFavorite={handleToggleFavorite}
       onCompare={abrirComparacao}
       origemDoDado={origemDoProduto}
-      vereditoDoAparelho={vereditoDoAparelho}
+      veredito={vereditoDoProduto}
     />
   );
 
@@ -1824,6 +1869,7 @@ function App() {
       <a className="skip-link" href="#conteudo">
         Pular para o conteúdo
       </a>
+      <AnuncioDoVeredito texto={anuncio.texto} vez={anuncio.vez} />
 
       <TopBar
         query={query}

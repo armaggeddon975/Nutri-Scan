@@ -56,10 +56,26 @@ export const loginSchema = z.object({
 //   - nivel fora de `standard` / `strict`;
 //   - nivel para alergia que nao esta em `allergies`. Nao existe nivel solto,
 //     de alergia que a pessoa nao tem.
-const alertLevelsSchema = z
-  .record(
-    z.string().refine(isValidAllergyId, { message: "Nível de alerta para alergia que não existe no catálogo." }),
-    z.enum(ALERT_LEVEL_VALUES, { message: "Nível de alerta inválido. Use standard ou strict." }),
+// zod 4 (v0.12.0): o `z.record` passou a DESCARTAR a chave `__proto__` em
+// silencio, e a reportar chave invalida como "Invalid key in record". As chaves
+// cruas sao conferidas antes, contra o catalogo: `__proto__`, `constructor` ou
+// qualquer id fora dele e recusado com a mensagem de sempre, como no zod 3.
+const MENSAGEM_ALERGIA_FORA_DO_CATALOGO = "Nível de alerta para alergia que não existe no catálogo.";
+const chavesDoCatalogo = z.custom(
+  (valor) =>
+    valor === null ||
+    typeof valor !== "object" ||
+    Array.isArray(valor) ||
+    Object.keys(valor).every(isValidAllergyId),
+  { error: MENSAGEM_ALERGIA_FORA_DO_CATALOGO },
+);
+
+const alertLevelsSchema = chavesDoCatalogo
+  .pipe(
+    z.record(
+      z.string().refine(isValidAllergyId, { message: MENSAGEM_ALERGIA_FORA_DO_CATALOGO }),
+      z.enum(ALERT_LEVEL_VALUES, { message: "Nível de alerta inválido. Use standard ou strict." }),
+    ),
   )
   .optional();
 
@@ -104,8 +120,15 @@ export function validateAllergiesUpdate(input) {
 //
 // `.strict()` nao e usado de proposito: um `userId` a mais no corpo e
 // simplesmente ignorado - a identidade vem da sessao, nunca do corpo.
+// zod 4 (v0.12.0): `required_error` saiu. A mensagem de campo ausente vem pela
+// funcao `error`; tipo errado continua com a mensagem padrao, como antes.
+const SO_QUANDO_AUSENTE = (mensagem) => (issue) => (issue.input === undefined ? mensagem : undefined);
+
 export const deleteAccountSchema = z.object({
-  password: z.string({ required_error: "Digite sua senha para confirmar." }).min(1, "Digite sua senha para confirmar.").max(200),
+  password: z
+    .string({ error: SO_QUANDO_AUSENTE("Digite sua senha para confirmar.") })
+    .min(1, "Digite sua senha para confirmar.")
+    .max(200),
 });
 
 export function validateDeleteAccount(input) {
@@ -253,16 +276,14 @@ export const itemIdSchema = z.string().uuid("Identificador inválido.");
 // outra chave sao descartados: o perfil vem da sessao.
 const comparedProductSchema = z.object({
   code: productCodeSchema,
-  product: z.record(z.string(), z.unknown(), {
-    invalid_type_error: "A comparação precisa dos dois produtos encontrados.",
-    required_error: "A comparação precisa dos dois produtos encontrados.",
-  }),
+  // Ausente ou de tipo errado: a mesma mensagem, como no zod 3.
+  product: z.record(z.string(), z.unknown(), { error: "A comparação precisa dos dois produtos encontrados." }),
 });
 
 export const comparisonSchema = z
   .object({
     products: z
-      .array(comparedProductSchema, { required_error: "A comparação precisa de exatamente dois produtos." })
+      .array(comparedProductSchema, { error: SO_QUANDO_AUSENTE("A comparação precisa de exatamente dois produtos.") })
       .length(2, "A comparação precisa de exatamente dois produtos."),
     guestAllergies: allergySchema,
   })

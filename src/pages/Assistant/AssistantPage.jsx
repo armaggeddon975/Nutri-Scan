@@ -27,7 +27,8 @@ export function AssistantPage({
       <article className="assistant-card assistant-page">
         <div className="panel-heading">
           <Bot size={18} aria-hidden="true" />
-          <h4>Nutri Assistente</h4>
+          {/* h3, e nao h4 (v0.12.0): logo abaixo do h2 da tela, sem pular nivel. */}
+          <h3 className="panel-title">Nutri Assistente</h3>
         </div>
         <p className="assistant-disclaimer">
           Orientação informativa, baseada em dados públicos de rótulo que podem estar incompletos ou
@@ -51,8 +52,10 @@ export function AssistantPage({
             <button
               type="button"
               key={suggestion}
-              onClick={() => onQuestionChange(suggestion)}
-              disabled={assistantLoading}
+              onClick={() => {
+                if (!assistantLoading) onQuestionChange(suggestion);
+              }}
+              aria-disabled={assistantLoading || undefined}
             >
               {suggestion}
             </button>
@@ -80,15 +83,32 @@ export function AssistantPage({
             </p>
           )}
         </div>
-        <form className="assistant-form" onSubmit={onSubmitAssistant}>
+        {/* OCUPADO SEM PERDER O FOCO (v0.12.0). Com `disabled`, o campo onde a
+            pessoa acabou de apertar Enter saia da ordem de foco, e o foco caia no
+            <body>. `readOnly` + `aria-disabled` dizem "ocupado" e mantem o foco;
+            o envio repetido e barrado aqui. */}
+        <form
+          className="assistant-form"
+          onSubmit={(event) => {
+            if (assistantLoading) {
+              event.preventDefault();
+              return;
+            }
+            onSubmitAssistant(event);
+          }}
+        >
+          <label className="assistant-label" htmlFor="assistant-question">
+            Sua pergunta
+          </label>
           <input
             id="assistant-question"
             placeholder="Pergunte sobre calorias, açúcar, alergias..."
             value={assistantQuestion}
             onChange={(event) => onQuestionChange(event.target.value)}
-            disabled={assistantLoading}
+            readOnly={assistantLoading}
+            aria-disabled={assistantLoading || undefined}
           />
-          <button type="submit" aria-label="Perguntar ao assistente" disabled={assistantLoading}>
+          <button type="submit" aria-label="Perguntar ao assistente" aria-disabled={assistantLoading || undefined}>
             <MessageSquareText size={18} aria-hidden="true" />
             {assistantLoading ? "Enviando" : "Enviar"}
           </button>

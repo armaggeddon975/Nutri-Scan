@@ -1,4 +1,4 @@
-# API NutriScan v0.11.0
+# API NutriScan v0.12.0
 
 Base local: `http://localhost:3000/api`
 
@@ -18,7 +18,7 @@ Exemplo:
   "status": "ok",
   "database": "not_configured",
   "ai": "not_configured",
-  "version": "0.11.0"
+  "version": "0.12.0"
 }
 ```
 
@@ -772,6 +772,14 @@ Erros, alem dos de `POST /api/compare`:
 ```
 
 Os demais codigos `AI_*` sao os do assistente.
+
+## Acessibilidade do alerta (v0.12.0) - nenhuma rota nova
+
+A v0.12.0 nao muda nenhuma rota, nenhum corpo de resposta e nenhum codigo de
+erro. O `allergyVerdict` que a API devolve no assistente e na comparacao e o
+mesmo, campo por campo: a versao muda como o cliente APRESENTA o veredito - o
+estado escrito, o anuncio ao leitor de tela, o foco -, nao o que ele diz. O que
+mudou esta em [ACESSIBILIDADE.md](ACESSIBILIDADE.md).
 
 ## Uso sem rede (v0.11.0) - nenhuma rota nova
 

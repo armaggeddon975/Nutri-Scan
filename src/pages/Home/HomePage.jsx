@@ -76,7 +76,10 @@ export function HomePage({ selectedAllergies, productAnalysis, onNavigate, onSea
       <div className="home-opening">
         <section className="hero">
           <p className="eyebrow">Leitura de rótulos</p>
-          <h1>Veja o que tem no alimento.</h1>
+          {/* Alvo do foco quando a pessoa volta para a Home (v0.12.0). */}
+          <h1 tabIndex={-1} data-titulo-da-tela="">
+            Veja o que tem no alimento.
+          </h1>
           <p>Escaneie o código de barras e saiba se pode comer.</p>
           <div className="hero-actions">
             <button className="primary-button" type="button" onClick={() => onNavigate("scan")}>

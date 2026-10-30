@@ -19,8 +19,11 @@ export function ProductAnalysis({
   onToggleFavorite,
   onCompare,
   origemDoDado = null,
+  veredito = null,
+  // Nome da v0.11.0, quando o veredito so aparecia para o produto do aparelho.
   vereditoDoAparelho = null,
 }) {
+  const vereditoMostrado = veredito ?? vereditoDoAparelho;
   if (!product) {
     return (
       <section className="empty-state">
@@ -46,9 +49,6 @@ export function ProductAnalysis({
                   : "A internet não respondeu. Estes são os dados guardados neste aparelho."}{" "}
               O alerta de alergia foi refeito agora, com o seu perfil.
             </OfflineNotice>
-            {vereditoDoAparelho ? (
-              <AllergyVerdict verdict={vereditoDoAparelho} origem="Verificação do próprio app, feita agora neste aparelho." />
-            ) : null}
           </div>
         ) : null}
         <div className="product-header">
@@ -96,6 +96,23 @@ export function ProductAnalysis({
             </div>
           </div>
         </div>
+
+        {/* O VEREDITO LOGO DEPOIS DO NOME (v0.12.0). Antes, o conflito aparecia
+            so na coluna lateral, como o nome do alergenico em vermelho - quem
+            nao distingue a cor, ou le a tela em ordem, nao recebia o estado.
+            Agora o estado vem por escrito, no topo, para produto da rede, da
+            base local ou do aparelho. */}
+        {vereditoMostrado ? (
+          <AllergyVerdict
+            verdict={vereditoMostrado}
+            rotulo={getProductName(product)}
+            origem={
+              origemDoDado?.fonte === "aparelho"
+                ? "Verificação do próprio app, feita agora neste aparelho."
+                : "Verificação do próprio app, com o seu perfil."
+            }
+          />
+        ) : null}
 
         {localMatches.length > 1 && (
           <div className="match-strip">
@@ -166,30 +183,8 @@ export function ProductAnalysis({
           </p>
         </article>
 
-        <article className={`info-block risk-block ${productScore.tone}`}>
-          <div className="block-heading">
-            <h4>Alertas do perfil</h4>
-          </div>
-          <div className="tag-list">
-            {allergyScan.profileRisks.length ? (
-              allergyScan.profileRisks.map((risk) => (
-                <span className="danger-tag" key={risk.id}>
-                  {risk.severity === "traces" ? `Pode conter ${risk.label}` : risk.label}
-                  {/* Nivel declarado pela pessoa (v0.9.0). A classificacao do
-                      rotulo - tem ou pode conter - nao muda; muda so o aviso. */}
-                  {alertLevels?.[risk.id] === "strict" ? " · alerta máximo" : ""}
-                </span>
-              ))
-            ) : allergyScan.hasData ? (
-              <span className="quiet-tag">Sem conflito com o perfil</span>
-            ) : (
-              <span className="danger-tag">
-                Sem dados de alergênicos — confira o rótulo físico
-              </span>
-            )}
-          </div>
-        </article>
-
+        {/* O bloco "Alertas do perfil" saiu (v0.12.0): o veredito, com o estado
+            por escrito, esta no topo da tela. */}
         <article className="info-block">
           <div className="block-heading">
             <h4>Pontos de atenção</h4>
@@ -198,7 +193,7 @@ export function ProductAnalysis({
             {allergyScan.allRisks.length ? (
               allergyScan.allRisks.map((risk) => (
                 <span className="soft-tag" key={risk.id}>
-                  {risk.severity === "traces" ? `Pode conter ${risk.label}` : risk.label}
+                  {risk.severity === "traces" ? `Pode conter ${risk.label}` : `Contém ${risk.label}`}
                 </span>
               ))
             ) : allergyScan.hasData ? (

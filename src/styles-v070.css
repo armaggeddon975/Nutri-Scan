@@ -429,7 +429,9 @@
   border-top: 1px solid var(--brand-line);
 }
 
-.alert-level h4 {
+/* O titulo e h3 na tela de Alergias e h5 na Conta (v0.12.0): o estilo vai pela
+   classe, para o tamanho nao mudar com o nivel. */
+.alert-level-title {
   margin: 0;
   font-family: var(--font-display);
   font-size: var(--t-2xl);
@@ -731,4 +733,137 @@
   color: var(--warn);
   font-size: var(--t-md);
   font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------------
+   Acessibilidade do alerta de alergia (v0.12.0)
+   ---------------------------------------------------------------------------
+   So acrescimo, como nas versoes anteriores: o styles.css de design nao e
+   tocado. Cada regra diz o criterio da WCAG 2.2 que ela atende; os numeros de
+   contraste e de tamanho sao conferidos por codigo em
+   backend/tests/accessibility.test.js, a partir destes mesmos tokens. */
+
+/* Quarto estado do veredito: "nao avaliado". Fundo de areia e tinta escura
+   (8.52:1). Nao e verde nem vermelho: nao ter conferido nao e "sem conflito". */
+.allergy-verdict.neutral {
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+
+/* 1.4.3 Contraste. A linha "Verificacao do proprio app..." tinha opacidade 0.85
+   no design: no tom de tracos caia para 3.89:1 e no de sem conflito para
+   3.97:1, abaixo de 4.5:1 para texto de 15px. Com a tinta cheia: 5.17 e 5.38. */
+.allergy-verdict-origin {
+  opacity: 1;
+}
+
+/* 2.4.7 Foco visivel. Os campos do design trocam o anel de foco por borda de
+   1px e halo claro (`outline: none`). O anel volta, igual ao do resto do app -
+   2px de oliva, 4.85:1 sobre a areia do campo -, e a borda e o halo ficam. */
+.input-row input:focus-visible,
+.field-with-icon input:focus-visible,
+.assistant-form input:focus-visible,
+.compare-field input:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+}
+
+/* No seletor de alergias e na busca do topo, o campo de verdade nao tem caixa
+   propria: o anel vai na caixa que o envolve. Na barra escura, em creme
+   (8.79:1), como os outros focos do chrome. */
+.allergy-picker-field:focus-within {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+}
+
+.topbar-search:focus-within {
+  outline: 2px solid var(--chrome-ink);
+  outline-offset: 3px;
+}
+
+/* 1.4.11 Contraste de componente. O campo da comparacao e o unico com borda
+   desenhada, e ela era quase invisivel (1.58:1 sobre o creme). Com `--ink-3`:
+   5.53:1. */
+.compare-field input {
+  border-color: var(--ink-3);
+}
+
+/* 2.4.11 Foco nao encoberto. A barra de cima gruda no topo e as abas ficam
+   fixas embaixo: sem folga, o navegador rola o campo focado para baixo de uma
+   delas. A folga e a altura de cada barra, medida no navegador, com margem:
+   a barra de cima mede 145px no celular (320 a 959px) e 93px no computador; as
+   abas, 76px. Em rem, a folga de cima cresce junto quando a pessoa aumenta a
+   letra do navegador - a barra cresce tambem. */
+html {
+  scroll-padding-top: var(--folga-do-topo, 9.5rem);
+  scroll-padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 16px);
+}
+
+@media (min-width: 960px) {
+  html {
+    --folga-do-topo: 7rem;
+    scroll-padding-bottom: 16px;
+  }
+}
+
+/* Ocupado sem perder o foco. Os botoes e o campo que esperam resposta usam
+   `aria-disabled` em vez de `disabled` (que tirava o foco e o jogava no
+   <body>). O visual de ocupado e o mesmo do disabled; com foco de teclado, a
+   opacidade sai, para o anel de foco nao perder contraste - o texto do botao
+   ("Comparando...") ja diz que esta ocupado. */
+button[aria-disabled="true"],
+input[aria-disabled="true"] {
+  cursor: progress;
+}
+
+button[aria-disabled="true"]:not(:focus-visible),
+input[aria-disabled="true"]:not(:focus-visible) {
+  opacity: 0.55;
+}
+
+/* Scanner: um botao so para ligar e desligar. Desligada, a camera tem so ele,
+   na largura toda, como antes. */
+.scan-actions > .primary-button {
+  flex: 1 1 100%;
+}
+
+/* "Nutri Assistente" passou de h4 para h3: o mesmo desenho, pela classe. */
+.panel-heading .panel-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--t-3xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+/* 3.3.2 Rotulo. A pergunta ao assistente ganhou rotulo visivel, no mesmo
+   desenho do rotulo da busca; o campo e o botao descem para a linha de baixo. */
+.assistant-form {
+  flex-wrap: wrap;
+}
+
+.assistant-label {
+  flex: 1 1 100%;
+  color: var(--ink-2);
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+
+/* A mensagem da comparacao agora existe sempre (regiao viva montada antes do
+   texto); vazia, nao ocupa espaco. */
+.compare-message:empty {
+  margin: 0;
+}
+
+/* 1.4.3 Contraste. A dica da busca do topo ("Buscar alimento") usava
+   `--chrome-ink-2` (creme a 72%) sobre o campo escuro: 4.40:1, abaixo de 4.5:1.
+   A busca do topo leva ao veredito - aceita codigo de barras. Creme a 80%:
+   4.99:1, e ainda mais clara que o texto digitado (6.71:1), para continuar
+   lendo como dica. `opacity: 1` porque navegadores aplicam opacidade propria
+   ao placeholder. So aqui: as abas inativas usam o mesmo token sobre o chrome
+   puro e ja passam (5.46:1). */
+.topbar-search input::placeholder {
+  color: rgba(245, 242, 234, 0.8);
+  opacity: 1;
 }

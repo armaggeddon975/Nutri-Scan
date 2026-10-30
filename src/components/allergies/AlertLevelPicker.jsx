@@ -10,14 +10,19 @@ import { ALLERGY_OPTIONS } from "../../data/allergens";
 // saude da pessoa, e nao diz a ela o que fazer.
 //
 // So aparece com conta: o nivel e guardado no perfil, no banco.
-export function AlertLevelPicker({ selectedAllergies, alertLevels, onSetAlertLevel }) {
+// `Titulo` (v0.12.0): o nivel do cabecalho depende de onde o seletor esta - h3
+// logo abaixo do h2 da tela de Alergias, h5 dentro do cartao da Conta - para a
+// hierarquia nunca pular nivel.
+export function AlertLevelPicker({ selectedAllergies, alertLevels, onSetAlertLevel, Titulo = "h3" }) {
   const titleId = useId();
   const selected = ALLERGY_OPTIONS.filter((option) => selectedAllergies.includes(option.id));
   if (!selected.length) return null;
 
   return (
     <section className="alert-level" aria-labelledby={titleId}>
-      <h4 id={titleId}>Alerta máximo</h4>
+      <Titulo id={titleId} className="alert-level-title">
+        Alerta máximo
+      </Titulo>
       <p className="alert-level-copy">
         Marque onde você quer o aviso mais forte. O app passa a avisar também quando o rótulo diz
         "pode conter".
@@ -32,7 +37,12 @@ export function AlertLevelPicker({ selectedAllergies, alertLevels, onSetAlertLev
                 checked={strict}
                 onChange={() => onSetAlertLevel(option.id, strict ? "standard" : "strict")}
               />
-              <span>{option.label}</span>
+              {/* O nome da caixa diz o que ela liga, sem depender do titulo da
+                  secao: "Alerta maximo para Leite/lactose, marcado". */}
+              <span>
+                <span className="sr-only">Alerta máximo para </span>
+                {option.label}
+              </span>
             </label>
           );
         })}
