@@ -78,6 +78,9 @@ const SW_LIMPEZA = "src/sw/limpezaDoCacheStorage.js";
 const SW_MONTAR = "src/sw/montarServiceWorker.js";
 const MAIN_JSX = "src/main.jsx";
 const MANIFESTO = "public/manifest.webmanifest";
+const MOTOR = "shared/allergenEngine.js";
+const MEDICAO = "scripts/lib/medicaoDoMotor.js";
+const REGISTRO_DA_MEDICAO = "medicao/resultado-registrado.json";
 
 const SUITE_BARCODE = "tests/barcode.test.js";
 const SUITE_LOOKUP = "tests/productLookup.test.js";
@@ -98,6 +101,7 @@ const SUITE_COMPARACAO_BANCO = "tests/comparisonIntegration.test.js";
 const SUITE_OFFLINE = "tests/offline.test.js";
 const SUITE_ACESSIBILIDADE = "tests/accessibility.test.js";
 const SUITE_SERVICE_WORKER = "tests/serviceWorker.test.js";
+const SUITE_MEDICAO = "tests/medicaoDoMotor.test.js";
 
 const COMPOSICAO = "  return [porUsuario, porIp];";
 
@@ -1992,6 +1996,132 @@ const MUTACOES = [
     para: "    res.setHeader(\"Content-Type\", \"text/javascript; charset=utf-8\");",
     suite: SUITE_DEPLOY,
     deveQuebrar: "D9 a D12 contra o backend REAL: manifesto, icones e service worker servidos certo",
+    banco: false,
+  },
+  // -------------------------------------------------------------------------
+  // v0.14.0 - medicao do motor contra produtos reais. MD1 (M2), MD2/MD3 (M8) e
+  // MC1..MC5 (cada correcao do motor revertida) sao os obrigatorios; MD4..MD6
+  // travam o resto da secao 5.
+  // -------------------------------------------------------------------------
+  {
+    id: "MD1",
+    requisito: "M2",
+    descricao: "o gabarito passa a ser a saida do motor",
+    arquivo: MEDICAO,
+    de: "      const esperado = esperadoDoGabarito(produto.gabarito, alergeno);\n      const doMotor = leitura.porAlergeno[alergeno];\n      const contagens",
+    para: "      const doMotor = leitura.porAlergeno[alergeno];\n      const esperado = doMotor === \"contains\" ? ESPERADO.CONTEM : doMotor === \"traces\" ? ESPERADO.TRACO : ESPERADO.AUSENTE;\n      const contagens",
+    suite: SUITE_MEDICAO,
+    deveQuebrar: "M2 o gabarito NAO vem do motor",
+    banco: false,
+  },
+  {
+    id: "MD2",
+    requisito: "M8",
+    descricao: "o limite de falso negativo e afrouxado em um caso na conferencia",
+    arquivo: MEDICAO,
+    de: "    if (atual.length > registrado.length) {",
+    para: "    if (atual.length > registrado.length + 1) {",
+    suite: SUITE_MEDICAO,
+    deveQuebrar: "M8 regressao: UM falso negativo a mais que o registrado faz a conferencia falhar",
+    banco: false,
+  },
+  {
+    id: "MD3",
+    requisito: "M8",
+    descricao: "o limite de falso negativo e afrouxado no registro (um caso inventado a mais)",
+    arquivo: REGISTRO_DA_MEDICAO,
+    de: "      \"8718989002640:egg\"\n    ],\n    \"declaradoComoTraco\": [],\n    \"falsosPositivos\": [\n      \"7891167011779:egg\",",
+    para: "      \"8718989002640:egg\",\n      \"0000000000000:milk\"\n    ],\n    \"declaradoComoTraco\": [],\n    \"falsosPositivos\": [\n      \"7891167011779:egg\",",
+    suite: SUITE_MEDICAO,
+    deveQuebrar: "M8 regressao: UM falso negativo a mais que o registrado faz a conferencia falhar",
+    banco: false,
+  },
+  {
+    id: "MD4",
+    requisito: "M7",
+    descricao: "produto sem dado para o motor passa a entrar na conta como erro",
+    arquivo: MEDICAO,
+    de: "    if (!leitura.temDado) {\n      resultado.naoInformado.push(produto.codigo);\n      continue;\n    }\n",
+    para: "",
+    suite: SUITE_MEDICAO,
+    deveQuebrar: "M7 not_informed nao conta como erro",
+    banco: false,
+  },
+  {
+    id: "MD5",
+    requisito: "M5",
+    descricao: "declarado lido como traco deixa de ser contado",
+    arquivo: MEDICAO,
+    de: "        if (esperado === ESPERADO.CONTEM && doMotor === \"traces\") contagem.declaradoComoTraco += 1;\n",
+    para: "",
+    suite: SUITE_MEDICAO,
+    deveQuebrar: "M5 traco e declarado sao contados separadamente",
+    banco: false,
+  },
+  {
+    id: "MD6",
+    requisito: "M6",
+    descricao: "os casos de negacao deixam de ser contados",
+    arquivo: MEDICAO,
+    de: "      resultado.negacao.casos += 1;\n",
+    para: "",
+    suite: SUITE_MEDICAO,
+    deveQuebrar: "M6 os casos de negacao sao contados e reportados",
+    banco: false,
+  },
+  {
+    id: "MC1",
+    requisito: "M9",
+    descricao: "correcao 1 revertida: wheat deixa de apontar gluten",
+    arquivo: MOTOR,
+    de: "export const EXTRA_LABEL_TERMS = { gluten: [\"wheat\"] };",
+    para: "export const EXTRA_LABEL_TERMS = {};",
+    suite: SUITE_MEDICAO,
+    deveQuebrar: "M9 correcao 1 - gluten em ingles",
+    banco: false,
+  },
+  {
+    id: "MC2",
+    requisito: "M9",
+    descricao: "correcao 2 revertida em parte: sai o marcador \"does not contain\"",
+    arquivo: MOTOR,
+    de: "  \"does not contain\",\n",
+    para: "",
+    suite: SUITE_MEDICAO,
+    deveQuebrar: "M9 correcao 2 - negacao em ingles",
+    banco: false,
+  },
+  {
+    id: "MC3",
+    requisito: "M9",
+    descricao: "correcao 2 revertida em parte: sai o marcador \"contains no\"",
+    arquivo: MOTOR,
+    de: "  \"contains no\",\n",
+    para: "",
+    suite: SUITE_MEDICAO,
+    deveQuebrar: "M9 correcao 2 - negacao em ingles",
+    banco: false,
+  },
+  {
+    id: "MC4",
+    requisito: "M9",
+    descricao: "correcao 3 revertida para castanhas: noz de cola volta a ser castanha",
+    arquivo: MOTOR,
+    de: "  nuts: [KOLA_NUT],\n",
+    para: "",
+    suite: SUITE_MEDICAO,
+    deveQuebrar: "M9 correcao 3 - noz de cola nao e castanha",
+    banco: false,
+  },
+  {
+    id: "MC5",
+    requisito: "M9",
+    descricao: "correcao 3 revertida para nozes (walnut): noz de cola volta a ser noz",
+    arquivo: MOTOR,
+    de: "  walnut: [KOLA_NUT],\n",
+    para: "",
+    suite: SUITE_MEDICAO,
+    deveQuebrar: "M9 correcao 3 - noz de cola nao e castanha",
     banco: false,
   },
 ];

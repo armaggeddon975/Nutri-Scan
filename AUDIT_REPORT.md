@@ -1,6 +1,1303 @@
-# Relatorio de Auditoria - NutriScan v0.13.0
+# Relatorio de Auditoria - NutriScan v0.14.0
 
-Data: 2026-10-30
+Data: 2026-11-06
+
+## Escopo
+
+Versao de entrada **0.13.0**, de saida **0.14.0**. Medicao do motor de
+alergenicos (`shared/allergenEngine.js`) contra produtos reais da Open Food
+Facts, e tres correcoes do motor motivadas pela medicao.
+
+**Isto e medicao de software contra rotulos. NAO e validacao clinica.** Nada
+aqui diz que o motor e seguro, confiavel ou adequado para decisao alimentar, e
+nada aqui e orientacao medica. Os numeros valem para os 71 produtos do conjunto.
+
+```text
+conjunto                       medicao/conjunto-off.json - 71 produtos reais, gabarito por leitura do rotulo
+medicao                        scripts/lib/medicaoDoMotor.js + scripts/medir-motor.js (npm run medir:motor), sem rede
+montagem do conjunto           scripts/montar-conjunto-off.js (npm run montar:conjunto), so com RUN_OFF_INTEGRATION_TESTS=true
+resultado registrado           medicao/resultado-registrado.json
+medicao inicial / final        medicao/medicao-inicial.txt / medicao/medicao-final.txt
+correcoes no motor             shared/allergenEngine.js - 3 regras, cada uma por produtos do conjunto
+verify:release                 passo novo "medicao do motor" (npm run medir:motor -- --conferir)
+testes novos                   backend/tests/medicaoDoMotor.test.js - M1..M10, R1..R10 (27 testes)
+mutantes novos                 MD1..MD6 (medicao), MC1..MC5 (cada correcao revertida)
+documento                      docs/MEDICAO_DO_MOTOR.md
+migration / rota / variavel    nenhuma
+shared/allergyVerdict.js       inalterado (prova em A7)
+shared/productComparison.js    inalterado (prova em A7)
+```
+
+## A ordem seguida (4.1)
+
+1. **Conjunto montado** com o motor intacto: `scripts/montar-conjunto-off.js`
+   leu a OFF real; o gabarito foi escrito a mao, lendo cada texto, e juntado ao
+   conjunto com a conferencia de que cada trecho citado existe no texto. Nenhum
+   comando que roda o motor foi executado sobre o conjunto nessa fase.
+2. **Medicao inicial** com o motor da v0.13.0: `medicao/medicao-inicial.txt`.
+   O cabecalho traz o sha256 do motor medido (`4fa4b753...`, fim de linha LF);
+   antes de medir, `git hash-object shared/allergenEngine.js` deu
+   `f57650364eb23e75583c4f83063bfcc0289e35df`, o mesmo objeto do commit
+   `7b035cd` (v0.13.0).
+3. **So entao** as tres correcoes, e a medicao final:
+   `medicao/medicao-final.txt` (motor `488e4c79...`). O teste M8 confere que o
+   arquivo final e a saida de hoje e que o inicial e de outro motor, com os
+   numeros da medicao inicial.
+
+## Como o conjunto foi montado (4.2)
+
+**71 produtos reais** da Open Food Facts. Pools: os 1.000 mais lidos vendidos no
+Brasil e os 100 mais lidos vendidos nos EUA
+(`/api/v2/search?countries_tags_en=<pais>&sort_by=unique_scans_n`, com o reserva
+`/cgi/search.pl` que o proprio app usa - a v2 respondeu 503 no meio da leitura),
+paginas lidas em 30/10/2026. Cada produto escolhido foi lido de novo, em
+06/11/2026, pelo endpoint e pelos campos que o app usa ao ler um codigo de barras
+(`/api/v3/product/<codigo>`).
+
+Regras fixas, na ordem; cada produto no primeiro grupo que o aceita, e dentro do
+grupo na ordem da busca. Nenhuma regra olha a saida do motor.
+
+```text
+grupo            cota  produtos  criterio
+tipico            15     15      os primeiros com lista em portugues, sem outro filtro
+negacao           10     10      sem/zero/isento de/livre de/nao contem + alergenico
+traco             10     10      pode conter / tracos de
+dentro-de-outro    8      8      alergenico dentro dos parenteses de outro ingrediente
+grafia             8      8      leite escrito de outro jeito (leite em po, soro, lactose, caseina...)
+vazio              5      5      sem nenhuma lista de ingredientes
+so-ingles          6      6      o unico texto e ingles segundo o campo lang da OFF
+ingles-eua         4      4      pool dos EUA, texto conferido em ingles
+negacao-lactose    5      5      sem/zero/0% + lactose
+```
+
+`ingles-eua` e `negacao-lactose` entraram depois da primeira montagem, quando li
+os textos para o gabarito, e **antes de qualquer medicao**: o campo `lang` da OFF
+dizia "en" para texto em portugues, holandes e frances (so 2 dos 6 do
+`so-ingles` eram ingles de verdade - os 6 ficaram), e os 10 da `negacao` eram
+todos "NAO CONTEM GLUTEN", sem nenhum "sem lactose". `negacao-lactose` e o
+ultimo grupo, para nao mudar a escolha dos anteriores: os 66 primeiros sairam
+com o mesmo codigo, na mesma ordem e com os mesmos campos (dois produtos mudaram
+na OFF entre 30/10 e 06/11 - uma quebra de linha e a ordem de selos - e o
+gabarito vale para o texto de 06/11).
+
+**Por que 71**: cada produto foi lido por inteiro, e cada alergenico marcado
+cita o trecho do rotulo que o prova. 71 x 14 = 994 pares, 924 medidos. Um
+conjunto maior teria de ser anotado por maquina.
+
+**Por que e dificil**: 22 casos de negacao (17 de gluten, 5 de lactose, dois
+deles leite sem lactose); 37 pares de traco, varios com a lista quebrada em
+linhas pelo OCR; grafias (leite em po, soro de leite, caseinato, gordura anidra,
+"LETE"); alergenico dentro de outro ingrediente; armadilhas (manteiga de cacau,
+noz-de-cola, sulfato, glutamato, maltodextrina); texto que nao e lista de
+ingredientes; quatro idiomas; 5 produtos sem lista.
+
+## Como o gabarito foi determinado
+
+Leitura humana do texto que o app recebe (`ingredients_text_pt`,
+`ingredients_text`, `ingredients_text_en`), com regras gravadas no proprio
+conjunto (`regrasDoGabarito`). **Nao vem do motor e nao passou por modelo de
+IA** - o assistente do app nao participa da medicao. Cada alergenico em `contem`
+ou `traco` cita o trecho que o prova; cada negacao cita o trecho negado; a
+medicao recusa o conjunto se um trecho nao estiver no texto, ou se o texto mudar
+depois do gabarito (`conferidoContra`, o sha256 dos campos).
+
+As tags da OFF NAO sao o gabarito: o motor as usa como entrada. Elas sao a
+segunda fonte, e cada discordancia com o texto e listada no relatorio da
+medicao - **49 discordancias** de `allergens_tags`/`traces_tags` (a OFF poe como
+CONTEM o que o texto diz "pode conter", e deixa de fora soja de oleo, sulfito,
+castanhas, leite em traco). Fora dessa conta, os selos (`labels_tags`) de tres
+produtos contradizem o texto - "no-gluten", "no-lactose" e "vegan" num pao que
+declara CONTEM GLUTEN (7896066304571), "contains-gluten" num chocolate sem fonte
+de gluten (7622210999634), "contains-milk" num achocolatado que so traz leite no
+"pode conter" (7894321711171).
+
+Medido em dois modos: **pipeline** (o produto como o app recebe, texto e tags) e
+**so-texto** (sem as tags da OFF - mede a leitura do texto).
+
+## A1 - Medicao inicial (motor da v0.13.0, antes de qualquer correcao)
+
+```text
+MEDICAO DO MOTOR CONTRA PRODUTOS REAIS
+Medicao de software contra rotulos. NAO e validacao clinica.
+conjunto: 71 produtos da Open Food Facts (paginas de busca de 2026-10-30, produtos lidos em 2026-11-06)
+grupos: tipico 15, negacao 10, traco 10, dentro-de-outro 8, grafia 8, vazio 5, so-ingles 6, ingles-eua 4, negacao-lactose 5
+alergenicos medidos: 14 (leite, gluten, ovo, soja, amendoim, castanhas, peixe, crustaceos, moluscos, gergelim, mostarda, aipo, tremoco, sulfito)
+motor: shared/allergenEngine.js sha256 4fa4b7538d2fa8250c8ba9acf2535d10a730bbd29dcc76615a9ffd1b988c35b6 (fim de linha LF)
+
+== modo pipeline ==
+pares medidos: 924 | produtos sem dado para o motor (not_informed): 5 | produtos sem texto para o gabarito: 0
+
+alergenico   pares  no rotulo (contem+traco)  acerto+  FALSO-  falso+  acerto-   contem->traco  traco->contem
+leite           66         44 (36+8)             42       2       1       21               0              1
+gluten          66         27 (26+1)             25       2       3       36               0              1
+ovo             66          8 (2+6)               7       1       1       57               0              4
+soja            66         35 (31+4)             35       0       2       29               0              1
+amendoim        66         10 (4+6)              10       0       1       55               0              1
+castanhas       66         13 (5+8)              13       0       4       49               0              7
+peixe           66          2 (1+1)               2       0       0       64               0              1
+crustaceos      66          1 (0+1)               1       0       0       65               0              1
+moluscos        66          1 (0+1)               1       0       0       65               0              1
+gergelim        66          0 (0+0)               0       0       0       66               0              0
+mostarda        66          1 (0+1)               1       0       0       65               0              1
+aipo            66          1 (1+0)               1       0       0       65               0              0
+tremoco         66          0 (0+0)               0       0       0       66               0              0
+sulfito         66          1 (1+0)               1       0       0       65               0              0
+TOTAL          924        144 (107+37)          139       5      12      768               0             19
+
+ERROS GRAVES: 5 falso(s) negativo(s) + 0 declarado(s) lido(s) como traco
+falsos negativos (no rotulo, o motor nao aponta): 5
+  7892840819507  leite       gabarito traco    motor -         "PODE CONTER LETE"
+  8718989002640  leite       gabarito contem   motor -         "lait écrémé"
+  8718989002640  gluten      gabarito contem   motor -         "hvedemel"
+  8718989002640  ovo         gabarito traco    motor -         "et de l'œuf"
+  7891000358764  gluten      gabarito contem   motor -         "Wheat flour"
+declarado classificado como traco (falso negativo parcial, grave): 0
+falsos positivos (fora do rotulo, o motor aponta): 12
+  7893000394209  gluten      gabarito ausente  motor contains 
+  7894900701517  castanhas   gabarito ausente  motor contains 
+  78933873       castanhas   gabarito ausente  motor contains 
+  7896481130137  gluten      gabarito ausente  motor traces   
+  7891167011779  ovo         gabarito ausente  motor traces   
+  7891000379691  gluten      gabarito ausente  motor traces   
+  7891000071786  leite       gabarito ausente  motor contains 
+  7894900011159  castanhas   gabarito ausente  motor contains 
+  3256540000698  soja        gabarito ausente  motor traces   
+  3256540000698  amendoim    gabarito ausente  motor traces   
+  3256540000698  castanhas   gabarito ausente  motor traces   
+  7893000502888  soja        gabarito ausente  motor contains 
+traco classificado como declarado (falso positivo): 19
+  8480000603067  ovo         gabarito traco    motor contains  "Pode conter vestigios de: crustáceos, ovo, peixe, mostarda, moluscos"
+  8480000603067  peixe       gabarito traco    motor contains  "Pode conter vestigios de: crustáceos, ovo, peixe, mostarda, moluscos"
+  8480000603067  crustaceos  gabarito traco    motor contains  "Pode conter vestigios de: crustáceos, ovo, peixe, mostarda, moluscos"
+  8480000603067  moluscos    gabarito traco    motor contains  "Pode conter vestigios de: crustáceos, ovo, peixe, mostarda, moluscos"
+  8480000603067  mostarda    gabarito traco    motor contains  "Pode conter vestigios de: crustáceos, ovo, peixe, mostarda, moluscos"
+  7891203010056  ovo         gabarito traco    motor contains  "TRITICALE, OVO"
+  7891203010056  amendoim    gabarito traco    motor contains  "CASTANHA DE BARU E AMENDOIM"
+  7891203010056  castanhas   gabarito traco    motor contains  "CASTANHA-DE-CAJU, CASTANHA-DO-PARA"
+  78939318       castanhas   gabarito traco    motor contains  "PODE CONTER AMÊNDOA, CASTANHA-DE-CAJU, AVELA"
+  7891000325131  castanhas   gabarito traco    motor contains  "PODE CONTER AMÊNDOA, AVELÃ, CASTANHA-DE-CAJU"
+  7896066301778  ovo         gabarito traco    motor contains  "NOZES, OVOS"
+  7896066301778  castanhas   gabarito traco    motor contains  "PODE CONTER AMENDOA"
+  7896066304571  leite       gabarito traco    motor contains  "CEVADA, LEITE"
+  7896066304571  ovo         gabarito traco    motor contains  "NOZES, OVOS"
+  7896066304571  castanhas   gabarito traco    motor contains  "PODE CONTER AMENDOA"
+  7899970402852  castanhas   gabarito traco    motor contains  "AMENDOA, AVELA"
+  7896002311274  castanhas   gabarito traco    motor contains  "PODE CONTER AMÊNDOA"
+  7896102502756  gluten      gabarito traco    motor contains  "Soja, glúten"
+  7896102502756  soja        gabarito traco    motor contains  "Pode conter traços de: Soja"
+
+negacao: 22 casos, 20 tratados certo
+  certo  0611269991000:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  ERRADO 7893000394209:gluten     "does not contain gluten" gabarito ausente motor contains
+  certo  7898215151708:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7898215151784:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  78933873:gluten          "NÃO CONTEM GLUTEN" gabarito ausente motor -
+  certo  7898024396529:gluten     "NAO CONTÉM GLUTEN" gabarito ausente motor -
+  certo  7891150027848:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7891025115656:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  5601989003126:gluten     "Sem glúten" gabarito ausente motor -
+  certo  78938816:gluten          "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7898215151807:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7891095031115:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  0070847022206:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  ERRADO 7896481130137:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor traces
+  certo  7898955705490:milk       "Sem lactose" gabarito ausente motor -
+  certo  7898955705490:gluten     "Sem glúten" gabarito ausente motor -
+  certo  7896102502756:milk       "Sem lactose" gabarito ausente motor -
+  certo  7893000502888:milk       "SEM LACTOSE" gabarito contem motor contains
+  certo  7896038314195:gluten     "Sem glúten" gabarito ausente motor -
+  certo  7896038314195:milk       "Sem lactose" gabarito ausente motor -
+  certo  7892999150124:gluten     "Sem glúten" gabarito ausente motor -
+  certo  7892999150124:milk       "sem lactose" gabarito contem motor contains
+
+not_informed (fora da conta, nao e erro): 7622210596413, 7896004006277, 07117815, 7891008116632, 7896004006239
+sem texto para o gabarito (fora da conta): nenhum
+
+== modo so-texto ==
+pares medidos: 924 | produtos sem dado para o motor (not_informed): 5 | produtos sem texto para o gabarito: 0
+
+alergenico   pares  no rotulo (contem+traco)  acerto+  FALSO-  falso+  acerto-   contem->traco  traco->contem
+leite           66         44 (36+8)             42       2       1       21               0              0
+gluten          66         27 (26+1)             24       3       2       37               0              0
+ovo             66          8 (2+6)               7       1       0       58               0              1
+soja            66         35 (31+4)             35       0       0       31               0              0
+amendoim        66         10 (4+6)               9       1       0       56               0              1
+castanhas       66         13 (5+8)              12       1       3       50               0              1
+peixe           66          2 (1+1)               2       0       0       64               0              0
+crustaceos      66          1 (0+1)               1       0       0       65               0              0
+moluscos        66          1 (0+1)               1       0       0       65               0              0
+gergelim        66          0 (0+0)               0       0       0       66               0              0
+mostarda        66          1 (0+1)               1       0       0       65               0              0
+aipo            66          1 (1+0)               1       0       0       65               0              0
+tremoco         66          0 (0+0)               0       0       0       66               0              0
+sulfito         66          1 (1+0)               1       0       0       65               0              0
+TOTAL          924        144 (107+37)          136       8       6      774               0              3
+
+ERROS GRAVES: 8 falso(s) negativo(s) + 0 declarado(s) lido(s) como traco
+falsos negativos (no rotulo, o motor nao aponta): 8
+  7892840819507  leite       gabarito traco    motor -         "PODE CONTER LETE"
+  11117780       gluten      gabarito contem   motor -         "wheat flour"
+  8718989002640  leite       gabarito contem   motor -         "lait écrémé"
+  8718989002640  gluten      gabarito contem   motor -         "hvedemel"
+  8718989002640  ovo         gabarito traco    motor -         "et de l'œuf"
+  8718989002640  amendoim    gabarito contem   motor -         "arachides moulues"
+  8718989002640  castanhas   gabarito contem   motor -         "noisettes"
+  7891000358764  gluten      gabarito contem   motor -         "Wheat flour"
+declarado classificado como traco (falso negativo parcial, grave): 0
+falsos positivos (fora do rotulo, o motor aponta): 6
+  7893000394209  gluten      gabarito ausente  motor contains 
+  7894900701517  castanhas   gabarito ausente  motor contains 
+  78933873       castanhas   gabarito ausente  motor contains 
+  7896481130137  gluten      gabarito ausente  motor traces   
+  7891000071786  leite       gabarito ausente  motor contains 
+  7894900011159  castanhas   gabarito ausente  motor contains 
+traco classificado como declarado (falso positivo): 3
+  7891203010056  ovo         gabarito traco    motor contains  "TRITICALE, OVO"
+  7891203010056  amendoim    gabarito traco    motor contains  "CASTANHA DE BARU E AMENDOIM"
+  7891203010056  castanhas   gabarito traco    motor contains  "CASTANHA-DE-CAJU, CASTANHA-DO-PARA"
+
+negacao: 22 casos, 20 tratados certo
+  certo  0611269991000:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  ERRADO 7893000394209:gluten     "does not contain gluten" gabarito ausente motor contains
+  certo  7898215151708:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7898215151784:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  78933873:gluten          "NÃO CONTEM GLUTEN" gabarito ausente motor -
+  certo  7898024396529:gluten     "NAO CONTÉM GLUTEN" gabarito ausente motor -
+  certo  7891150027848:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7891025115656:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  5601989003126:gluten     "Sem glúten" gabarito ausente motor -
+  certo  78938816:gluten          "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7898215151807:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7891095031115:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  0070847022206:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  ERRADO 7896481130137:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor traces
+  certo  7898955705490:milk       "Sem lactose" gabarito ausente motor -
+  certo  7898955705490:gluten     "Sem glúten" gabarito ausente motor -
+  certo  7896102502756:milk       "Sem lactose" gabarito ausente motor -
+  certo  7893000502888:milk       "SEM LACTOSE" gabarito contem motor contains
+  certo  7896038314195:gluten     "Sem glúten" gabarito ausente motor -
+  certo  7896038314195:milk       "Sem lactose" gabarito ausente motor -
+  certo  7892999150124:gluten     "Sem glúten" gabarito ausente motor -
+  certo  7892999150124:milk       "sem lactose" gabarito contem motor contains
+
+not_informed (fora da conta, nao e erro): 7622210596413, 7896004006277, 07117815, 7891008116632, 7896004006239
+sem texto para o gabarito (fora da conta): nenhum
+
+discordancias tag da OFF x texto (registradas, fora da conta): 49
+  8480000603067  ovo         tag contem   texto traco
+  8480000603067  peixe       tag contem   texto traco
+  8480000603067  crustaceos  tag contem   texto traco
+  8480000603067  moluscos    tag contem   texto traco
+  8480000603067  mostarda    tag contem   texto traco
+  7892840819507  leite       tag ausente  texto traco
+  7892840819507  soja        tag ausente  texto contem
+  7891095911486  soja        tag ausente  texto contem
+  7891203010056  leite       tag traco    texto contem
+  7892840819170  leite       tag ausente  texto traco
+  7892840819170  soja        tag ausente  texto contem
+  7896002360326  soja        tag ausente  texto contem
+  7891025115656  soja        tag ausente  texto traco
+  7896094910959  leite       tag ausente  texto traco
+  78939318       castanhas   tag contem   texto traco
+  7891000325131  castanhas   tag contem   texto traco
+  7896066301778  leite       tag ausente  texto traco
+  7896066301778  ovo         tag contem   texto traco
+  7896066301778  castanhas   tag contem   texto traco
+  7622300990732  leite       tag ausente  texto traco
+  7622210999634  soja        tag ausente  texto contem
+  7622210999634  castanhas   tag ausente  texto traco
+  7894321711171  leite       tag ausente  texto traco
+  7894321711171  soja        tag ausente  texto contem
+  7896066304571  leite       tag contem   texto traco
+  7896066304571  ovo         tag contem   texto traco
+  7896066304571  castanhas   tag contem   texto traco
+  7896481130137  soja        tag ausente  texto traco
+  78909434       castanhas   tag ausente  texto contem
+  7891167011779  ovo         tag traco    texto ausente
+  7899970402852  gluten      tag traco    texto contem
+  7899970402852  castanhas   tag contem   texto traco
+  7896024761651  sulfito     tag ausente  texto contem
+  7891000379691  gluten      tag traco    texto ausente
+  8718989002640  leite       tag ausente  texto contem
+  8718989002640  gluten      tag ausente  texto contem
+  8718989002640  ovo         tag ausente  texto traco
+  7896002311274  leite       tag ausente  texto traco
+  7896002311274  ovo         tag ausente  texto traco
+  7896002311274  soja        tag ausente  texto contem
+  7896002311274  amendoim    tag ausente  texto traco
+  7896002311274  castanhas   tag contem   texto traco
+  7891000358764  gluten      tag ausente  texto contem
+  3256540000698  soja        tag traco    texto ausente
+  3256540000698  amendoim    tag traco    texto ausente
+  3256540000698  castanhas   tag traco    texto ausente
+  7896102502756  gluten      tag contem   texto traco
+  7896102502756  soja        tag contem   texto traco
+  7893000502888  soja        tag contem   texto ausente
+```
+
+## A5 - As correcoes, cada uma pelo produto real que a motivou
+
+Todas em `shared/allergenEngine.js`, sem refatoracao. O catalogo
+(`shared/allergens.js`) nao mudou: ele tambem alimenta a busca da tela de
+alergias, o guia e o assistente.
+
+```text
+diff --git a/shared/allergenEngine.js b/shared/allergenEngine.js
+index f576503..08d85c7 100644
+--- a/shared/allergenEngine.js
++++ b/shared/allergenEngine.js
+@@ -17,6 +17,11 @@ export const NEGATION_MARKERS = [
+   "isenta de",
+   "livre de",
+   "free of",
++  // Medicao v0.14.0: o texto em ingles do produto 7893000394209 diz "does not
++  // contain gluten" e o do 7896481130137 diz "contains no gluten"; sem estes
++  // marcadores o gluten negado era apontado.
++  "does not contain",
++  "contains no",
+ ];
+ 
+ export const DIRECT_NEGATIVE_PATTERNS = ["gluten free", "lactose free"];
+@@ -40,7 +45,14 @@ export const NEGATIVE_LABELS = {
+   milk: ["en:no-lactose", "en:lactose-free", "en:no-milk", "en:milk-free"],
+ };
+ 
++// Medicao v0.14.0: "extrato de noz de cola" (produtos 7894900701517, 78933873 e
++// 7894900011159) e semente da Cola, nao castanha. Vale para todo id que tem
++// "noz" entre os termos.
++const KOLA_NUT = /noz(es)?[\s-]+de[\s-]+cola(?=$|[^a-z0-9])/g;
++
+ export const ALLERGEN_EXCLUSIONS = {
++  nuts: [KOLA_NUT],
++  walnut: [KOLA_NUT],
+   milk: [
+     /leite\s+de\s+(coco|amendoas?|castanha|soja|aveia|arroz|amendoim)/g,
+     /manteiga\s+de\s+(cacau|amendoim|castanha)/g,
+@@ -164,12 +176,23 @@ function hasNegativeLabel(labelTags, option) {
+   return (NEGATIVE_LABELS[option.id] || []).some((label) => normalizedLabelTags.includes(normalizeText(label)));
+ }
+ 
++// Termos que a leitura do rotulo precisa e o catalogo nao traz. O catalogo
++// (shared/allergens.js) tambem alimenta a busca da tela de alergias, o guia e o
++// assistente; o termo extra fica aqui para mudar so a leitura do rotulo.
++// Medicao v0.14.0: "Wheat flour" (produto 7891000358764) e "wheat flour"
++// (11117780) passavam sem apontar gluten.
++export const EXTRA_LABEL_TERMS = { gluten: ["wheat"] };
++
++function labelTerms(option) {
++  return [...option.terms, ...(EXTRA_LABEL_TERMS[option.id] || [])];
++}
++
+ function classifyAllergenText(option, text) {
+   const normalizedText = normalizeText(text);
+   if (!normalizedText) return null;
+ 
+   let sawTrace = false;
+-  for (const term of option.terms) {
++  for (const term of labelTerms(option)) {
+     for (const occurrence of findTermOccurrences(normalizedText, term)) {
+       const classification = classifyTermOccurrence(normalizedText, occurrence, option);
+       if (classification === OCCURRENCE_CLASSIFICATION.CONTAINS) return "contains";
+@@ -184,7 +207,7 @@ function hasSectionTerm(option, text) {
+   if (!normalizedText) return false;
+ 
+   const exclusionRanges = getExclusionRanges(option, normalizedText);
+-  return option.terms.some((term) =>
++  return labelTerms(option).some((term) =>
+     findTermOccurrences(normalizedText, term).some((occurrence) => !isInsideRange(occurrence, exclusionRanges)),
+   );
+ }
+```
+
+1. **Gluten em ingles** - falso negativo. **7891000358764** (Farinha Lactea,
+   "Wheat flour"; as tags da OFF nao trazem gluten, entao o pipeline tambem
+   errava) e **11117780** ("enriched wheat flour", errado no so-texto). O id
+   `gluten` so tinha termos em portugues. Mudanca: `EXTRA_LABEL_TERMS = {
+   gluten: ["wheat"] }`, lido junto com o catalogo so na leitura do rotulo.
+   "buckwheat" nao casa (palavra inteira).
+2. **Negacao em ingles** - falso positivo. **7893000394209** ("does not contain
+   gluten") e **7896481130137** ("may contain soy, contains no gluten" - o gluten
+   virava traco). Mudanca: "does not contain" e "contains no" em
+   `NEGATION_MARKERS`. A negacao continua parando no ponto.
+3. **Noz-de-cola nao e castanha** - falso positivo. **7894900701517**,
+   **78933873** e **7894900011159** ("extrato de noz de cola"). Mudanca:
+   exclusao `noz(es) de cola` para `nuts` e `walnut`, os dois ids com o termo
+   "noz" sozinho.
+
+## A2 - Medicao final, com a diferenca caso a caso
+
+```text
+MEDICAO DO MOTOR CONTRA PRODUTOS REAIS
+Medicao de software contra rotulos. NAO e validacao clinica.
+conjunto: 71 produtos da Open Food Facts (paginas de busca de 2026-10-30, produtos lidos em 2026-11-06)
+grupos: tipico 15, negacao 10, traco 10, dentro-de-outro 8, grafia 8, vazio 5, so-ingles 6, ingles-eua 4, negacao-lactose 5
+alergenicos medidos: 14 (leite, gluten, ovo, soja, amendoim, castanhas, peixe, crustaceos, moluscos, gergelim, mostarda, aipo, tremoco, sulfito)
+motor: shared/allergenEngine.js sha256 488e4c798387e6a103c8d6638f66c0a4605870740ebdaf4b740b6ae155d07699 (fim de linha LF)
+
+== modo pipeline ==
+pares medidos: 924 | produtos sem dado para o motor (not_informed): 5 | produtos sem texto para o gabarito: 0
+
+alergenico   pares  no rotulo (contem+traco)  acerto+  FALSO-  falso+  acerto-   contem->traco  traco->contem
+leite           66         44 (36+8)             42       2       1       21               0              1
+gluten          66         27 (26+1)             26       1       1       38               0              1
+ovo             66          8 (2+6)               7       1       1       57               0              4
+soja            66         35 (31+4)             35       0       2       29               0              1
+amendoim        66         10 (4+6)              10       0       1       55               0              1
+castanhas       66         13 (5+8)              13       0       1       52               0              7
+peixe           66          2 (1+1)               2       0       0       64               0              1
+crustaceos      66          1 (0+1)               1       0       0       65               0              1
+moluscos        66          1 (0+1)               1       0       0       65               0              1
+gergelim        66          0 (0+0)               0       0       0       66               0              0
+mostarda        66          1 (0+1)               1       0       0       65               0              1
+aipo            66          1 (1+0)               1       0       0       65               0              0
+tremoco         66          0 (0+0)               0       0       0       66               0              0
+sulfito         66          1 (1+0)               1       0       0       65               0              0
+TOTAL          924        144 (107+37)          140       4       7      773               0             19
+
+ERROS GRAVES: 4 falso(s) negativo(s) + 0 declarado(s) lido(s) como traco
+falsos negativos (no rotulo, o motor nao aponta): 4
+  7892840819507  leite       gabarito traco    motor -         "PODE CONTER LETE"
+  8718989002640  leite       gabarito contem   motor -         "lait écrémé"
+  8718989002640  gluten      gabarito contem   motor -         "hvedemel"
+  8718989002640  ovo         gabarito traco    motor -         "et de l'œuf"
+declarado classificado como traco (falso negativo parcial, grave): 0
+falsos positivos (fora do rotulo, o motor aponta): 7
+  7891167011779  ovo         gabarito ausente  motor traces   
+  7891000379691  gluten      gabarito ausente  motor traces   
+  7891000071786  leite       gabarito ausente  motor contains 
+  3256540000698  soja        gabarito ausente  motor traces   
+  3256540000698  amendoim    gabarito ausente  motor traces   
+  3256540000698  castanhas   gabarito ausente  motor traces   
+  7893000502888  soja        gabarito ausente  motor contains 
+traco classificado como declarado (falso positivo): 19
+  8480000603067  ovo         gabarito traco    motor contains  "Pode conter vestigios de: crustáceos, ovo, peixe, mostarda, moluscos"
+  8480000603067  peixe       gabarito traco    motor contains  "Pode conter vestigios de: crustáceos, ovo, peixe, mostarda, moluscos"
+  8480000603067  crustaceos  gabarito traco    motor contains  "Pode conter vestigios de: crustáceos, ovo, peixe, mostarda, moluscos"
+  8480000603067  moluscos    gabarito traco    motor contains  "Pode conter vestigios de: crustáceos, ovo, peixe, mostarda, moluscos"
+  8480000603067  mostarda    gabarito traco    motor contains  "Pode conter vestigios de: crustáceos, ovo, peixe, mostarda, moluscos"
+  7891203010056  ovo         gabarito traco    motor contains  "TRITICALE, OVO"
+  7891203010056  amendoim    gabarito traco    motor contains  "CASTANHA DE BARU E AMENDOIM"
+  7891203010056  castanhas   gabarito traco    motor contains  "CASTANHA-DE-CAJU, CASTANHA-DO-PARA"
+  78939318       castanhas   gabarito traco    motor contains  "PODE CONTER AMÊNDOA, CASTANHA-DE-CAJU, AVELA"
+  7891000325131  castanhas   gabarito traco    motor contains  "PODE CONTER AMÊNDOA, AVELÃ, CASTANHA-DE-CAJU"
+  7896066301778  ovo         gabarito traco    motor contains  "NOZES, OVOS"
+  7896066301778  castanhas   gabarito traco    motor contains  "PODE CONTER AMENDOA"
+  7896066304571  leite       gabarito traco    motor contains  "CEVADA, LEITE"
+  7896066304571  ovo         gabarito traco    motor contains  "NOZES, OVOS"
+  7896066304571  castanhas   gabarito traco    motor contains  "PODE CONTER AMENDOA"
+  7899970402852  castanhas   gabarito traco    motor contains  "AMENDOA, AVELA"
+  7896002311274  castanhas   gabarito traco    motor contains  "PODE CONTER AMÊNDOA"
+  7896102502756  gluten      gabarito traco    motor contains  "Soja, glúten"
+  7896102502756  soja        gabarito traco    motor contains  "Pode conter traços de: Soja"
+
+negacao: 22 casos, 22 tratados certo
+  certo  0611269991000:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7893000394209:gluten     "does not contain gluten" gabarito ausente motor -
+  certo  7898215151708:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7898215151784:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  78933873:gluten          "NÃO CONTEM GLUTEN" gabarito ausente motor -
+  certo  7898024396529:gluten     "NAO CONTÉM GLUTEN" gabarito ausente motor -
+  certo  7891150027848:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7891025115656:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  5601989003126:gluten     "Sem glúten" gabarito ausente motor -
+  certo  78938816:gluten          "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7898215151807:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7891095031115:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  0070847022206:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7896481130137:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7898955705490:milk       "Sem lactose" gabarito ausente motor -
+  certo  7898955705490:gluten     "Sem glúten" gabarito ausente motor -
+  certo  7896102502756:milk       "Sem lactose" gabarito ausente motor -
+  certo  7893000502888:milk       "SEM LACTOSE" gabarito contem motor contains
+  certo  7896038314195:gluten     "Sem glúten" gabarito ausente motor -
+  certo  7896038314195:milk       "Sem lactose" gabarito ausente motor -
+  certo  7892999150124:gluten     "Sem glúten" gabarito ausente motor -
+  certo  7892999150124:milk       "sem lactose" gabarito contem motor contains
+
+not_informed (fora da conta, nao e erro): 7622210596413, 7896004006277, 07117815, 7891008116632, 7896004006239
+sem texto para o gabarito (fora da conta): nenhum
+
+== modo so-texto ==
+pares medidos: 924 | produtos sem dado para o motor (not_informed): 5 | produtos sem texto para o gabarito: 0
+
+alergenico   pares  no rotulo (contem+traco)  acerto+  FALSO-  falso+  acerto-   contem->traco  traco->contem
+leite           66         44 (36+8)             42       2       1       21               0              0
+gluten          66         27 (26+1)             26       1       0       39               0              0
+ovo             66          8 (2+6)               7       1       0       58               0              1
+soja            66         35 (31+4)             35       0       0       31               0              0
+amendoim        66         10 (4+6)               9       1       0       56               0              1
+castanhas       66         13 (5+8)              12       1       0       53               0              1
+peixe           66          2 (1+1)               2       0       0       64               0              0
+crustaceos      66          1 (0+1)               1       0       0       65               0              0
+moluscos        66          1 (0+1)               1       0       0       65               0              0
+gergelim        66          0 (0+0)               0       0       0       66               0              0
+mostarda        66          1 (0+1)               1       0       0       65               0              0
+aipo            66          1 (1+0)               1       0       0       65               0              0
+tremoco         66          0 (0+0)               0       0       0       66               0              0
+sulfito         66          1 (1+0)               1       0       0       65               0              0
+TOTAL          924        144 (107+37)          138       6       1      779               0              3
+
+ERROS GRAVES: 6 falso(s) negativo(s) + 0 declarado(s) lido(s) como traco
+falsos negativos (no rotulo, o motor nao aponta): 6
+  7892840819507  leite       gabarito traco    motor -         "PODE CONTER LETE"
+  8718989002640  leite       gabarito contem   motor -         "lait écrémé"
+  8718989002640  gluten      gabarito contem   motor -         "hvedemel"
+  8718989002640  ovo         gabarito traco    motor -         "et de l'œuf"
+  8718989002640  amendoim    gabarito contem   motor -         "arachides moulues"
+  8718989002640  castanhas   gabarito contem   motor -         "noisettes"
+declarado classificado como traco (falso negativo parcial, grave): 0
+falsos positivos (fora do rotulo, o motor aponta): 1
+  7891000071786  leite       gabarito ausente  motor contains 
+traco classificado como declarado (falso positivo): 3
+  7891203010056  ovo         gabarito traco    motor contains  "TRITICALE, OVO"
+  7891203010056  amendoim    gabarito traco    motor contains  "CASTANHA DE BARU E AMENDOIM"
+  7891203010056  castanhas   gabarito traco    motor contains  "CASTANHA-DE-CAJU, CASTANHA-DO-PARA"
+
+negacao: 22 casos, 22 tratados certo
+  certo  0611269991000:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7893000394209:gluten     "does not contain gluten" gabarito ausente motor -
+  certo  7898215151708:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7898215151784:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  78933873:gluten          "NÃO CONTEM GLUTEN" gabarito ausente motor -
+  certo  7898024396529:gluten     "NAO CONTÉM GLUTEN" gabarito ausente motor -
+  certo  7891150027848:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7891025115656:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  5601989003126:gluten     "Sem glúten" gabarito ausente motor -
+  certo  78938816:gluten          "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7898215151807:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7891095031115:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  0070847022206:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7896481130137:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7898955705490:milk       "Sem lactose" gabarito ausente motor -
+  certo  7898955705490:gluten     "Sem glúten" gabarito ausente motor -
+  certo  7896102502756:milk       "Sem lactose" gabarito ausente motor -
+  certo  7893000502888:milk       "SEM LACTOSE" gabarito contem motor contains
+  certo  7896038314195:gluten     "Sem glúten" gabarito ausente motor -
+  certo  7896038314195:milk       "Sem lactose" gabarito ausente motor -
+  certo  7892999150124:gluten     "Sem glúten" gabarito ausente motor -
+  certo  7892999150124:milk       "sem lactose" gabarito contem motor contains
+
+not_informed (fora da conta, nao e erro): 7622210596413, 7896004006277, 07117815, 7891008116632, 7896004006239
+sem texto para o gabarito (fora da conta): nenhum
+
+discordancias tag da OFF x texto (registradas, fora da conta): 49
+  8480000603067  ovo         tag contem   texto traco
+  8480000603067  peixe       tag contem   texto traco
+  8480000603067  crustaceos  tag contem   texto traco
+  8480000603067  moluscos    tag contem   texto traco
+  8480000603067  mostarda    tag contem   texto traco
+  7892840819507  leite       tag ausente  texto traco
+  7892840819507  soja        tag ausente  texto contem
+  7891095911486  soja        tag ausente  texto contem
+  7891203010056  leite       tag traco    texto contem
+  7892840819170  leite       tag ausente  texto traco
+  7892840819170  soja        tag ausente  texto contem
+  7896002360326  soja        tag ausente  texto contem
+  7891025115656  soja        tag ausente  texto traco
+  7896094910959  leite       tag ausente  texto traco
+  78939318       castanhas   tag contem   texto traco
+  7891000325131  castanhas   tag contem   texto traco
+  7896066301778  leite       tag ausente  texto traco
+  7896066301778  ovo         tag contem   texto traco
+  7896066301778  castanhas   tag contem   texto traco
+  7622300990732  leite       tag ausente  texto traco
+  7622210999634  soja        tag ausente  texto contem
+  7622210999634  castanhas   tag ausente  texto traco
+  7894321711171  leite       tag ausente  texto traco
+  7894321711171  soja        tag ausente  texto contem
+  7896066304571  leite       tag contem   texto traco
+  7896066304571  ovo         tag contem   texto traco
+  7896066304571  castanhas   tag contem   texto traco
+  7896481130137  soja        tag ausente  texto traco
+  78909434       castanhas   tag ausente  texto contem
+  7891167011779  ovo         tag traco    texto ausente
+  7899970402852  gluten      tag traco    texto contem
+  7899970402852  castanhas   tag contem   texto traco
+  7896024761651  sulfito     tag ausente  texto contem
+  7891000379691  gluten      tag traco    texto ausente
+  8718989002640  leite       tag ausente  texto contem
+  8718989002640  gluten      tag ausente  texto contem
+  8718989002640  ovo         tag ausente  texto traco
+  7896002311274  leite       tag ausente  texto traco
+  7896002311274  ovo         tag ausente  texto traco
+  7896002311274  soja        tag ausente  texto contem
+  7896002311274  amendoim    tag ausente  texto traco
+  7896002311274  castanhas   tag contem   texto traco
+  7891000358764  gluten      tag ausente  texto contem
+  3256540000698  soja        tag traco    texto ausente
+  3256540000698  amendoim    tag traco    texto ausente
+  3256540000698  castanhas   tag traco    texto ausente
+  7896102502756  gluten      tag contem   texto traco
+  7896102502756  soja        tag contem   texto traco
+  7893000502888  soja        tag contem   texto ausente
+```
+
+```text
+                          pipeline        so-texto
+falso negativo            5 -> 4          8 -> 6
+declarado lido como traco 0 -> 0          0 -> 0
+falso positivo           12 -> 7          6 -> 1
+traco lido como declarado 19 -> 19        3 -> 3
+negacao tratada certo    20 -> 22        20 -> 22
+```
+
+- 7891000358764 gluten: FALSO- -> acerto+ (pipeline e so-texto) - correcao 1.
+- 11117780 gluten: FALSO- -> acerto+ (so-texto) - correcao 1.
+- 7893000394209 gluten: falso+ -> acerto- (os dois modos) - correcao 2.
+- 7896481130137 gluten: falso+ (traco) -> acerto- (os dois modos) - correcao 2.
+- 7894900701517, 78933873 e 7894900011159 castanhas: falso+ -> acerto- (os
+  dois modos) - correcao 3.
+
+Nenhum outro par mudou.
+
+## Falso positivo trocado por falso negativo? (4.4)
+
+**Nao.** Nenhuma correcao aumentou o falso positivo: ele caiu de 12 para 7 no
+pipeline e de 6 para 1 no so-texto, junto com o falso negativo (5 -> 4 e
+8 -> 6). Declarado lido como traco ficou em 0.
+
+## A6 - Erros NAO corrigidos, com o motivo
+
+Falsos negativos (graves):
+
+```text
+pipeline  so-texto  caso                      por que fica
+   x         x      7892840819507 leite       a base traz "PODE CONTER LETE" (erro de leitura);
+                                              aceitar "lete" seria caso especial (4.5)
+   x         x      8718989002640 leite       texto em frances, holandes e dinamarques ("lait",
+   x         x      8718989002640 gluten      "hvedemel", "de l'oeuf"); o motor le portugues e
+   x         x      8718989002640 ovo         ingles - outras linguas sao funcionalidade nova
+             x      8718989002640 amendoim    idem; no pipeline a tag da OFF cobre
+             x      8718989002640 castanhas   idem; no pipeline a tag da OFF cobre
+```
+
+Falsos positivos:
+
+```text
+pipeline  so-texto  caso                      por que fica
+   x         x      7891000071786 leite       o texto e o painel da embalagem; "leite" no modo
+                                              de preparo. Regra para "a gosto" seria fragil e
+                                              poderia esconder leite de verdade - erro do lado seguro
+   x                7891167011779 ovo         tag da OFF (traco) sem respaldo no texto
+   x                7891000379691 gluten      tag da OFF (traco) sem respaldo no texto
+   x                3256540000698 soja        tags da OFF (traco) sem respaldo no texto
+   x                3256540000698 amendoim
+   x                3256540000698 castanhas
+   x                7893000502888 soja        tag da OFF (contem); o texto diz "oleos vegetais"
+```
+
+O motor aceita a tag da OFF como evidencia, por desenho: prefere apontar a mais.
+
+Traco lido como declarado (falso positivo de severidade): **19 no pipeline** -
+16 herdados das tags da OFF, que poem como CONTEM o que o texto diz "pode
+conter" (8480000603067 ovo, peixe, crustaceos, moluscos, mostarda; 78939318,
+7891000325131, 7899970402852 e 7896002311274 castanhas; 7896066301778 ovo e
+castanhas; 7896066304571 leite, ovo e castanhas; 7896102502756 gluten e soja) -
+e **3 nos dois modos** (7891203010056 ovo, amendoim e castanhas): o OCR quebra a
+lista do "PODE CONTER" em linhas, e a quebra de linha separa frases no motor.
+Os dois consertos possiveis - o texto vencer a tag, ou a linha nao separar
+frase - abririam caminho para o erro grave (um declarado virar traco). Ficam.
+
+## Negacao (5.4)
+
+**22 casos** - 17 de gluten ("NAO CONTEM GLUTEN", "Sem gluten", "does not contain
+gluten", "contains no gluten") e 5 de lactose. Medicao inicial: **20 tratados
+certo** nos dois modos; os dois errados eram negacao em ingles (7893000394209 e
+7896481130137). Final: **22 de 22** nos dois modos. Os dois leites sem lactose
+(7893000502888, 7892999150124) continuam apontando leite, como o gabarito pede.
+
+## not_informed (5.5)
+
+**5 produtos** sem nenhum dado para o motor - 7622210596413, 7896004006277,
+07117815, 7891008116632, 7896004006239 -, nos dois modos e nas duas medicoes.
+Fora das quatro saidas, listados a parte; nao contam como erro (M7).
+
+## O teste de regressao (6.4)
+
+`medicao/resultado-registrado.json` guarda, por modo, a LISTA exata de cada tipo
+de erro da medicao final (pipeline: 4 falsos negativos, 0 declarados lidos como
+traco, 7 falsos positivos, 19 tracos lidos como declarado; so-texto: 6, 0, 1 e
+3). O M8 e o passo "medicao do motor" do `verify:release` falham se:
+
+- um tipo de erro passar do numero registrado (o limite);
+- aparecer caso que nao esta no registro - trocar um falso negativo por outro com
+  o mesmo total tambem falha;
+- um caso registrado deixar de acontecer - o ganho tem de ser travado, senao o
+  erro volta sem ninguem ver.
+
+Lista, e nao so numero, porque um total igual pode esconder um falso negativo
+novo no lugar de um corrigido. Os falsos positivos tambem estao no registro, para
+que uma troca futura de FN por FP apareca no diff. Nao ha comando que reescreva
+o registro: atualiza-lo e decisao revisada.
+
+## A3 - M1..M10, R1..R10 presentes e verdes
+
+Presentes e verdes, sem banco e contra PostgreSQL real - 27 testes em
+`backend/tests/medicaoDoMotor.test.js` (M8 tem cinco, M9 tem quatro):
+
+```text
+M1 o conjunto carrega e tem o tamanho declarado: 71 produtos, os grupos e o gabarito de cada um
+M2 o gabarito NAO vem do motor: cada positivo cita o rotulo, e a conta muda com o motor e nao com o gabarito
+M3 a medicao roda sem rede: fetch, http, https, net, tls e dns bloqueados e o comando sai com 0
+M4 a medicao reporta as quatro saidas por alergenico, e elas somam os pares medidos
+M5 traco e declarado sao contados separadamente: declarado->traco e traco->declarado
+M6 os casos de negacao sao contados e reportados: 22 (17 de gluten, 5 de lactose), com leite sem lactose ainda leite
+M7 not_informed nao conta como erro e e reportado a parte
+M8 regressao: o resultado de hoje e o registrado, nos dois modos
+M8 regressao: medicao/medicao-final.txt e a saida de hoje, e a inicial e de outro motor
+M8 regressao: o verify:release roda a conferencia da medicao
+M8 regressao: UM falso negativo a mais que o registrado faz a conferencia falhar
+M8 regressao: trocar um falso negativo por outro, com o mesmo total, tambem falha
+M9 cada correcao do motor cita produtos reais do conjunto
+M9 correcao 1 - gluten em ingles: 7891000358764 (Wheat flour) e 11117780 (wheat flour)
+M9 correcao 2 - negacao em ingles: 7893000394209 (does not contain gluten) e 7896481130137 (contains no gluten)
+M9 correcao 3 - noz de cola nao e castanha: 7894900701517, 78933873 e 7894900011159
+M10 o conjunto e o registro nao tem nada que pareca credencial, e o texto dos produtos so e dado
+R1 regressao: os testes do motor que ja existiam continuam verdes, sem mudar uma linha deles
+R2 regressao: exploit C1 - o modelo negando o conflito nao entrega falso seguro
+R3 regressao: matriz de severidade nos quatro casos
+R4 regressao: comparacao sem contaminacao, explicacao amarrada pelo codigo
+R5 regressao: cache offline sem veredito, perfil atual vence, logout limpa
+R6 regressao: o service worker nao intercepta nem grava /api/, nem com a rota na lista do shell
+R7 regressao: acessibilidade - estado sem cor, ordem de leitura, anuncio polite
+R8 regressao: isolamento, exportacao e exclusao - sem sessao, tudo responde 401
+R9 regressao: digito verificador, UPC-A canonicalizado e tetos da comparacao
+R10 regressao: handler de erro (JSON malformado e 400 sem detalhe, rota desconhecida 404) e fail-closed sem IA
+```
+
+O que cada um prova, em uma linha:
+
+```text
+M1   71 produtos, os 9 grupos com as cotas, 107 pares contem e 37 traco, 5 sem
+     texto; o conjunto e recusado sem gabarito ou com texto mudado depois dele
+M2   trecho inventado no gabarito e recusado; motor nulo da FN = 144 (todos os
+     positivos), motor que aponta tudo da FP = 780 (todos os ausentes); o
+     gabarito e o mesmo com qualquer motor e nao e escrito pela medicao
+M3   o comando roda com fetch, http, https, net, tls e dns bloqueados (e o
+     bloqueio e conferido: uma chamada com ele falha); a medicao nao importa
+     modulo de rede nem o script que monta o conjunto
+M4   as quatro saidas para os 14 alergenicos, somando os pares medidos, nos dois
+     modos, e uma linha por alergenico no relatorio
+M5   contem e traco contados a parte; rebaixar todo contains a traces vira
+     declarado->traco em cada declarado apontado, sem mudar o binario
+M6   22 negacoes (17 gluten, 5 lactose), 22 certas; leite sem lactose segue
+     leite; um motor que ignora a negacao do gluten erra os 17
+M7   os 5 not_informed fora da conta; motor sem dado = 0 par, 0 FN; produto sem
+     texto com tag fica fora e e listado
+M8   o resultado de hoje e o registrado; 1 FN a mais falha (acima-do-registrado
+     e caso-novo); declarado->traco a mais falha; troca de FN com mesmo total
+     falha; o verify:release roda a conferencia; medicao-final.txt e a saida de
+     hoje e medicao-inicial.txt e de outro motor, com os numeros iniciais
+M9   cada correcao com os produtos reais (7891000358764, 11117780,
+     7893000394209, 7896481130137, 7894900701517, 78933873, 7894900011159), e
+     os controles: buckwheat nao e gluten; a negacao para no ponto; castanha de
+     verdade ao lado da noz-de-cola segue apontada
+M10  nada com cara de credencial no conjunto e no registro; nenhuma cadeia
+     opaca no texto da OFF; a medicao nao tem eval, Function nem import dinamico
+R1   assistant, offline, productLookup e allergyVerdict rodados de novo num
+     processo filho: verdes; e os bugs exatos das auditorias antigas
+R2   C1   R3 severidade   R4 comparacao   R5 cache offline e logout
+R6   service worker e /api/   R7 acessibilidade (estado sem cor, ordem,
+     polite)   R8 401 sem sessao   R9 digito, UPC-A, tetos
+R10  JSON malformado 400 sem detalhe, 404 de API, assistente sem IA falha
+     fechado com AI_NOT_CONFIGURED
+```
+
+## A4 - Validacao por mutacao
+
+Rodada completa, com banco, sobre o codigo entregue:
+
+```text
+RUN_DB_INTEGRATION_TESTS=true DATABASE_URL=<PostgreSQL LOCAL> DATABASE_SSL=false \
+  node scripts/mutation-check.js --com-banco
+```
+
+```text
+mortas 169 | nao executadas 0 | problemas 1 | linha de base: antes verde, depois verde
+
+REPROVADO: ha teste que nao detecta o defeito que deveria detectar.
+=== EXIT: 1 ===
+```
+
+**170 mutantes: 169 mortos, 1 sobrevivente (W1, o equivalente da v0.8.0), 0 nao
+executados.** A linha de base - as 20 suites sem mutacao, incluida a nova
+(`tests/medicaoDoMotor.test.js`) - estava verde antes e depois. **Os 11
+mutantes novos morreram todos.** O script sai com codigo 1 por causa do W1, e
+isso fica registrado como esta.
+
+### Os mutantes pedidos pelo prompt
+
+```text
+pedido pelo prompt                                   mutante  teste que o pegou                    resultado
+o gabarito passa a ser a saida do motor              MD1      M2                                   MORTA
+o limite de falso negativo e afrouxado (conferencia) MD2      M8 (UM falso negativo a mais...)     MORTA
+o limite de falso negativo e afrouxado (registro)    MD3      M8 (UM falso negativo a mais...)     MORTA
+correcao 1 revertida (wheat)                         MC1      M9 correcao 1                        MORTA
+correcao 2 revertida ("does not contain")            MC2      M9 correcao 2                        MORTA
+correcao 2 revertida ("contains no")                 MC3      M9 correcao 2                        MORTA
+correcao 3 revertida para castanhas (nuts)           MC4      M9 correcao 3                        MORTA
+correcao 3 revertida para nozes (walnut)             MC5      M9 correcao 3                        MORTA
+```
+
+- **MD1** - `medicaoDoMotor.js`: o esperado de cada par passa a ser tirado da
+  resposta do motor, e nao do gabarito. O M2 mede com um motor que nunca aponta
+  nada e exige falso negativo em todos os 144 positivos; com o mutante, sao 0.
+- **MD2** - a conferencia passa a aceitar um caso a mais que o registrado
+  (`atual.length > registrado.length + 1`). O M8 tira o leite do Ninho
+  (7891000325858) e exige o problema "acima-do-registrado".
+- **MD3** - o registro ganha um falso negativo inventado (`0000000000000:milk`),
+  o que afrouxa o limite por dado. O M8 pega pelos dois lados: o registro deixa de
+  bater com a medicao de hoje, e o falso negativo a mais deixa de passar do limite.
+- **MC1 a MC5** - cada correcao revertida; a correcao 2 tem um mutante por
+  marcador, e a 3 um por id, para provar que cada parte e necessaria.
+
+### Os outros tres mutantes novos
+
+```text
+MD4  M7  produto sem dado para o motor passa a entrar na conta como erro   MORTA
+MD5  M5  declarado lido como traco deixa de ser contado                    MORTA
+MD6  M6  os casos de negacao deixam de ser contados                        MORTA
+```
+
+Antes da rodada oficial, os 11 foram rodados sozinhos contra a suite deles: 11
+mortos.
+
+### O sobrevivente: W1, o mesmo da v0.8.0
+
+O W1 faz o repositorio da exportacao devolver a linha inteira de `users`, mas o
+servico monta o arquivo campo a campo - a exportacao nao muda, e o teste esta
+certo em passar. E equivalente, foi descrito na v0.8.0 com a demonstracao de que
+a suite estatica (`nunca usa SELECT *`) o pega, e esta versao nao mexeu nele.
+
+### A rodada inteira
+
+Linha de base:
+
+```text
+[linha de base - antes] 20 suite(s), sem mutacao
+  VERDE    tests/productionHardening.test.js
+  VERDE    tests/verifyDeploy.test.js
+  VERDE    tests/renderSync.test.js
+  VERDE    tests/bodyParseError.test.js
+  VERDE    tests/productLookup.test.js
+  VERDE    tests/migrate.test.js
+  VERDE    tests/doctor.test.js
+  VERDE    tests/e2eGate.test.js
+  VERDE    tests/accountIntegration.test.js
+  VERDE    tests/barcode.test.js
+  VERDE    tests/collectionsIntegration.test.js
+  VERDE    tests/rateLimit.test.js
+  VERDE    tests/alertLevel.test.js
+  VERDE    tests/alertLevelIntegration.test.js
+  VERDE    tests/comparison.test.js
+  VERDE    tests/comparisonIntegration.test.js
+  VERDE    tests/offline.test.js
+  VERDE    tests/accessibility.test.js
+  VERDE    tests/serviceWorker.test.js
+  VERDE    tests/medicaoDoMotor.test.js
+```
+
+```text
+T1  P2   MORTA                  "P2 producao sem FRONTEND_ORIGIN nao sobe, e diz qual falta" falhou, como deveria
+T1b  P2   MORTA                  "P2 sem FRONTEND_ORIGIN, nem o createApp direto cai no default de localhost" falhou, como deveria
+T2  P5   MORTA                  "P5 erro do driver do banco nao chega ao cliente" falhou, como deveria
+T2b  P5   MORTA                  "P5 o detalhe do erro vai para o log do servidor" falhou, como deveria
+T3  P9   MORTA                  "P9 cada variavel obrigatoria ausente impede a subida, e a mensagem diz qual" falhou, como deveria
+T3b  P9   MORTA                  "P9 valor booleano nao reconhecido nao cai em default silencioso" falhou, como deveria
+T4  P12  MORTA                  "P12 versao no ar diferente da do repositorio reprova o D1" falhou, como deveria
+T5  P13  MORTA                  "P13 o registro de requisicoes do verify:deploy nao tem escrita" falhou, como deveria
+T5b  P13  MORTA                  "P13 contra o roteador REAL, nenhuma rota de escrita e alcancada" falhou, como deveria
+T6  P3   MORTA                  "P3 CORS devolve a origem configurada, nunca a do request" falhou, como deveria
+T7  P4   MORTA                  "P4 com trust proxy, req.ip segue o X-Forwarded-For e o balde acompanha" falhou, como deveria
+T8  P11  MORTA                  "P11 NOT_EXECUTED nao conta como PASS no agregado" falhou, como deveria
+T9  P11  MORTA                  "P11 o comando de verdade sai com codigo 1 quando um subgate falha" falhou, como deveria
+V1  S1/S4 MORTA                  "S1 render.yaml contem todas as obrigatorias de VARIAVEIS_OBRIGATORIAS_EM_PRODUCAO" falhou, como deveria
+V1b  S2   MORTA                  "S2 render.yaml nao declara variavel que o codigo nao le" falhou, como deveria
+V1c  S3   MORTA                  "S3 nenhuma credencial com valor literal no render.yaml" falhou, como deveria
+V2  O2a  MORTA                  "O2a JSON malformado responde 400, nao 500 - a medicao do auditor" falhou, como deveria
+V3  O2d  MORTA                  "O2d erro de biblioteca com statusCode arbitrario nao escolhe o status" falhou, como deveria
+V3b  O2d  MORTA                  "O2d copiar o type do body-parser nao basta para ganhar 400" falhou, como deveria
+V4  R7   MORTA                  "P13 o registro de requisicoes do verify:deploy nao tem escrita" falhou, como deveria
+U1  C2   MORTA                  "C2 a camera nunca transforma um codigo em outro" falhou, como deveria
+U2  C2   MORTA                  "C2 o App usa a leitura segura e nunca manda leitura da camera para a busca por nome" falhou, como deveria
+U3  C2   MORTA                  "C2 o App usa a leitura segura e nunca manda leitura da camera para a busca por nome" falhou, como deveria
+U4  O2e  MORTA                  "O2e corpo grande demais responde 413 fixo, sem a mensagem do leitor" falhou, como deveria
+U4b  O2e  MORTA                  "O2e copiar name, type e status do corpo grande nao basta para ganhar 413" falhou, como deveria
+U5  MODO MORTA                  "MODO NODE_ENV digitado errado nao sobe, e diz qual variavel" falhou, como deveria
+U5b  MODO MORTA                  "MODO NODE_ENV digitado errado nao sobe, e diz qual variavel" falhou, como deveria
+U6  MIG  MORTA                  "MIG migration que nao alcanca o banco falha dizendo por que" falhou, como deveria
+U7  MIG  MORTA                  "o doctor conta as mesmas migrations que o runner aplica, .sql e .js" falhou, como deveria
+U8  ORC  MORTA                  "o orcamento do gate usa os mesmos tetos do limitador, inclusive o por IP" falhou, como deveria
+W1  E2   MUTACAO SOBREVIVEU     a suite passou com o defeito aplicado
+W1b  E2   MORTA                  "E2 a exportacao nao contem o password_hash nem o salt reais - pelo valor" falhou, como deveria
+W2  E4   MORTA                  "E4 a exportacao de A nao contem nada de B, com B populado" falhou, como deveria
+W2b  E4   MORTA                  "E4 a exportacao de A nao contem nada de B, com B populado" falhou, como deveria
+W3  E5   MORTA                  "E5 userId no corpo, na query ou em cabecalho nao muda quem e exportado" falhou, como deveria
+W3b  E5   MORTA                  "E5 userId no corpo, na query ou em cabecalho nao muda quem e exportado" falhou, como deveria
+W4  D2   MORTA                  "D2 exclusao com senha errada nao remove nada" falhou, como deveria
+W5  D4   MORTA                  "D4 o schema montado SO pelas migrations tem ON DELETE CASCADE em toda FK para users" falhou, como deveria
+W5b  D4   MORTA                  "D4 o schema montado SO pelas migrations tem ON DELETE CASCADE em toda FK para users" falhou, como deveria
+W6  D8   MORTA                  "D8 falha simulada no meio da exclusao deixa o estado anterior intacto" falhou, como deveria
+W7  E8   MORTA                  "E8 a rota real recusa a exportacao acima do teto do usuario" falhou, como deveria
+W8  D9   MORTA                  "D9 a tentativa com senha errada gasta o mesmo balde do login" falhou, como deveria
+W9  D1   MORTA                  "D1 exclusao com a senha correta remove a conta e limpa o cookie" falhou, como deveria
+W10  E7   MORTA                  "E7 o arquivo nao leva e-mail nem nome, e a resposta nao pode ir para cache" falhou, como deveria
+W10b  E7   MORTA                  "E7 o arquivo nao leva e-mail nem nome, e a resposta nao pode ir para cache" falhou, como deveria
+W11  A11  MORTA                  "A11: o modo strict tem exatamente 23 requisitos, os 22 da v0.10.0 mais offlineCache" falhou, como deveria
+S1  N1a  MORTA                  "N1 o schema canonicaliza UPC-A para EAN-13" falhou, como deveria
+S1b  N1a  MORTA                  "N1a o mesmo produto em UPC-A e EAN-13 vira UMA linha canonica" falhou, como deveria
+S1c  N1c  MORTA                  "N1c requisicao DIRETA ao backend grava a forma canonica" falhou, como deveria
+S2  N1e  MORTA                  "N1e o schema nao altera EAN-13 nem EAN-8" falhou, como deveria
+S2b  N1d  MORTA                  "N1d codigo nao-EAN passa intacto pela canonicalizacao" falhou, como deveria
+S3  N1g  MORTA                  "N1g a migration funde as duas formas pela regra declarada" falhou, como deveria
+S4  N1g  MORTA                  "N1g a migration e idempotente e nao toca codigo nao-EAN" falhou, como deveria
+S5  R2   MORTA                  "N1 a canonicalizacao nao afrouxa a conferencia do digito" falhou, como deveria
+S6  N1   MORTA                  "N1 a canonicalizacao usa shared/barcode.js, sem copia local" falhou, como deveria
+P1  M1   MORTA                  "M1 codigos com digito verificador errado sao recusados pelo motivo certo" falhou, como deveria
+P1b  M1   MORTA                  "M1 codigos validos de EAN-13, EAN-8 e UPC-A sao aceitos" falhou, como deveria
+P2  M3   MORTA                  "M3 o backend recusa productCode com digito verificador invalido" falhou, como deveria
+P2b  M3   MORTA                  "M3 a regra do backend e estreita e nao quebra cadastro legitimo" falhou, como deveria
+P3  M4   MORTA                  "o caminho manual nao monta o resultado por conta propria" falhou, como deveria
+P3b  M4   MORTA                  "M2 codigo invalido nao chega a rede" falhou, como deveria
+P4  M5   MORTA                  "M5 o piso de risco vale no caminho manual" falhou, como deveria
+P5  M9   MORTA                  "M9 nao existe segunda implementacao do digito verificador" falhou, como deveria
+P5b  M9   MORTA                  "M9 backend e frontend usam a MESMA implementacao de shared/" falhou, como deveria
+P6  M7   MORTA                  "M7 UPC-A vira EAN-13 com zero a esquerda, e o produto e o mesmo" falhou, como deveria
+P7  M6   MORTA                  "M6 cada motivo de recusa tem mensagem propria" falhou, como deveria
+P8  M8   MORTA                  "M8 nenhum outro caractere e removido em silencio" falhou, como deveria
+P9  M10  MORTA                  "M10 o backend recusa gravar codigo com digito verificador invalido" falhou, como deveria
+N1  R1/R3 MORTA                  "R1 usuario dentro do teto mas IP estourado recebe 429" falhou, como deveria
+N1b  R3   MORTA                  "R3 multiplas contas do mesmo IP nao ultrapassam o teto por IP" falhou, como deveria
+N2  R2   MORTA                  "R2 IP dentro do teto mas usuario estourado recebe 429" falhou, como deveria
+N2b  R4   MORTA                  "R4 dois usuarios atras do MESMO IP mantem cotas separadas" falhou, como deveria
+N3  R4   MORTA                  "R4 a requisicao recusada pelo teto de usuario nao consome orcamento do IP" falhou, como deveria
+N4  R5   MORTA                  "R5 dados forjados no request nao conseguem balde de IP novo" falhou, como deveria
+N5  R5   MORTA                  "R5 um bloco IPv6 /64 nao vira infinitos baldes" falhou, como deveria
+M1  R6   MORTA                  "R6 os tres tetos por rota seguem nos valores declarados" falhou, como deveria
+M2  R7   MORTA                  "R7 o teto por IP esta no valor medido" falhou, como deveria
+M3  Q3   MORTA                  "Q3 nenhuma variavel de ambiente desliga os limitadores" falhou, como deveria
+M3b  Q4   MORTA                  "Q4 nenhum dos limitadores tem opcao de pular requisicao" falhou, como deveria
+M4  Q2   MORTA                  "Q2 em producao o teto por usuario recusa na requisicao seguinte ao teto" falhou, como deveria
+M6  R9   MORTA                  "I1 usuario A nao le historico nem favorito de B" falhou, como deveria
+M7  R9   MORTA                  "I2 usuario B nao remove item de A" falhou, como deveria
+X1  S2   MORTA                  "S2 alerta maximo + conflito declarado: piso urgent" falhou, como deveria
+X2  S3   MORTA                  "S3 alerta maximo + traco: conflito no veredito, piso caution" falhou, como deveria
+X3  S5   MORTA                  "S5 o modelo respondendo normal nao derruba o piso em nenhum dos casos" falhou, como deveria
+X4  S6   MORTA                  "S6 o modelo nao escreve nem influencia o nivel: campo de nivel vindo dele derruba a resposta" falhou, como deveria
+X5  S12  MORTA                  "S12 o banco recusa nivel invalido inserido direto em SQL - no banco e no schema das migrations" falhou, como deveria
+X6  S13  MORTA                  "S13 nenhuma tabela de colecao tem onde guardar nivel ou veredito - no banco e no schema das migrations" falhou, como deveria
+X6b  S13  MORTA                  "S13 nivel nao congelado: o item salvo nao muda e a leitura seguinte reflete o nivel novo" falhou, como deveria
+X7  S17  MORTA                  "S17 o log da tentativa de minimizacao e o mesmo com alerta padrao ou maximo" falhou, como deveria
+X8  S18  MORTA                  "S18 o payload enviado a Anthropic nao ganhou canal novo: o nivel nao vai nem no allergySnapshot" falhou, como deveria
+X9  A11  MORTA                  "A11: o modo strict tem exatamente 23 requisitos, os 22 da v0.10.0 mais offlineCache" falhou, como deveria
+X10  S9   MORTA                  "S9 nivel para alergia ausente do perfil e recusado pela validacao" falhou, como deveria
+X11  S1   MORTA                  "S1 nivel padrao + conflito declarado: piso caution, identico a v0.8.0" falhou, como deveria
+X12  S8   MORTA                  "S8 nivel desconhecido e recusado pela validacao" falhou, como deveria
+X13  S16  MORTA                  "S16 o nivel de A nao e visivel nem alteravel por B" falhou, como deveria
+Y1  C2t  MORTA                  "C2t produto em conflito com produto limpo: o limpo nao herda safety e o em conflito nao e rebaixado" falhou, como deveria
+Y2  C2t  MORTA                  "C2t produto em conflito com produto limpo: o limpo nao herda safety e o em conflito nao e rebaixado" falhou, como deveria
+Y3  C5t  MORTA                  "C5t explicacoes em ordem trocada: cada uma cai no produto certo, pelo codigo" falhou, como deveria
+Y4  C7t  MORTA                  "C7t o modelo nao escreve, nao altera e nao reordena veredito" falhou, como deveria
+Y5  C8t  MORTA                  "C8t produto sem dado de alergenico: a ausencia nao vira 'nao contem' em lugar nenhum" falhou, como deveria
+Y5b  C8t  MORTA                  "C8t produto sem dado de alergenico: a ausencia nao vira 'nao contem' em lugar nenhum" falhou, como deveria
+Y5c  C8t  MORTA                  "C8t produto sem dado de alergenico: a ausencia nao vira 'nao contem' em lugar nenhum" falhou, como deveria
+Y6  C6t  MORTA                  "C6t o modelo respondendo normal nao derruba o piso de nenhum dos dois" falhou, como deveria
+Y7  C9t  MORTA                  "C9t digito verificador invalido em qualquer dos dois e recusado antes de qualquer busca" falhou, como deveria
+Y8  C11  MORTA                  "C11 codigos iguais: recusados com mensagem clara, sem busca" falhou, como deveria
+Y8b  C11  MORTA                  "C11 codigos iguais: recusados com mensagem clara, sem busca" falhou, como deveria
+Y9  A11  MORTA                  "A11: o modo strict tem exatamente 23 requisitos, os 22 da v0.10.0 mais offlineCache" falhou, como deveria
+Y10  C13  MORTA                  "C13 a sessao de B com o id de A no corpo compara com o perfil de B" falhou, como deveria
+Y11  C15  MORTA                  "C15 o limitador cobre as duas rotas: comparacao 30/300 por 10 min, explicacao no balde do assistente" falhou, como deveria
+Z1  O3   MORTA                  "O3 o cache NAO contem allergyVerdict nem resultado do motor em nenhuma chave" falhou, como deveria
+Z2  O4   MORTA                  "O4 perfil alterado DEPOIS do cache: a leitura offline reflete o perfil NOVO" falhou, como deveria
+Z3  O9   MORTA                  "O9 LOGOUT limpa o cache: nenhuma chave e nenhum VALOR com o id de alergia ou o historico da conta" falhou, como deveria
+Z4  O11  MORTA                  "O11 o cache nunca contem senha, hash, salt, token, cookie, chave de API nem e-mail" falhou, como deveria
+Z5  O14  MORTA                  "O14 nenhuma escrita offline: favoritar e marcar alergia sem rede nao chamam o servidor, nao gravam e nao enfileiram" falhou, como deveria
+Z5b  O14  MORTA                  "O14 nenhuma escrita offline: favoritar e marcar alergia sem rede nao chamam o servidor, nao gravam e nao enfileiram" falhou, como deveria
+Z6  O2   MORTA                  "O2 produto NAO guardado + sem rede: 'nao disponivel offline', explicito - nunca resultado vazio nem aproximado" falhou, como deveria
+Z7  O7   MORTA                  "O7 codigo invalido offline e recusado pela mesma funcao, ANTES de consultar o cache" falhou, como deveria
+Z8  O8   MORTA                  "O8 UPC-A offline acha o produto guardado como EAN-13 - e o contrario" falhou, como deveria
+Z9  O10  MORTA                  "O10 exclusao de conta limpa o cache no aparelho - so depois de o servidor confirmar" falhou, como deveria
+Z10  O12  MORTA                  "O12 o cache de A nao e legivel por B no mesmo aparelho" falhou, como deveria
+Z11  O16  MORTA                  "O16 dado expirado nao e servido como valido: depois de 30 dias, e tratado como ausente, com o motivo" falhou, como deveria
+Z12  O15  MORTA                  "O15 a sessao 'sem resposta' usa o perfil do aparelho, marcado; 401 tira o cache" falhou, como deveria
+Z13  A11  MORTA                  "A11: o modo strict tem exatamente 23 requisitos, os 22 da v0.10.0 mais offlineCache" falhou, como deveria
+AC1  A1t  MORTA                  "A1t sem cor, os quatro estados do veredito continuam distinguiveis por texto" falhou, como deveria
+AC2  A2t  MORTA                  "A2t cada alergenico do veredito vem com o seu estado escrito" falhou, como deveria
+AC3  A3t  MORTA                  "A3t contraste calculado dos tokens reais: texto 4.5, texto grande 3, indicador 3" falhou, como deveria
+AC4  A3t  MORTA                  "A3t contraste calculado dos tokens reais: texto 4.5, texto grande 3, indicador 3" falhou, como deveria
+AC5  A5t  MORTA                  "A5t a regiao de anuncio e polite, existe antes do veredito e recebe o estado primeiro" falhou, como deveria
+AC6  A5t  MORTA                  "A5t a regiao de anuncio e polite, existe antes do veredito e recebe o estado primeiro" falhou, como deveria
+AC7  A6t  MORTA                  "A6t no assistente, na tela do produto e na comparacao, o veredito vem antes" falhou, como deveria
+AC8  A7t  MORTA                  "A7t na comparacao, coluna, veredito e cabecalho de tabela dizem o nome do produto" falhou, como deveria
+AC9  A11  MORTA                  "A11 os alvos de toque do caminho do alerta tem 24x24 CSS px ou mais" falhou, como deveria
+AC10  A11  MORTA                  "A11 os alvos de toque do caminho do alerta tem 24x24 CSS px ou mais" falhou, como deveria
+AC11  A9t  MORTA                  "A9t o anel de foco existe, tem 2px e nenhum campo do caminho o perde" falhou, como deveria
+AC12  A10  MORTA                  "A10 a folga de rolagem cobre a barra de cima e as abas, no celular e no computador" falhou, como deveria
+AC13  A13  MORTA                  "A13 cada motivo de recusa e distinto, ligado ao campo e anunciado uma vez" falhou, como deveria
+AC14  A17  MORTA                  "A17 nome de produto vindo da Open Food Facts chega como texto, nunca como HTML" falhou, como deveria
+AC15  A8t  MORTA                  "A8t todo controle do caminho do alerta e nativo, alcancavel e sem armadilha" falhou, como deveria
+PW1  P3   MORTA                  "P3 a regra: nenhuma rota de /api/ e interceptada, e nenhuma pode ser gravada" falhou, como deveria
+PW2  P3   MORTA                  "P3 a regra: nenhuma rota de /api/ e interceptada, e nenhuma pode ser gravada" falhou, como deveria
+PW3  P7   MORTA                  "P7 logout limpa o Cache Storage e o IndexedDB - os dois conferidos" falhou, como deveria
+PW4  P7   MORTA                  "P7 logout limpa o Cache Storage e o IndexedDB - os dois conferidos" falhou, como deveria
+PW5  P9   MORTA                  "P9 versao nova publicada: o cache antigo e descartado e a versao nova passa a ser servida" falhou, como deveria
+PW6  P9   MORTA                  "P9 versao nova publicada: o cache antigo e descartado e a versao nova passa a ser servida" falhou, como deveria
+PW7  P12  MORTA                  "P12 com o registro do service worker falhando, o app carrega e funciona" falhou, como deveria
+PW8  P12  MORTA                  "P12 com o registro do service worker falhando, o app carrega e funciona" falhou, como deveria
+PW9  P4   MORTA                  "P4 resposta com Set-Cookie nunca e guardada - nem de /api/, nem de arquivo do shell" falhou, como deveria
+PW10  P11  MORTA                  "P11 a versao nova nunca assume sozinha na instalacao - espera" falhou, como deveria
+PW11  P11  MORTA                  "P11 a pagina nunca recarrega sozinha: so pelo toque em Atualizar" falhou, como deveria
+PW12  P3   MORTA                  "P3 a regra: nenhuma rota de /api/ e interceptada, e nenhuma pode ser gravada" falhou, como deveria
+PW13  P16  MORTA                  "P16 escopo '/': o service worker so intercepta a pagina e os arquivos do build" falhou, como deveria
+PW14  P1   MORTA                  "P1 sem rede, o HTML, o JavaScript e o CSS do app vem do cache" falhou, como deveria
+PW15  P5   MORTA                  "P5 /api/account/export nunca e guardada, em nenhuma grafia" falhou, como deveria
+PW16  P15  MORTA                  "P15 todo icone declarado existe no projeto, no tamanho declarado" falhou, como deveria
+PW17  P17  MORTA                  "P17 o tamanho do shell e reportado e fica dentro do teto" falhou, como deveria
+PW18  8.2  MORTA                  "P11 cada defeito derruba o seu subgate e o agregado" falhou, como deveria
+PW19  8.2  MORTA                  "P11 cada defeito derruba o seu subgate e o agregado" falhou, como deveria
+PW20  8.2  MORTA                  "D9 a D12 contra o backend REAL: manifesto, icones e service worker servidos certo" falhou, como deveria
+MD1  M2   MORTA                  "M2 o gabarito NAO vem do motor" falhou, como deveria
+MD2  M8   MORTA                  "M8 regressao: UM falso negativo a mais que o registrado faz a conferencia falhar" falhou, como deveria
+MD3  M8   MORTA                  "M8 regressao: UM falso negativo a mais que o registrado faz a conferencia falhar" falhou, como deveria
+MD4  M7   MORTA                  "M7 not_informed nao conta como erro" falhou, como deveria
+MD5  M5   MORTA                  "M5 traco e declarado sao contados separadamente" falhou, como deveria
+MD6  M6   MORTA                  "M6 os casos de negacao sao contados e reportados" falhou, como deveria
+MC1  M9   MORTA                  "M9 correcao 1 - gluten em ingles" falhou, como deveria
+MC2  M9   MORTA                  "M9 correcao 2 - negacao em ingles" falhou, como deveria
+MC3  M9   MORTA                  "M9 correcao 2 - negacao em ingles" falhou, como deveria
+MC4  M9   MORTA                  "M9 correcao 3 - noz de cola nao e castanha" falhou, como deveria
+MC5  M9   MORTA                  "M9 correcao 3 - noz de cola nao e castanha" falhou, como deveria
+mortas 169 | nao executadas 0 | problemas 1 | linha de base: antes verde, depois verde
+```
+
+```text
+[linha de base - depois] 20 suite(s), sem mutacao
+  VERDE    tests/productionHardening.test.js
+  VERDE    tests/verifyDeploy.test.js
+  VERDE    tests/renderSync.test.js
+  VERDE    tests/bodyParseError.test.js
+  VERDE    tests/productLookup.test.js
+  VERDE    tests/migrate.test.js
+  VERDE    tests/doctor.test.js
+  VERDE    tests/e2eGate.test.js
+  VERDE    tests/accountIntegration.test.js
+  VERDE    tests/barcode.test.js
+  VERDE    tests/collectionsIntegration.test.js
+  VERDE    tests/rateLimit.test.js
+  VERDE    tests/alertLevel.test.js
+  VERDE    tests/alertLevelIntegration.test.js
+  VERDE    tests/comparison.test.js
+  VERDE    tests/comparisonIntegration.test.js
+  VERDE    tests/offline.test.js
+  VERDE    tests/accessibility.test.js
+  VERDE    tests/serviceWorker.test.js
+  VERDE    tests/medicaoDoMotor.test.js
+```
+
+## A7 - `allergyVerdict.js` e `productComparison.js` inalterados
+
+```text
+git diff --stat 7b035cd -- shared/allergyVerdict.js shared/productComparison.js   (v0.13.0)
+(vazio = nenhuma linha mudou)
+
+git status --short -- shared/
+ M shared/allergenEngine.js
+
+arquivo                              objeto git no commit 7b035cd               objeto git da arvore entregue              igual
+shared/allergenEngine.js             f57650364eb23e75583c4f83063bfcc0289e35df   08d85c773a8d3c557c5dc2366333d0879cceaddd   NAO
+shared/allergens.js                  8e806b817f45ea7b83e3e1d6d573452dd8b1a318   8e806b817f45ea7b83e3e1d6d573452dd8b1a318   sim
+shared/allergyVerdict.js             9b64b377c9854a2169516af1ada09923cec1b80e   9b64b377c9854a2169516af1ada09923cec1b80e   sim
+shared/barcode.js                    9d405872450fddcb26c78514ecc99ed884c32167   9d405872450fddcb26c78514ecc99ed884c32167   sim
+shared/productAllergenAdapter.js     a624d9cb880583d5a448a814d27e8c4c4c87f2d6   a624d9cb880583d5a448a814d27e8c4c4c87f2d6   sim
+shared/productComparison.js          cc396178169758edb29af88886cd104ad67fd23a   cc396178169758edb29af88886cd104ad67fd23a   sim
+shared/text.js                       9d10de1e52a6759757a20dcc7acef71b493e0272   9d10de1e52a6759757a20dcc7acef71b493e0272   sim
+
+arquivos em shared/: 7
+core.autocrlf = true
+```
+
+Os dois arquivos proibidos tem o MESMO objeto git do commit da v0.13.0
+(`7b035cd`) - conteudo identico depois da normalizacao de fim de linha que o git
+faz (`core.autocrlf = true`) - e `git diff` vazio. Em `shared/`, so
+`allergenEngine.js` mudou, como a secao 4.4 permite.
+
+## A8 a A12
+
+```text
+npm run build                              sucesso (vite 6.4.5; dist/sw.js da 0.14.0, 7,9 KB)
+npm --prefix backend test (sem banco)      520 testes, 445 pass, 0 fail, 75 skipped
+                                           (os pulados exigem PostgreSQL, IA real ou
+                                           Open Food Facts real - todos declarados
+                                           NAO EXECUTADO, nenhum PASS)
+suite completa com PostgreSQL LOCAL        520 testes, 517 pass, 0 fail, 3 skipped
+                                           (1 IA real, 2 Open Food Facts real)
+npm audit --audit-level=moderate           frontend: found 0 vulnerabilities
+    npm --prefix backend audit (moderate)  backend:  found 0 vulnerabilities
+npm run verify:release                     exit 0 - todos os passos OK, inclusive o novo
+                                           "medicao do motor" (saida abaixo)
+```
+
+Saida do `npm run verify:release` (as linhas de resultado; o build, os testes e o
+doctor imprimem mais):
+
+```text
+[INFO] verify:release - build/test/audit/secret verification (nao equivale a E2E aprovado)
+[RUN] doctor
+[OK] doctor
+[RUN] frontend build
+[OK] frontend build
+[RUN] backend tests
+ℹ tests 520
+ℹ pass 445
+ℹ fail 0
+ℹ skipped 75
+[OK] backend tests
+[RUN] medicao do motor
+[OK] medicao do motor - igual ao registrado (pipeline: 4 FN + 0 declarado->traco; so-texto: 6 FN + 0 declarado->traco)
+[OK] medicao do motor
+[RUN] frontend audit
+found 0 vulnerabilities
+[OK] frontend audit
+[RUN] backend audit
+found 0 vulnerabilities
+[OK] backend audit
+[OK] secret scan - 0 real secrets
+[OK] release verification - build/test/audit/secret verification (nao equivale a E2E aprovado)
+=== EXIT 0 ===
+```
+
+## A13 - `verify:e2e`
+
+**PASS, exit code 0, na primeira execucao**, com PostgreSQL real e Claude real -
+2 chamadas pagas. Os 23 requisitos em `PASSED`, `ok: true`. A saida literal, a
+tabela de subgates, a contagem por balde e o `E2E_LAST_RUN.json` integral estao no
+`E2E_REPORT.md`. Nao ha migration nova: o doctor leu "4/4 applied". Nenhum
+subgate novo (decisao da secao 8, abaixo); `scripts/verify-e2e.js`,
+`scripts/e2e-real.js` e `scripts/lib/e2eGate.js` tem diff vazio contra a
+v0.13.0 - `scripts/lib/` so ganhou `medicaoDoMotor.js`, que o gate nao importa.
+O subgate `deterministicEngine` rodou o motor corrigido: PASS.
+
+## Decisao da secao 8 - sem subgate novo no E2E
+
+A medicao e offline e deterministica: roda sobre um arquivo do repositorio, sem
+banco, sem IA e sem rede. O gate E2E prova o backend real com PostgreSQL e Claude
+reais - a medicao nao tem nada a provar ali, e la ficaria sujeita a credencial
+que ela nao usa. Ela mora no `verify:release` (passo "medicao do motor"), que
+toda entrega roda. `scripts/verify-e2e.js`, `scripts/e2e-real.js` e
+`scripts/lib/e2eGate.js` tem diff vazio contra a v0.13.0.
+
+## A14 - os 23 requisitos continuam exigidos, um a um
+
+Prova por execucao, sobre o `E2E_LAST_RUN.json` desta versao: cada requisito,
+sozinho em `NOT_EXECUTED`, reprova o modo strict - e so ele.
+
+```text
+requisitos no modo strict (flag da IA ligada): 23
+faltando no E2E_LAST_RUN.json desta versao: []
+
+requisito                valor no relatorio   NOT_EXECUTED sozinho reprova
+backendProcess           STARTED_BY_RUNNER    sim, e so ele
+database                 EXECUTED             sim, e so ele
+migrations               EXECUTED_IDEMPOTENT  sim, e so ele
+auth                     PASSED               sim, e so ele
+sessionSchema            PASSED               sim, e so ele
+multiDevice              PASSED               sim, e so ele
+isolation                PASSED               sim, e so ele
+logout                   PASSED               sim, e so ele
+assistantAuthority       PASSED               sim, e so ele
+deterministicEngine      PASSED               sim, e so ele
+fallback                 PASSED               sim, e so ele
+privacy                  PASSED               sim, e so ele
+historySync              PASSED               sim, e so ele
+favoritesSync            PASSED               sim, e so ele
+verdictFreshness         PASSED               sim, e so ele
+manualCodeLookup         PASSED               sim, e so ele
+accountExport            PASSED               sim, e so ele
+accountDeletion          PASSED               sim, e so ele
+severityVerdict          PASSED               sim, e so ele
+anthropicReal            EXECUTED_GENERIC_AND_PRODUCT sim, e so ele
+assistantAuthenticated   PASSED               sim, e so ele
+productComparison        PASSED               sim, e so ele
+offlineCache             PASSED               sim, e so ele
+
+os 23 da v0.11.0 presentes: 23 de 23
+requisitos alem dos 23: []
+falhas: 0
+```
+
+`scripts/lib/e2eGate.js` tem diff vazio contra a v0.13.0.
+
+## Limpeza do banco depois do gate
+
+Residuo **0** em todos os padroes de teste, e nenhuma linha orfa, depois do gate.
+Esta versao nao criou conta de teste fora do gate (nao houve verificacao no
+navegador: a medicao nao tem tela). Saida completa no `E2E_REPORT.md`.
+
+## A15 - `verify:deploy` continua somente leitura
+
+Nenhum subgate novo; `scripts/verify-deploy.js` tem diff vazio contra a v0.13.0.
+O registro de requisicoes do P13 segue sem escrita, e o P13 contra o roteador real
+segue verde. A medicao do motor nao toca o deploy.
+
+```text
+verify:deploy simulado (local, http)   FAIL, exit 1 - 11 PASS, D2 FAIL (sem TLS local)
+verify:deploy REAL (somente leitura)   FAIL, exit 1 - 7 PASS; D1 FAIL ("repositorio declara
+                                       0.14.0 e o deploy anuncia 0.7.0"); D9 FAIL (sem
+                                       manifesto); D11 FAIL (/sw.js devolve a pagina,
+                                       text/html); D10 e D12 NOT_EXECUTED
+```
+
+Os FAIL sao os esperados: no ar esta a 0.7.0. Saidas literais no `E2E_REPORT.md`.
+
+## A16 - varredura do nome antigo
+
+```text
+=== varredura de 'nutriva' (sem diferenciar maiuscula), fora de node_modules, dist, .git e releases
+./AUDIT_REPORT.md
+./CHANGELOG.md
+./backend/tests/productName.test.js
+=== ocorrencias por arquivo
+./AUDIT_REPORT.md:22
+./CHANGELOG.md:24
+./backend/tests/productName.test.js:3
+```
+
+O nome antigo aparece so em `backend/tests/productName.test.js`, o teste que o
+procura, e nas secoes historicas do `AUDIT_REPORT.md` e do `CHANGELOG.md` - a
+contagem do AUDIT_REPORT subiu de 21 para 22 porque o relatorio arquivado da
+v0.13.0 transcreve a propria varredura.
+
+## A17 - versao nos sete pontos
+
+```text
+package.json                                       0.14.0
+backend/package.json                               0.14.0
+package-lock.json (raiz e packages[""])            0.14.0 / 0.14.0
+backend/package-lock.json (raiz e packages[""])    0.14.0 / 0.14.0
+GET /api/health (app real, em memoria)             0.14.0
+README.md (titulo)                                 # NutriScan v0.14.0
+CHANGELOG.md (entrada mais recente)                ## NutriScan v0.14.0 - 2026-11-06
+```
+
+## O que esta versao NAO prova
+
+- **Validacao clinica**: nao foi feita e nao e escopo. Medicao de software contra
+  rotulos nao diz se o motor e seguro ou adequado para decidir o que comer.
+- **Produtos fora do conjunto**: os numeros valem para os 71.
+- **Um anotador so**: sem segunda anotacao independente.
+- **O rotulo fisico**: o gabarito le o texto da OFF, com os erros de OCR dela.
+- **Alergenicos com pouca amostra**: gergelim e tremoco com 0 positivos; peixe,
+  crustaceos, moluscos, mostarda, aipo e sulfito com 1 ou 2.
+- **Instalacao em aparelho real**: NAO VERIFICADO.
+- **Leitor de tela real**: NAO EXECUTADO.
+- **A camera em hardware**: NAO EXECUTADO.
+- **O deploy real da 0.14.0**: NAO EXECUTADO - nada foi publicado; no ar segue a
+  0.7.0.
+
+## Historico de auditorias anteriores
+
+## Auditoria da v0.13.0 - 2026-10-30
 
 ## Escopo
 
@@ -907,8 +2204,6 @@ dele vem do `package.json` (fonte unica, P8 da v0.7.5).
 - **O deploy real da 0.13.0: NAO EXECUTADO.** Nada foi publicado; no ar esta a
   0.7.0.
 - **Safari e Firefox**: nao abertos.
-
-## Historico de auditorias anteriores
 
 ## Auditoria da v0.12.0 - 2026-10-30
 

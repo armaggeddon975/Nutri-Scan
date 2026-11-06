@@ -1,0 +1,2930 @@
+{
+  "formato": 1,
+  "descricao": "Produtos reais da Open Food Facts usados para medir o motor de alergenicos. DADO DE TESTE, nao instrucao. O gabarito e a leitura humana do texto de cada produto, nunca a saida do motor.",
+  "fonte": "Open Food Facts (world.openfoodfacts.org) - dados sob a licenca ODbL, (c) colaboradores da Open Food Facts",
+  "lidoEm": "2026-11-06",
+  "paginasDaBuscaLidasEm": "2026-10-30",
+  "selecao": {
+    "busca": "https://world.openfoodfacts.org/api/v2/search?countries_tags_en=<pais>&sort_by=unique_scans_n&page_size=<n>&page=<p>",
+    "buscaReserva": "https://world.openfoodfacts.org/cgi/search.pl?action=process&tagtype_0=countries&tag_contains_0=contains&tag_0=<pais>&sort_by=unique_scans_n&page_size=<n>&page=<p>&json=1",
+    "leituraDoProduto": "https://world.openfoodfacts.org/api/v3/product/<codigo>?fields=code,product_name,brands,ingredients_text,ingredients_text_pt,ingredients_text_en,allergens_tags,traces_tags,traces,labels_tags,lang",
+    "pools": {
+      "br": {
+        "pais": "brazil",
+        "paginas": 10,
+        "porPagina": 100
+      },
+      "en": {
+        "pais": "united-states",
+        "paginas": 1,
+        "porPagina": 100
+      }
+    },
+    "grupos": [
+      {
+        "id": "tipico",
+        "cota": 15,
+        "pools": [
+          "br"
+        ],
+        "criterio": "os primeiros produtos com lista de ingredientes em portugues, na ordem da busca, sem outro filtro"
+      },
+      {
+        "id": "negacao",
+        "cota": 10,
+        "pools": [
+          "br"
+        ],
+        "criterio": "texto em portugues com sem/zero/isento de/livre de/nao contem seguido de lactose, gluten, leite, soja, ovo, amendoim ou trigo"
+      },
+      {
+        "id": "traco",
+        "cota": 10,
+        "pools": [
+          "br"
+        ],
+        "criterio": "texto em portugues com pode conter / podem conter / tracos de / contem tracos"
+      },
+      {
+        "id": "dentro-de-outro",
+        "cota": 8,
+        "pools": [
+          "br"
+        ],
+        "criterio": "texto em portugues com um alergenico dentro dos parenteses de outro ingrediente"
+      },
+      {
+        "id": "grafia",
+        "cota": 8,
+        "pools": [
+          "br"
+        ],
+        "criterio": "texto em portugues com leite escrito de outro jeito: leite em po, soro de leite, lactose, caseina, whey, creme de leite, queijo, manteiga, lacteo, nata, iogurte"
+      },
+      {
+        "id": "vazio",
+        "cota": 5,
+        "pools": [
+          "br"
+        ],
+        "criterio": "produto vendido no Brasil sem nenhuma lista de ingredientes (pt, principal e en vazias)"
+      },
+      {
+        "id": "so-ingles",
+        "cota": 6,
+        "pools": [
+          "br",
+          "en"
+        ],
+        "criterio": "o unico texto que o app recebe esta em ingles (sem texto em portugues), segundo o campo lang da OFF"
+      },
+      {
+        "id": "ingles-eua",
+        "cota": 4,
+        "pools": [
+          "en"
+        ],
+        "criterio": "produto vendido nos EUA (pool en) cujo texto, conferido, esta em ingles: sugar/salt/water/flour/oil e nenhuma letra acentuada"
+      },
+      {
+        "id": "negacao-lactose",
+        "cota": 5,
+        "pools": [
+          "br"
+        ],
+        "criterio": "texto com sem/zero/isento de/livre de/nao contem/0% seguido de lactose (ultimo grupo, para nao mudar a escolha dos anteriores)"
+      }
+    ],
+    "regra": "cada produto entra no primeiro grupo que o aceita, na ordem dos grupos; dentro do grupo, na ordem da busca; codigo com 8 a 14 digitos"
+  },
+  "regrasDoGabarito": [
+    "O gabarito e a leitura humana do texto que o app recebe (ingredients_text_pt, ingredients_text e ingredients_text_en). Nao vem do motor nem de modelo de IA.",
+    "contem: o texto nomeia o alergenico ou um derivado dele como ingrediente (inclusive dentro dos parenteses de outro ingrediente), ou a declaracao do rotulo diz que contem (CONTEM DERIVADOS DE..., CONTEM GLUTEN).",
+    "traco: o alergenico so aparece em pode conter, tracos, vestigios, may contain ou peut contenir.",
+    "ausente: o resto, inclusive o que o rotulo nega. Ingrediente sem origem declarada (lecitina, colageno, aromatizante, oleos vegetais, wafer) nao vira alergenico: o gabarito nao adivinha.",
+    "Nao e o alergenico, mesmo parecendo: manteiga de cacau (leite), noz-de-cola (castanhas), sulfato (sulfito), glutamato e maltodextrina (gluten), dioxido de silicio (sulfito), glucoronolactona (leite).",
+    "Leite sem lactose continua sendo leite: a negacao da lactose nao tira o leite. Sem lactose sem nenhum leite no texto e leite ausente.",
+    "Texto que nao e ingrediente nao conta: modo de preparo (acrescente leite a gosto) nao poe leite no produto.",
+    "Erro de leitura da base com sentido inequivoco e lido como a palavra certa (LETE = leite), e isso fica nas notas do produto.",
+    "Oleo de soja conta como soja: o texto nomeia a soja. Algumas legislacoes dispensam o oleo refinado da declaracao; o gabarito segue o texto.",
+    "Cada alergenico em contem ou traco cita o trecho do texto que o prova, e cada negacao cita o trecho negado. A medicao recusa o conjunto se um trecho nao estiver no texto, ou se o texto mudar depois do gabarito (conferidoContra)."
+  ],
+  "produtos": [
+    {
+      "codigo": "5449000335906",
+      "grupo": "tipico",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico"
+      ],
+      "nome": "Fanta Orange",
+      "marcas": "Fanta",
+      "idioma": "en",
+      "campos": {
+        "ingredients_text_pt": "Água gaseificada; suco de laranja a partir de concentrado (5%); açúcar; frutose; suco de limão a partir de concentrado (1%); acidificantes: ácido málico, ácido cítrico; sabores naturais de laranja com outros sabores naturais; conservante: sorbato de potássio; regulador de acidez: citratos de sódio; antioxidante: ácido ascórbico; adoçantes: sucralose, acessulfame-K; estabilizante: goma guar; corante: carotenoides.",
+        "ingredients_text": "Carbonated water; orange juice from concentrate (5%); sugar; fructose; lemon juice from concentrate (1%); acidifiers: malic acid, citric acid; natural orange flavors with other natural flavors; preservative: potassium sorbate; acidity regulator: sodium citrates; antioxidant: ascorbic acid; sweeteners: sucralose, acesulfame-K; stabilizer: guar gum; colorant: carotenoids.",
+        "ingredients_text_en": "Carbonated water; orange juice from concentrate (5%); sugar; fructose; lemon juice from concentrate (1%); acidifiers: malic acid, citric acid; natural orange flavors with other natural flavors; preservative: potassium sorbate; acidity regulator: sodium citrates; antioxidant: ascorbic acid; sweeteners: sucralose, acesulfame-K; stabilizer: guar gum; colorant: carotenoids.",
+        "allergens_tags": [],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {},
+        "traco": {},
+        "negacoes": [],
+        "notas": "Nenhum dos 14 alergenicos medidos, no texto pt nem no en.",
+        "conferidoContra": "299c8b9ba999fd209aa41298eca29218f30d77cb40fa76b0854c51748fe8ee9b"
+      }
+    },
+    {
+      "codigo": "7891000412855",
+      "grupo": "tipico",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "traco",
+        "grafia"
+      ],
+      "nome": "achocolatado em pó, NESCAU",
+      "marcas": "Nestlé",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "AÇÚCAR, CACAU EM PÓ, MALTODEXTRINA, MINERAIS [CÁLCIO (CARBONATO DE CÁLCIO) E FERRO (FUMARATO FERROSO)], SORO DE LEITE EM PÓ, VITAMINAS (VITAMINA C (ÁCIDO L-ASCORBICO), VITAMINA B3 (NICOTINAMIDA), VITAMINA B6 (CLORIDRATO DE PIRIDOXINA), VITAMINA B2 (RIBOFLAVINA), VITAMINA A (ACETATO DE RETINILA), VITAMINA D (COLECALCIFEROL) E VITAMINA B12 (CIANOCOBALAMINA)], EMULSIFICANTE LECITINA E AROMATIZANTE. ALÉRGICOS: CONTÉM DERIVADOS DE LEITE E DE SOJA. PODE CONTER TRIGO, AVEIA E CEVADA. CONTÉM LACTOSE. CONTÉM GLÚTEN.",
+        "ingredients_text": "AÇÚCAR, CACAU EM PÓ, MALTODEXTRINA, MINERAIS [CÁLCIO (CARBONATO DE CÁLCIO) E FERRO (FUMARATO FERROSO)], SORO DE LEITE EM PÓ, VITAMINAS (VITAMINA C (ÁCIDO L-ASCORBICO), VITAMINA B3 (NICOTINAMIDA), VITAMINA B6 (CLORIDRATO DE PIRIDOXINA), VITAMINA B2 (RIBOFLAVINA), VITAMINA A (ACETATO DE RETINILA), VITAMINA D (COLECALCIFEROL) E VITAMINA B12 (CIANOCOBALAMINA)], EMULSIFICANTE LECITINA E AROMATIZANTE. ALÉRGICOS: CONTÉM DERIVADOS DE LEITE E DE SOJA. PODE CONTER TRIGO, AVEIA E CEVADA. CONTÉM LACTOSE. CONTÉM GLÚTEN.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:gluten",
+          "en:milk",
+          "en:soybeans"
+        ],
+        "traces_tags": [
+          "en:gluten",
+          "en:milk"
+        ],
+        "traces": "",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "milk": "SORO DE LEITE EM PÓ",
+          "soy": "CONTÉM DERIVADOS DE LEITE E DE SOJA",
+          "gluten": "CONTÉM GLÚTEN"
+        },
+        "traco": {},
+        "negacoes": [],
+        "notas": "Gluten: o rotulo declara CONTÉM GLÚTEN, embora trigo, aveia e cevada so aparecam no PODE CONTER; vale a declaracao do rotulo. A lecitina nao diz a origem, mas a soja esta na declaracao de alergicos.",
+        "conferidoContra": "a40600c76635a7ce614199db71bdab3bfb75e08654b8c125bff57926d5de8f8d"
+      }
+    },
+    {
+      "codigo": "8480000603067",
+      "grupo": "tipico",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "traco",
+        "dentro-de-outro"
+      ],
+      "nome": "",
+      "marcas": "Hacendado, MERCADONA",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Peito de frango (60%), farinha de trigo (glutenamido de milho, óleos vegetais em proporção variável (ver tipo especifico junto a indicação do lote), cebola em pó, sal, aromas (contém leite e soja) especiarias, alho, amido modificado, levedantes (E-450, E-500), caril açúcar, maltodextrina, fibra de arroz Pode conter vestigios de: crustáceos, ovo, peixe, mostarda, moluscos.",
+        "ingredients_text": "Peito de frango (60%), farinha de trigo (glutenamido de milho, óleos vegetais em proporção variável (ver tipo especifico junto a indicação do lote), cebola em pó, sal, aromas (contém leite e soja) especiarias, alho, amido modificado, levedantes (E-450, E-500), caril açúcar, maltodextrina, fibra de arroz Pode conter vestigios de: crustáceos, ovo, peixe, mostarda, moluscos.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:crustaceans",
+          "en:eggs",
+          "en:fish",
+          "en:gluten",
+          "en:milk",
+          "en:molluscs",
+          "en:mustard",
+          "en:soybeans"
+        ],
+        "traces_tags": [
+          "en:eggs",
+          "en:fish",
+          "en:molluscs",
+          "en:mustard"
+        ],
+        "traces": "ovos, peixe, moluscos, mostarda",
+        "labels_tags": [
+          "en:green-dot"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "gluten": "farinha de trigo",
+          "milk": "aromas (contém leite e soja)",
+          "soy": "aromas (contém leite e soja)"
+        },
+        "traco": {
+          "crustacean": "Pode conter vestigios de: crustáceos, ovo, peixe, mostarda, moluscos",
+          "egg": "Pode conter vestigios de: crustáceos, ovo, peixe, mostarda, moluscos",
+          "fish": "Pode conter vestigios de: crustáceos, ovo, peixe, mostarda, moluscos",
+          "mustard": "Pode conter vestigios de: crustáceos, ovo, peixe, mostarda, moluscos",
+          "mollusc": "Pode conter vestigios de: crustáceos, ovo, peixe, mostarda, moluscos"
+        },
+        "negacoes": [],
+        "notas": "Produto espanhol com texto em portugues de Portugal. Leite e soja estao dentro dos parenteses de aromas. As tags da OFF poem crustaceos, ovo, peixe, moluscos e mostarda como CONTEM; o texto diz pode conter vestigios.",
+        "conferidoContra": "c94b74edfbe4f544e4bf079f415560e148242b63fe2eb4b8cad469233600efe2"
+      }
+    },
+    {
+      "codigo": "0611269991000",
+      "grupo": "tipico",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "negacao"
+      ],
+      "nome": "Energy Drink",
+      "marcas": "Red Bull",
+      "idioma": "en",
+      "campos": {
+        "ingredients_text_pt": "bebida alcoólica. har: égua gaseificada, sacarose, glucose, taurina (1000 mg/250 ml), 150 ml), vitaminas (B3, B5, B6, B2 e B12), acidulante ácido cítrico, reguladores bicarbonato de sódio e bicarbonato de magnésio, aromatizantes e corante am NÃO CONTÉM GLÚTEN.",
+        "ingredients_text": "Carbonated water, sugar, glucose, citric acid, taurine, natural and artificial flavors, sodium bicarbonate, magnesium carbonate, colors, caffeine, niacinamide, pyridoxine HCl (vitamin B6), calcium pantothenate, vitamin B12",
+        "ingredients_text_en": "Carbonated water, sugar, glucose, citric acid, taurine, natural and artificial flavors, sodium bicarbonate, magnesium carbonate, colors, caffeine, niacinamide, pyridoxine HCl (vitamin B6), calcium pantothenate, vitamin B12",
+        "allergens_tags": [],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:Made in Austria"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {},
+        "traco": {},
+        "negacoes": [
+          {
+            "alergeno": "gluten",
+            "trecho": "NÃO CONTÉM GLÚTEN"
+          }
+        ],
+        "notas": "Texto pt com erros de leitura (OCR); texto principal em ingles. Nenhum alergenico medido.",
+        "conferidoContra": "e8ed7b976564123e13d3c211d248a104bd0e4ab856e83af35126ec51fe5c83fe"
+      }
+    },
+    {
+      "codigo": "7898994081623",
+      "grupo": "tipico",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico"
+      ],
+      "nome": "Goma pronta pra tapioca",
+      "marcas": "Da Terrinha",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Fécula de mandioca e água.",
+        "ingredients_text": "Fécula de mandioca e água.",
+        "ingredients_text_en": "",
+        "allergens_tags": [],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:no-gluten",
+          "en:green-dot"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {},
+        "traco": {},
+        "negacoes": [],
+        "notas": "Fecula de mandioca e agua. O selo no-gluten da OFF nao esta no texto.",
+        "conferidoContra": "1c131ecf01235ecf8d9dd3bd0bebf9f79619d24c4ba29054082871fe9970a8bc"
+      }
+    },
+    {
+      "codigo": "7893000394209",
+      "grupo": "tipico",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "grafia"
+      ],
+      "nome": "Cremosa com sal",
+      "marcas": "Qualy",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "ÓLEO DE SOJA, ÁGUA, GORDURA VEGETAL, SAL, SORO DE LEITE EM PÓ, LEITE EM PÓ DESNATADO, VITAMINAS (B6, B1, B12), VITAMINA A, SELENITO DE SÓDIO (SELÊNIO), ESTABILIZANTES (MONO E DIGLICERÍDEOS DE ÁCIDOS GRAXOS, LECITINA DE SOJA), CONSERVADORES (SORBATO DE POTÁSSIO, BENZOATO DE SÓDIO), ANTIOXIDANTES (TBHQ, EDTA CÁLCIO DISSÓDICO, BHT), ACIDULANTE (ÁCIDO CÍTRICO), AROMATIZANTE (AROMA IDÊNTICO AO NATURAL), CORANTES (URUCUM, BETA CAROTENO, CÚRCUMA).",
+        "ingredients_text": "ÓLEO DE SOJA, ÁGUA, GORDURA VEGETAL, SAL, SORO DE LEITE EM PÓ, LEITE EM PÓ DESNATADO, VITAMINAS (B6, B1, B12), VITAMINA A, SELENITO DE SÓDIO (SELÊNIO), ESTABILIZANTES (MONO E DIGLICERÍDEOS DE ÁCIDOS GRAXOS, LECITINA DE SOJA), CONSERVADORES (SORBATO DE POTÁSSIO, BENZOATO DE SÓDIO), ANTIOXIDANTES (TBHQ, EDTA CÁLCIO DISSÓDICO, BHT), ACIDULANTE (ÁCIDO CÍTRICO), AROMATIZANTE (AROMA IDÊNTICO AO NATURAL), CORANTES (URUCUM, BETA CAROTENO, CÚRCUMA).",
+        "ingredients_text_en": "Soy oil, water, vegetable fat, whey powder salt, skimmed milk powder, vitamins b (b6, b1 and biz), vitamin a, sodium selenite (selenium), stabilizers: mono and diglycerides of acid soy fatty and lecitin, preservatives: potassium sorbate and sodium benzoate, antioxidants: tbhq, edta calcium desodium and bhi, acidulant: citric acid, flavors: aroma identical to natural, colors: anturcun,  beta carotend and curcuma, does not contain gluten, allergens: contains soy derivatives and milk derivatives",
+        "allergens_tags": [
+          "en:milk",
+          "en:soybeans"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:contains-gmos",
+          "en:refrigerated",
+          "en:vitamin-b12-source"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "soy": "ÓLEO DE SOJA",
+          "milk": "SORO DE LEITE EM PÓ"
+        },
+        "traco": {},
+        "negacoes": [
+          {
+            "alergeno": "gluten",
+            "trecho": "does not contain gluten"
+          }
+        ],
+        "notas": "O campo en traz a traducao com a negacao do gluten em ingles e a declaracao de alergicos.",
+        "conferidoContra": "42d5134642a0a6f3e63e8b57fb53087f058c490f195e738a4e0473a1e3bd46ac"
+      }
+    },
+    {
+      "codigo": "7894900701517",
+      "grupo": "tipico",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico"
+      ],
+      "nome": "Coca Cola Zero Açúcar",
+      "marcas": "CocaCola",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "ÁGUA GASEIFICADA, EXTRATO DE NOZ DE COLA, CAFEINA, AROMA NATURAL, CORANTE CARAMELO IV ACIDULANTE ACIDO FOSFORICO, EDULCORANTES CICLAMATO DE SODIO (27 mg), ACESULFAME DE POTASSIO 15 mg) EASPARTAME (12 mg) POR 100 ml, CONSERVADOR BENZOATO DE SODIO E ESTABILIZANTE CITRATO TRISSODICO",
+        "ingredients_text": "ÁGUA GASEIFICADA, EXTRATO DE NOZ DE COLA, CAFEINA, AROMA NATURAL, CORANTE CARAMELO IV ACIDULANTE ACIDO FOSFORICO, EDULCORANTES CICLAMATO DE SODIO (27 mg), ACESULFAME DE POTASSIO 15 mg) EASPARTAME (12 mg) POR 100 ml, CONSERVADOR BENZOATO DE SODIO E ESTABILIZANTE CITRATO TRISSODICO",
+        "ingredients_text_en": "",
+        "allergens_tags": [],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:do-not-freeze",
+          "en:no-added-sugar"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {},
+        "traco": {},
+        "negacoes": [],
+        "notas": "EXTRATO DE NOZ DE COLA: noz-de-cola e semente da Cola, nao e castanha (fruto de casca rija). Castanhas ausente.",
+        "conferidoContra": "b79db03b38923fd287aec1e85797931774ab33b684ccab912f299535e599ff00"
+      }
+    },
+    {
+      "codigo": "7891000325858",
+      "grupo": "tipico",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico"
+      ],
+      "nome": "LEITE PO NINHO INTEGRAL",
+      "marcas": "Nestlé Ninho",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Leite integral, minerais [cálcio (carbonato de cálcio), ferro (pirofosfato férrico) e zinco (sulfato de zinco)] e vitaminas [vitamina C (L-ascorbato de sódio), vitamina E (acetato de DL-alfa tocoferila), vitamina A (acetato de retinila) e vitamina D (colecalciferol)].",
+        "ingredients_text": "Leite integral, minerais [cálcio (carbonato de cálcio), ferro (pirofosfato férrico) e zinco (sulfato de zinco)] e vitaminas [vitamina C (L-ascorbato de sódio), vitamina E (acetato de DL-alfa tocoferila), vitamina A (acetato de retinila) e vitamina D (colecalciferol)].",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:milk"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:no-gluten",
+          "en:source-of-fibre",
+          "en:contains-lactose",
+          "en:contains-milk",
+          "en:high-fibres",
+          "en:high-in-calcium",
+          "en:high-in-iron",
+          "en:no-colorings",
+          "en:non-organic"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "milk": "Leite integral"
+        },
+        "traco": {},
+        "negacoes": [],
+        "notas": "sulfato de zinco nao e sulfito.",
+        "conferidoContra": "660de5e274ee2dcf3524c7d3596b7b408f515903a9c476518f822a6fd4fb11ac"
+      }
+    },
+    {
+      "codigo": "7892840819507",
+      "grupo": "tipico",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "traco"
+      ],
+      "nome": "ACHOC PO TODDY",
+      "marcas": "Toddy",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "AÇUCAR, CACAU, CARBONATO DE CALCIO (CALCIO MALTODEXTRINA, EXTRATO DE MALTE DE CEVADA, SAL, VITAMINES MALTODEXTRINA, NITRATO DE TIAMINA (VITAMINA B1) E CLORIDRATO DE PIRIDOXINA (VITAMINA B6)], AROMATIZANTES E EMULSIFICANTE LECITINA ALERGICOS: CONTEM DERIVADOS DE SOJA E DE CEVADA. PODE CONTER LETE AVEIA, CENTEIO E TRIGO. CONTÉM GLÚTEN.",
+        "ingredients_text": "AÇUCAR, CACAU, CARBONATO DE CALCIO (CALCIO MALTODEXTRINA, EXTRATO DE MALTE DE CEVADA, SAL, VITAMINES MALTODEXTRINA, NITRATO DE TIAMINA (VITAMINA B1) E CLORIDRATO DE PIRIDOXINA (VITAMINA B6)], AROMATIZANTES E EMULSIFICANTE LECITINA ALERGICOS: CONTEM DERIVADOS DE SOJA E DE CEVADA. PODE CONTER LETE AVEIA, CENTEIO E TRIGO. CONTÉM GLÚTEN.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:gluten"
+        ],
+        "traces_tags": [
+          "en:gluten"
+        ],
+        "traces": "glúten",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "gluten": "EXTRATO DE MALTE DE CEVADA",
+          "soy": "CONTEM DERIVADOS DE SOJA"
+        },
+        "traco": {
+          "milk": "PODE CONTER LETE"
+        },
+        "negacoes": [],
+        "notas": "Erro de leitura da base: LETE no lugar de LEITE. A leitura humana entende leite; o gabarito marca traco de leite. CONTÉM GLÚTEN declarado.",
+        "conferidoContra": "5bfab33c9e202d2790136ca29b3e5328e17ec161af7e12d50e60ca35fb9597bc"
+      }
+    },
+    {
+      "codigo": "7891095911486",
+      "grupo": "tipico",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico"
+      ],
+      "nome": "Farofa De Mandioca Tradicional",
+      "marcas": "Yoki, golo",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Farinha de mandioca, óleo vegetal, pasta de alho, sal, colorifico (fubá enriquecido com ferro e ácido fólico e corante natural urucum), cebola, pimenta calabresa, pimenta preta, cebolinha, aromatizantes e realçador de sabor (glutamato monossódico).\nAlėrgicos: contem derivados de soja.",
+        "ingredients_text": "Farinha de mandioca, óleo vegetal, pasta de alho, sal, colorifico (fubá enriquecido com ferro e ácido fólico e corante natural urucum), cebola, pimenta calabresa, pimenta preta, cebolinha, aromatizantes e realçador de sabor (glutamato monossódico).\nAlėrgicos: contem derivados de soja.",
+        "ingredients_text_en": "",
+        "allergens_tags": [],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:no-gluten"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "soy": "contem derivados de soja"
+        },
+        "traco": {},
+        "negacoes": [],
+        "notas": "glutamato monossodico nao e gluten; fuba e milho (fora da medicao).",
+        "conferidoContra": "0025f7a47faed096ba52fd123278d1ff930d15c62adf771081fc1e94377e6dcf"
+      }
+    },
+    {
+      "codigo": "7891203010056",
+      "grupo": "tipico",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico"
+      ],
+      "nome": "Pão De Forma Panco Premium Pacote 500g",
+      "marcas": "PANCO",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Farinha de trigo enriquecida com ferro e ácido fólico, açúcar, gordura vegetal, sal, glúten, propionato de cálcio, sorbato de potássio, lecitina soja, estearoil-2-lactil lactato de cálcio, ácido ascórbico",
+        "ingredients_text": "Farinha de trigo enriquecida com ferro e ácido fólico, açúcar, gordura vegetal, sal, glúten, propionato de cálcio, sorbato de potássio, lecitina soja, estearoil-2-lactil lactato de cálcio, ácido ascórbico",
+        "ingredients_text_en": "INGREDIENTES: farinha de trigo enriquecida com ferro e acido folico, acucar, gordura vegetal, sal, gluten,\r\nsoro de leite, conservadores: propionato de calcio e\r\nestearoil-2-lactil lactato de calcio e antioxidante: acido asCorbico. CONTEM GLUTEN.\r\nALERGICOS: CONTEM DERIVADOS DE TRIGO, LEITE E SOJA. PODE CONTER CENTEIO,\r\nCEVADA, AVEIA, TRITICALE, OVO, AVEL�, CASTANHA-DE-CAJU, CASTANHA-DO-PARA,\r\nsorbato de potassio, emulsificantes: lecitina de soja e\r\nCASTANHA DE BARU E AMENDOIM. CONTEM LACTOSE.",
+        "allergens_tags": [
+          "en:gluten",
+          "en:soybeans"
+        ],
+        "traces_tags": [
+          "en:eggs",
+          "en:gluten",
+          "en:milk",
+          "en:nuts",
+          "en:peanuts"
+        ],
+        "traces": "ovos, glúten, leite, nozes, amendoins",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "gluten": "Farinha de trigo",
+          "soy": "lecitina soja",
+          "milk": "soro de leite"
+        },
+        "traco": {
+          "egg": "TRITICALE, OVO",
+          "nuts": "CASTANHA-DE-CAJU, CASTANHA-DO-PARA",
+          "peanut": "CASTANHA DE BARU E AMENDOIM"
+        },
+        "negacoes": [],
+        "notas": "O campo en traz o rotulo em portugues lido por OCR, com soro de leite e a declaracao CONTEM DERIVADOS DE TRIGO, LEITE E SOJA; o campo pt nao traz o leite. As tags da OFF poem leite so em traco. A quebra de linha do OCR intercala 'lecitina de soja' no meio da lista do PODE CONTER.",
+        "conferidoContra": "0431b79586285f1350e81399b33b5f577a57a76b2f4652f1a97f75644e1d4dc8"
+      }
+    },
+    {
+      "codigo": "7892840819170",
+      "grupo": "tipico",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "traco"
+      ],
+      "nome": "Toddy Original 750g",
+      "marcas": "Toddy",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "AÇÚCAR, CACAU, CARBONATO DE CÁLCIO (CALCIO), MALTODEXTRINA, EXTRATO DE MALTE DE CEVADA, SAL, VITAMINAS [MALTODEXTRINA, NITRATO DE TIAMINA (VITAMINA B1) E CLORIDRATO DE PIRIDOXINA (VITAMINA B6)], AROMATIZANTES E EMULSIFICANTE LECITINA. \n\nALERGICOS: CONTEM DERIVADOS DE SOJA E DE CEVADA. PODE CONTER LEITE, AVEIA, CENTEIO E TRIGO, CONTÉM GLÚTEN.",
+        "ingredients_text": "AÇÚCAR, CACAU, CARBONATO DE CÁLCIO (CALCIO), MALTODEXTRINA, EXTRATO DE MALTE DE CEVADA, SAL, VITAMINAS [MALTODEXTRINA, NITRATO DE TIAMINA (VITAMINA B1) E CLORIDRATO DE PIRIDOXINA (VITAMINA B6)], AROMATIZANTES E EMULSIFICANTE LECITINA. \n\nALERGICOS: CONTEM DERIVADOS DE SOJA E DE CEVADA. PODE CONTER LEITE, AVEIA, CENTEIO E TRIGO, CONTÉM GLÚTEN.",
+        "ingredients_text_en": "AÇÚCAR, CACAU, CARBONATO DE CÁLCIO (CÁLCIO), MALTODEXTRINA, EXTRATO DE MALTE DE CEVADA, SAL, VITAMINAS [MALTODEXTRINA, NITRATO DE TIAMINA (VITAMINA B1) E CLORIDRATO DE PIRIDOXINA (VITAMINA B6)], AROMATIZANTES, EMULSIFICANTE LECITINA",
+        "allergens_tags": [
+          "en:gluten"
+        ],
+        "traces_tags": [
+          "en:gluten"
+        ],
+        "traces": "glúten",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "gluten": "EXTRATO DE MALTE DE CEVADA",
+          "soy": "CONTEM DERIVADOS DE SOJA"
+        },
+        "traco": {
+          "milk": "PODE CONTER LEITE"
+        },
+        "negacoes": [],
+        "notas": "CONTÉM GLÚTEN declarado. Lecitina sem origem na lista; a soja esta na declaracao.",
+        "conferidoContra": "df840bcf080d88a03dfd45aa1d3abdc4b6cd389a98ba4d111fff5558919ce70c"
+      }
+    },
+    {
+      "codigo": "5601216120152",
+      "grupo": "tipico",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico"
+      ],
+      "nome": "AZEITE EXT VIRGEM ANDORINHA",
+      "marcas": "ANDORINHA",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Azeite de Oliva Extra Virgem.",
+        "ingredients_text": "Azeite de Oliva Extra Virgem.",
+        "ingredients_text_en": "",
+        "allergens_tags": [],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {},
+        "traco": {},
+        "negacoes": [],
+        "notas": "Azeite de oliva extra virgem.",
+        "conferidoContra": "5011d2c7dc44327d4fbba3deb199d83cf00f1ce427c48bcbbfc60d73b4a33b43"
+      }
+    },
+    {
+      "codigo": "7896002360326",
+      "grupo": "tipico",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico"
+      ],
+      "nome": "pullman tradicional pão",
+      "marcas": "Pullman",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "",
+        "ingredients_text": "farinha de trigo enriquecida com ferro e ácido fólico, açúcar, óleo vegetal de soja, vinagre, glúten, sal, conservadores propionato de cálcio e ácido sórbico, acidulante ácido cítrico e melhorador de farinha ácido ascórbico",
+        "ingredients_text_en": "farinha de trigo enriquecida com ferro e ácido fólico, açúcar, óleo vegetal de soja, vinagre, glúten, sal, conservadores propionato de cálcio e ácido sórbico, acidulante ácido cítrico e melhorador de farinha ácido ascórbico",
+        "allergens_tags": [
+          "en:gluten"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "gluten": "farinha de trigo",
+          "soy": "óleo vegetal de soja"
+        },
+        "traco": {},
+        "negacoes": [],
+        "notas": "Regra literal: oleo de soja nomeia a soja. As tags da OFF nao trazem soja.",
+        "conferidoContra": "92ea5613602d7b648cd6a2a088b2d4e4bfdb053c5db400fbedd08e8cbe062f66"
+      }
+    },
+    {
+      "codigo": "7898215151708",
+      "grupo": "tipico",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "negacao",
+        "grafia"
+      ],
+      "nome": "Leite Integral Piracanjuba",
+      "marcas": "Piracanjuba",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Leite integral e estabilizantes citrato de sódio, trifosfato de sódio, monofosfato monossódico e difosfato dissódico. ALÉRGICOS: CONTÉM LEITE. CONTÉM LACTOSE. NÃO CONTÉM GLÚTEN.",
+        "ingredients_text": "Leite integral e estabilizantes citrato de sódio, trifosfato de sódio, monofosfato monossódico e difosfato dissódico. ALÉRGICOS: CONTÉM LEITE. CONTÉM LACTOSE. NÃO CONTÉM GLÚTEN.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:milk"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:no-gluten",
+          "en:no-artificial-colors",
+          "en:no-artificial-flavors",
+          "en:contains-milk",
+          "en:no-artificial-colours-or-flavours"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "milk": "Leite integral"
+        },
+        "traco": {},
+        "negacoes": [
+          {
+            "alergeno": "gluten",
+            "trecho": "NÃO CONTÉM GLÚTEN"
+          }
+        ],
+        "notas": "",
+        "conferidoContra": "d199cdd3b38bd72a8f7e96bf9742a00b3f458133212476f920c6a4ee9038d941"
+      }
+    },
+    {
+      "codigo": "7898215151784",
+      "grupo": "negacao",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "negacao",
+        "grafia"
+      ],
+      "nome": "Creme de Leite Piracanjuba",
+      "marcas": "Piracanjuba",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Creme de leite padronizado a 17% de gordura, leite em pó desnatado, espessantes carragena, carboximetilcelulose sódica e alginato de sódio e estabilizantes citrato de sódio e celulose microcristalina. ALÉRGICOS: CONTÉM LEITE E DERIVADOS. CONTÉM LACTOSE. NÃO CONTÉM GLÚTEN.",
+        "ingredients_text": "Creme de leite padronizado a 17% de gordura, leite em pó desnatado, espessantes carragena, carboximetilcelulose sódica e alginato de sódio e estabilizantes citrato de sódio e celulose microcristalina. ALÉRGICOS: CONTÉM LEITE E DERIVADOS. CONTÉM LACTOSE. NÃO CONTÉM GLÚTEN.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:milk"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:no-gluten",
+          "en:fsc",
+          "en:contains-lactose",
+          "en:contains-milk",
+          "en:fsc-mix"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "milk": "Creme de leite"
+        },
+        "traco": {},
+        "negacoes": [
+          {
+            "alergeno": "gluten",
+            "trecho": "NÃO CONTÉM GLÚTEN"
+          }
+        ],
+        "notas": "",
+        "conferidoContra": "61b40f4333dddfb11b17cd8f467717da37926adfb8e3a11deef452ded645779b"
+      }
+    },
+    {
+      "codigo": "78933873",
+      "grupo": "negacao",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "negacao"
+      ],
+      "nome": "Coca-Cola Zero",
+      "marcas": "Coca Cola",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "INGR: AGUA GASEIFICADA, EXTRATO DE NOZ DE COLA, CAFEINA, AROMA NATURAL, CORANTE CARAMELO IV, ACIDULANTE ACIDO FOSFORICO EDULCORANTES CICLAMATO DE SODIO (27 mg), ACESULFAME DE POTASSI 15 mg) E ASPARTAME (12 mg) POR 100 ml, CONSERVADOR BENZOATO DE atos 0 g (0g. SODIO E ESTABILIZANTE CITRATO TRISSÓDICO. CONSERVAR AO ABRIGO DO SOL E CALOR, EM LOCAL LIMPO E SECO Proteinas REJADO E SEM ODOR. NÃO CONGELAR. PRODUZIDO 0g(0g.0%), E ENVASILHADO E REGISTRO MAPA: VIDE VERSO. (28 mg,1%). VALIDADE/LOTE: VIDE MARCAÇÃO. INDÚSTRIA BRASILEIRA SACC: 0800-021-2121-NÃO CONTEM GLUTEN CONTEM FENILALANINA ZERO ACUCARES BAIXO TEOR DE SODIO PP 3873",
+        "ingredients_text": "INGR: AGUA GASEIFICADA, EXTRATO DE NOZ DE COLA, CAFEINA, AROMA NATURAL, CORANTE CARAMELO IV, ACIDULANTE ACIDO FOSFORICO EDULCORANTES CICLAMATO DE SODIO (27 mg), ACESULFAME DE POTASSI 15 mg) E ASPARTAME (12 mg) POR 100 ml, CONSERVADOR BENZOATO DE atos 0 g (0g. SODIO E ESTABILIZANTE CITRATO TRISSÓDICO. CONSERVAR AO ABRIGO DO SOL E CALOR, EM LOCAL LIMPO E SECO Proteinas REJADO E SEM ODOR. NÃO CONGELAR. PRODUZIDO 0g(0g.0%), E ENVASILHADO E REGISTRO MAPA: VIDE VERSO. (28 mg,1%). VALIDADE/LOTE: VIDE MARCAÇÃO. INDÚSTRIA BRASILEIRA SACC: 0800-021-2121-NÃO CONTEM GLUTEN CONTEM FENILALANINA ZERO ACUCARES BAIXO TEOR DE SODIO PP 3873",
+        "ingredients_text_en": "",
+        "allergens_tags": [],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:do-not-freeze"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {},
+        "traco": {},
+        "negacoes": [
+          {
+            "alergeno": "gluten",
+            "trecho": "NÃO CONTEM GLUTEN"
+          }
+        ],
+        "notas": "Noz-de-cola nao e castanha. Texto com tabela nutricional e SAC misturados pelo OCR.",
+        "conferidoContra": "15fcd5f535dbc2fb90584971aa433b1eeb435c26a1f4775f769ea4c3e3ad0109"
+      }
+    },
+    {
+      "codigo": "7898024396529",
+      "grupo": "negacao",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "negacao",
+        "grafia"
+      ],
+      "nome": "Nutella",
+      "marcas": "Ferrero",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "AÇÚCAR, ÓLEO VEGETAL (PALMA), AVELÃS (13%), LEITE DESNATADO EM PÓ (8,7%), CACAU EM PÓ PARCIALMENTE DESENGORDURADO (7,4%), EMULSIFICANTE LECITINAS, AROMATIZANTE. COMPONENTES DO LEITE: 8,7% ALERGICOS: CONTÉM AVELÃS E DERIVADOS DE LEITE E SOJA. CONTÉM LACTOSE. NAO CONTÉM GLUTEN.",
+        "ingredients_text": "AÇÚCAR, ÓLEO VEGETAL (PALMA), AVELÃS (13%), LEITE DESNATADO EM PÓ (8,7%), CACAU EM PÓ PARCIALMENTE DESENGORDURADO (7,4%), EMULSIFICANTE LECITINAS, AROMATIZANTE. COMPONENTES DO LEITE: 8,7% ALERGICOS: CONTÉM AVELÃS E DERIVADOS DE LEITE E SOJA. CONTÉM LACTOSE. NAO CONTÉM GLUTEN.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:milk",
+          "en:nuts",
+          "en:soybeans"
+        ],
+        "traces_tags": [
+          "en:milk",
+          "en:nuts",
+          "en:soybeans"
+        ],
+        "traces": "leite, nozes, soja",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "nuts": "AVELÃS",
+          "milk": "LEITE DESNATADO EM PÓ",
+          "soy": "DERIVADOS DE LEITE E SOJA"
+        },
+        "traco": {},
+        "negacoes": [
+          {
+            "alergeno": "gluten",
+            "trecho": "NAO CONTÉM GLUTEN"
+          }
+        ],
+        "notas": "Lecitinas sem origem na lista; a soja esta na declaracao. As tags da OFF repetem leite, castanhas e soja tambem em traco.",
+        "conferidoContra": "16706630624ff5dde7a9b6aa17e9f399bf1139f7f248ac68653848b05fe8d2e2"
+      }
+    },
+    {
+      "codigo": "7891150027848",
+      "grupo": "negacao",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "negacao"
+      ],
+      "nome": "KETCHUP TRAD SQUEEZE HELLMANNS",
+      "marcas": "Hellmann's",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "INGREDIENTES. tomate, vinagre, açúcar, sal, cebola, espessantes carboximetilcelulose sódica e goma xantana, acidulante ácido cítrico, conservador ácido sórbico e aromatizantes naturais. NÃO CONTÉM GLÚTEN.",
+        "ingredients_text": "INGREDIENTES. tomate, vinagre, açúcar, sal, cebola, espessantes carboximetilcelulose sódica e goma xantana, acidulante ácido cítrico, conservador ácido sórbico e aromatizantes naturais. NÃO CONTÉM GLÚTEN.",
+        "ingredients_text_en": "",
+        "allergens_tags": [],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:no-artificial-colors",
+          "en:no-artificial-flavors",
+          "en:no-colorings",
+          "en:no-artificial-colours-or-flavours"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {},
+        "traco": {},
+        "negacoes": [
+          {
+            "alergeno": "gluten",
+            "trecho": "NÃO CONTÉM GLÚTEN"
+          }
+        ],
+        "notas": "",
+        "conferidoContra": "fc4a36bd76cd27db3c1d9d8b4478cc235ae1dbdfc85a2d43235a626a0eb3f378"
+      }
+    },
+    {
+      "codigo": "7891025115656",
+      "grupo": "negacao",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "negacao",
+        "traco",
+        "grafia"
+      ],
+      "nome": "YoPro",
+      "marcas": "Danone",
+      "idioma": "fr",
+      "campos": {
+        "ingredients_text_pt": "Leite parcialmente desnatado, concentrado proteico de leite em pó, cacau hidratado, concentrado proteico de soro de leite em pó, enzima lactase, estabilizantes celulose microcristalina, carboximetilcelulose sódica, carragena, citrato trissódico, fosfatos dipotássico e dissódico, aromatizantes e edulcorante artificial sucralose. NÃO CONTÉM GLÚTEN. ALÉRGICOS: CONTÉM LEITE E DERIVADOS. PODE CONTER SOJA.",
+        "ingredients_text": "Leite parcialmente desnatado, concentrado proteico de leite em pó, cacau hidratado, concentrado proteico de soro de leite em pó, enzima lactase, estabilizantes celulose microcristalina, carboximetilcelulose sódica, carragena, citrato trissódico, fosfatos dipotássico e dissódico, aromatizantes e edulcorante artificial sucralose. NÃO CONTÉM GLÚTEN. ALÉRGICOS: CONTÉM LEITE E DERIVADOS. PODE CONTER SOJA.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:milk",
+          "fr:CONTÉM LEITE E DERIVADOS"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "milk": "Leite parcialmente desnatado"
+        },
+        "traco": {
+          "soy": "PODE CONTER SOJA"
+        },
+        "negacoes": [
+          {
+            "alergeno": "gluten",
+            "trecho": "NÃO CONTÉM GLÚTEN"
+          }
+        ],
+        "notas": "Tem enzima lactase, mas continua sendo leite. As tags da OFF nao trazem a soja em traco.",
+        "conferidoContra": "8bd4b8f5c4b7063f823c1d055080f600e623b3984f7d580dd65fb27025e51b4b"
+      }
+    },
+    {
+      "codigo": "5601989003126",
+      "grupo": "negacao",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "negacao"
+      ],
+      "nome": "",
+      "marcas": "HERDADE DO ESPORÃO",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "",
+        "ingredients_text": "Es: 100% azeite de oliva extravirgem\r\n    Sem alergênios\r\n    Vegan\r\n    Sem glúten\r\n    Sem conservantes\r\n    Produto artesanal\r\n    Sem aditivos\r\n    Orgânico",
+        "ingredients_text_en": "",
+        "allergens_tags": [],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:vegetarian",
+          "en:no-gluten",
+          "en:no-preservatives",
+          "en:vegan",
+          "pt:100% azeite de oliva extravirgem",
+          "pt:Produto artesanal",
+          "pt:Sem alergênios"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {},
+        "traco": {},
+        "negacoes": [
+          {
+            "alergeno": "gluten",
+            "trecho": "Sem glúten"
+          }
+        ],
+        "notas": "Azeite. O texto e uma lista de alegacoes (Sem alergênios, Vegan, Sem glúten).",
+        "conferidoContra": "a3e76918d1e028264d28c0625c33bee232568f11cdad209574565a453b925e40"
+      }
+    },
+    {
+      "codigo": "78938816",
+      "grupo": "negacao",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "negacao"
+      ],
+      "nome": "Bala Mentol Extra Forte Halls Pacote 27,5g",
+      "marcas": "HALLS",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "INGR.: AÇÚCAR, XAROPE DE GLICOSE, ÓLEO VEGETAL, ÓLEO VEGETAL HIDROGENADO, AROMATIZANTES, REGULADORES DE ACIDEZ: CARBONATO DE SÓDIO, CITRATO DE POTASSIO, ACIDULANTE: ACIDO CITRICO, EMULSIFICANTES: POLISORBATO 80, LECITINA DE SOJA, CORANTE: AZUL BRILHANTE FCF, GLACEANTE: TALCO. ALÉRGICOS: CONTÉM DERIVADOS DE SOJA. NÃO CONTÉM GLÚTEN.",
+        "ingredients_text": "INGR.: AÇÚCAR, XAROPE DE GLICOSE, ÓLEO VEGETAL, ÓLEO VEGETAL HIDROGENADO, AROMATIZANTES, REGULADORES DE ACIDEZ: CARBONATO DE SÓDIO, CITRATO DE POTASSIO, ACIDULANTE: ACIDO CITRICO, EMULSIFICANTES: POLISORBATO 80, LECITINA DE SOJA, CORANTE: AZUL BRILHANTE FCF, GLACEANTE: TALCO. ALÉRGICOS: CONTÉM DERIVADOS DE SOJA. NÃO CONTÉM GLÚTEN.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:soybeans"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "es:Aromas artificiales"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "soy": "LECITINA DE SOJA"
+        },
+        "traco": {},
+        "negacoes": [
+          {
+            "alergeno": "gluten",
+            "trecho": "NÃO CONTÉM GLÚTEN"
+          }
+        ],
+        "notas": "",
+        "conferidoContra": "bc85aa61507d821d66bd5eca1b1eee10bad59ba355db1de92612aad9e81b6dbd"
+      }
+    },
+    {
+      "codigo": "7898215151807",
+      "grupo": "negacao",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "negacao",
+        "grafia"
+      ],
+      "nome": "Bebida Láctea Uht Chocolate Pirakids Caixa 200ml",
+      "marcas": "Piracanjuba Pira Kids",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Soro de leite e/ou soro de leite em pó reconstituido, leite integral e/ou leite em pó integral reconstituido, calda de cacau, açúcar, creme de leite, amido modificado, cloreto de sódio, vitaminas A e D, espessantes goma guar, goma gelana, carboximetilcelulose sódica, goma xantana, aromatizantes e estabilizantes fosfato trissódico, fosfato dissódico e citrato de sódio. ALÉRGICOS: CONTÉM LEITE E DERIVADOS CONTÉM LACTOSE. NÃO CONTÉM GLÚTEN",
+        "ingredients_text": "Soro de leite e/ou soro de leite em pó reconstituido, leite integral e/ou leite em pó integral reconstituido, calda de cacau, açúcar, creme de leite, amido modificado, cloreto de sódio, vitaminas A e D, espessantes goma guar, goma gelana, carboximetilcelulose sódica, goma xantana, aromatizantes e estabilizantes fosfato trissódico, fosfato dissódico e citrato de sódio. ALÉRGICOS: CONTÉM LEITE E DERIVADOS CONTÉM LACTOSE. NÃO CONTÉM GLÚTEN",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:milk"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "milk": "Soro de leite"
+        },
+        "traco": {},
+        "negacoes": [
+          {
+            "alergeno": "gluten",
+            "trecho": "NÃO CONTÉM GLÚTEN"
+          }
+        ],
+        "notas": "",
+        "conferidoContra": "504ecb52d40b6c70832a95f039890160d839197473a5c690ffa50d3f11fa683d"
+      }
+    },
+    {
+      "codigo": "7891095031115",
+      "grupo": "negacao",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "negacao"
+      ],
+      "nome": "YOKI Batata Palha Tradicional 105 g",
+      "marcas": "Yoki",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Batata, óleo vegetal, sal, fécula de batata e antiumectante dióxido de silício. NÃO CONTÉM GLÚTEN.",
+        "ingredients_text": "Batata, óleo vegetal, sal, fécula de batata e antiumectante dióxido de silício. NÃO CONTÉM GLÚTEN.",
+        "ingredients_text_en": "",
+        "allergens_tags": [],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:no-gluten",
+          "en:no-preservatives"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {},
+        "traco": {},
+        "negacoes": [
+          {
+            "alergeno": "gluten",
+            "trecho": "NÃO CONTÉM GLÚTEN"
+          }
+        ],
+        "notas": "dioxido de silicio nao e sulfito (dioxido de enxofre).",
+        "conferidoContra": "6640bb0ce3ede5f8daf2c4f3176e1492500bd81103754955702feaeda16710fd"
+      }
+    },
+    {
+      "codigo": "0070847022206",
+      "grupo": "negacao",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "negacao"
+      ],
+      "nome": "Energy Ultra",
+      "marcas": "Monster, Monster Energy",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "ÁGUA GASEIFICADA, TAURINA (800 mg/ 200 ml), CAFEÍNA (65 mg/ 200 ml), VITAMINAS 83, B5. B6, e B12, EXTRATO DE GUARANA (8,4 mg/ 200 m. GLUCORONOLACTONA (4,2 mg/ 200 ml), INOSITOL (4,2 ng 200 ml), MALTODEXTRINA, EDULCORANTES ARTIFICIAIS (ERITRITOL, SUCRALOSE, ACESULFAME DE POTASSI), ACIDULANTE (ÁCIDO CÍTRICO), REGULADOR DE ACIDEZ (CITRATO DE SÓDIO), AROMATIZANTES NATURAIS ARTIFICIAL, CONSERVADORES (ÁCIDO SÓRBICO, ACIDO BENZÓICO). NÃO CONTÉM GLÚTEN",
+        "ingredients_text": "ÁGUA GASEIFICADA, TAURINA (800 mg/ 200 ml), CAFEÍNA (65 mg/ 200 ml), VITAMINAS 83, B5. B6, e B12, EXTRATO DE GUARANA (8,4 mg/ 200 m. GLUCORONOLACTONA (4,2 mg/ 200 ml), INOSITOL (4,2 ng 200 ml), MALTODEXTRINA, EDULCORANTES ARTIFICIAIS (ERITRITOL, SUCRALOSE, ACESULFAME DE POTASSI), ACIDULANTE (ÁCIDO CÍTRICO), REGULADOR DE ACIDEZ (CITRATO DE SÓDIO), AROMATIZANTES NATURAIS ARTIFICIAL, CONSERVADORES (ÁCIDO SÓRBICO, ACIDO BENZÓICO). NÃO CONTÉM GLÚTEN",
+        "ingredients_text_en": "",
+        "allergens_tags": [],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {},
+        "traco": {},
+        "negacoes": [
+          {
+            "alergeno": "gluten",
+            "trecho": "NÃO CONTÉM GLÚTEN"
+          }
+        ],
+        "notas": "maltodextrina nao e gluten; glucoronolactona nao e lactose.",
+        "conferidoContra": "5fead42d2424678db13816f44b317451a81dec4d8f3de9c6b370792804cbfdb2"
+      }
+    },
+    {
+      "codigo": "7896094910959",
+      "grupo": "traco",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "traco"
+      ],
+      "nome": "Adoçante dietético líquido",
+      "marcas": "Zero Cal",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Água, sorbitol, edulcorantes (sacarina sódica, ciclamato de sódio), conservadores (ácido benzoico, metilparabeno). Pode conter leites e soja.",
+        "ingredients_text": "Água, sorbitol, edulcorantes (sacarina sódica, ciclamato de sódio), conservadores (ácido benzoico, metilparabeno). Pode conter leites e soja.",
+        "ingredients_text_en": "",
+        "allergens_tags": [],
+        "traces_tags": [
+          "en:soybeans"
+        ],
+        "traces": "soja",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {},
+        "traco": {
+          "milk": "Pode conter leites",
+          "soy": "Pode conter leites e soja"
+        },
+        "negacoes": [],
+        "notas": "As tags da OFF trazem so a soja em traco.",
+        "conferidoContra": "c8b22fbd8bc0924cbb09e2aeb645208002cf2e825e9d4f318b09cde58f573907"
+      }
+    },
+    {
+      "codigo": "7891000426210",
+      "grupo": "traco",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "traco",
+        "grafia"
+      ],
+      "nome": "Nescau Lata 350g",
+      "marcas": "Nestlé",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Açúcar, cacau em PO, MALTODEXTRINA, MINERAIS [CÁLCIO (CARBONATO DE CÁLCIO) E FERRO], soro DE LEITE EM PÓ, VITAMINAS (VITAMINA C (ÁCIDO L-ASCORBICO), VITAMINA B3, vitamina b6, CLORIDRATO DE PIRIDOXINA), VITAMINA B2 (RIBOFLAVINA), VITAMINA A, vitamina d, VITAMINA B12 (CIANOCOBALAMINA), EMULSIFICANTE LECITINA e aromatizante.\nALERGICOS: CONTEM DERIVADOS DE LEITE E DE SOJA. PODE CONTER TRIGO, Aveia E cevada.\nCONTEM LACTOSE. CONTÉM GLÚTEN.",
+        "ingredients_text": "Açúcar, cacau em PO, MALTODEXTRINA, MINERAIS [CÁLCIO (CARBONATO DE CÁLCIO) E FERRO], soro DE LEITE EM PÓ, VITAMINAS (VITAMINA C (ÁCIDO L-ASCORBICO), VITAMINA B3, vitamina b6, CLORIDRATO DE PIRIDOXINA), VITAMINA B2 (RIBOFLAVINA), VITAMINA A, vitamina d, VITAMINA B12 (CIANOCOBALAMINA), EMULSIFICANTE LECITINA e aromatizante.\nALERGICOS: CONTEM DERIVADOS DE LEITE E DE SOJA. PODE CONTER TRIGO, Aveia E cevada.\nCONTEM LACTOSE. CONTÉM GLÚTEN.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:gluten",
+          "en:milk",
+          "en:soybeans"
+        ],
+        "traces_tags": [
+          "en:gluten",
+          "en:milk"
+        ],
+        "traces": "glúten, leite",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "milk": "soro DE LEITE EM PÓ",
+          "soy": "CONTEM DERIVADOS DE LEITE E DE SOJA",
+          "gluten": "CONTÉM GLÚTEN"
+        },
+        "traco": {},
+        "negacoes": [],
+        "notas": "Como o 7891000412855: CONTÉM GLÚTEN declarado, com os cereais no PODE CONTER.",
+        "conferidoContra": "30aca581a1cc819c71bee8065fc88e7eb4f6341c0336b82f395a7de93f3fd32f"
+      }
+    },
+    {
+      "codigo": "78939318",
+      "grupo": "traco",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "traco",
+        "grafia"
+      ],
+      "nome": "Bombom Wafer Lacta Ouro Branco Pacote 20g",
+      "marcas": "Nestlé",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "INGR.: AÇÚCAR, GORDURA VEGETAL HIDROGENADA, GORDURA VEGETAL, FARINHA DE TRIGO ENRIQUECIDA COM FERRO, ÁCIDO FÓLICO, VITAMINAS B1, B2, B3 E ZINCO, SORO DE LEITE EM PÓ, CACAU EM PÓ, LEITE EM PÓ INTEGRAL, FLOCOS DE ARROZ, FARINHA DE SOJA, AMENDOIM, PERMEADO DE SORO DE LEITE EM PÓ, EXTRATO DE MALTE, SAL, MASSA DE CACAU, ÓLEO VEGETAL, MANTEIGA DE CACAU, GORDURA DE MANTEIGA DESIDRATADA, EMULSIFICANTES: LECITINA DE SOJA E POLIGLICEROL POLIRRICINOLEATO, FERMENTO QUÍMICO BICARBONATO DE SÓDIO E AROMATIZANTE. ALÉRGICOS: CONTÉM AMENDOIM E DERIVADOS DE SOJA, TRIGO, LEITE E CEVADA. PODE CONTER AMÊNDOA, CASTANHA-DE-CAJU, AVELA, AVEIA, CENTEIO E LÁTEX NATURAL. CONTÉM LACTOSE. CONTÉM GLÚTEN.",
+        "ingredients_text": "INGR.: AÇÚCAR, GORDURA VEGETAL HIDROGENADA, GORDURA VEGETAL, FARINHA DE TRIGO ENRIQUECIDA COM FERRO, ÁCIDO FÓLICO, VITAMINAS B1, B2, B3 E ZINCO, SORO DE LEITE EM PÓ, CACAU EM PÓ, LEITE EM PÓ INTEGRAL, FLOCOS DE ARROZ, FARINHA DE SOJA, AMENDOIM, PERMEADO DE SORO DE LEITE EM PÓ, EXTRATO DE MALTE, SAL, MASSA DE CACAU, ÓLEO VEGETAL, MANTEIGA DE CACAU, GORDURA DE MANTEIGA DESIDRATADA, EMULSIFICANTES: LECITINA DE SOJA E POLIGLICEROL POLIRRICINOLEATO, FERMENTO QUÍMICO BICARBONATO DE SÓDIO E AROMATIZANTE. ALÉRGICOS: CONTÉM AMENDOIM E DERIVADOS DE SOJA, TRIGO, LEITE E CEVADA. PODE CONTER AMÊNDOA, CASTANHA-DE-CAJU, AVELA, AVEIA, CENTEIO E LÁTEX NATURAL. CONTÉM LACTOSE. CONTÉM GLÚTEN.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:gluten",
+          "en:milk",
+          "en:nuts",
+          "en:peanuts",
+          "en:soybeans"
+        ],
+        "traces_tags": [
+          "en:gluten",
+          "en:milk"
+        ],
+        "traces": "glúten, leite",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "gluten": "FARINHA DE TRIGO",
+          "milk": "SORO DE LEITE EM PÓ",
+          "soy": "FARINHA DE SOJA",
+          "peanut": "CONTÉM AMENDOIM"
+        },
+        "traco": {
+          "nuts": "PODE CONTER AMÊNDOA, CASTANHA-DE-CAJU, AVELA"
+        },
+        "negacoes": [],
+        "notas": "Manteiga de cacau nao e leite; gordura de manteiga desidratada e leite. As tags da OFF poem castanhas como CONTEM.",
+        "conferidoContra": "9c974b979bda0d7a79605421a26a085ecb6ff5ab55710eb92aac855d3f4c11e9"
+      }
+    },
+    {
+      "codigo": "7891000325131",
+      "grupo": "traco",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "traco",
+        "grafia"
+      ],
+      "nome": "Bombom Nestlé Especialidades",
+      "marcas": "Nestlé",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Açúcar, leite em pó, manteiga de cacau, massa de cacau, gordura vegetal, permeado de soro de leite em pó, emulsificantes lecitina de soja e poliglicerol polirricinoleato e aromatizante. ALÉRGICOS: CONTÉM DERIVADOS DE LEITE E DE SOJA. PODE CONTER AMENDOIM, CASTANHA-DE-CAJU, AVELA, TRIGO, CENTEIO, CEVADA, AVEIA E LÁTEX NATURAL. CONTÉM LACTOSE. CONTÉM GLÚTEN. CHARGE® - BOMBOM DE CHOCOLATE RECHEADO COM AMENDOIM CARAMELIZADO. Ingredientes: açúcar, xarope de glicose, amendoim, leite condensado, gordura vegetal, açúcar invertido, massa de cacau, gordura anidra de leite, leite em pó, manteiga de cacau, sal, albumina de ovo, umectante glicerol, emulsificantes lecitina de soja, mono e diglicerídeos de ácidos graxos e poliglicerol polirricinoleato e aromatizantes. ALÉRGICOS: CONTÉM AMENDOIM E DERIVADOS DE LEITE, DE SOJA E DE OVO. PODE CONTER AMÊNDOA, AVELÃ, CASTANHA-DE-CAJU, CASTANHA-DO-PARÁ, TRIGO, CENTEIO, CEVADA, AVEIA E LÁTEX NATURAL. CONTÉM LACTOSE. CONTÉM GLÚTEN. CHOKITOⓇ - BOMBOM RECHEADO COBERTO COM FLOCOS E CHOCOLATE. Ingredientes: açúcar, leite condensado, xarope de glicose, gordura vegetal, massa de cacau, flocos de arroz, manteiga de cacau, açúcar invertido, leite em pó, gordura anidra de leite, sal, extrato de malte, albumina de ovo, umectante glicerol, emulsificantes lecitina de soja e poliglicerol polirricinoleato e aromatizantes. ALÉRGICOS: CONTÉM DERIVADOS DE LEITE, DE SOJA, DE OVO E DE CEVADA. PODE CONTER AMENDOIM, AVELA, TRIGO, CENTEIO, AVEIA E LÁTEX NATURAL. CONTÉM LACTOSE. CONTÉM GLÚTEN. Contém aromatizante sintético idêntico ao natural. CLASSIC-BOMBOM DE CHOCOLATE AO LEITE. Ingredientes: açúcar, leite em pó, manteiga de cacau, massa de cacau, gordura vegetal, permeado de soro de leite em pó, emulsificantes lecitina de soja e poliglicerol polirricinoleato e aromatizante. ALÉRGICOS: CONTÉM DERIVADOS DE LEITE E DE SOJA. PODE CONTER AMENDOIM, CASTANHA-DE-CAJU, AVELA, TRIGO, CENTEIO, CEVADA, AVEIA E LÁTEX NATURAL. CONTÉM LACTOSE. CONTÉM GLÚTEN. GALAK® - BOMBOM DE CHOCOLATE BRANCO COM RECHEIO DE CREME. Ingredientes: açúcar, leite em pó, gordura vegetal, manteiga de cacau, gordura anidra de leite, emulsificantes lecitina de soja e poliglicerol polirricinoleato e aromatizante. ALÉRGICOS: CONTÉM DERIVADOS DE LEITE E DE SOJA. PODE CONTER AMENDOIM, CASTANHA-DE-CAJU, AVELÃ, TRIGO, CENTEIO, CEVADA, AVEIA E LÁTEX NATURAL. CONTÉM LACTOSE. CONTÉM GLÚTEN.",
+        "ingredients_text": "Açúcar, leite em pó, manteiga de cacau, massa de cacau, gordura vegetal, permeado de soro de leite em pó, emulsificantes lecitina de soja e poliglicerol polirricinoleato e aromatizante. ALÉRGICOS: CONTÉM DERIVADOS DE LEITE E DE SOJA. PODE CONTER AMENDOIM, CASTANHA-DE-CAJU, AVELA, TRIGO, CENTEIO, CEVADA, AVEIA E LÁTEX NATURAL. CONTÉM LACTOSE. CONTÉM GLÚTEN. CHARGE® - BOMBOM DE CHOCOLATE RECHEADO COM AMENDOIM CARAMELIZADO. Ingredientes: açúcar, xarope de glicose, amendoim, leite condensado, gordura vegetal, açúcar invertido, massa de cacau, gordura anidra de leite, leite em pó, manteiga de cacau, sal, albumina de ovo, umectante glicerol, emulsificantes lecitina de soja, mono e diglicerídeos de ácidos graxos e poliglicerol polirricinoleato e aromatizantes. ALÉRGICOS: CONTÉM AMENDOIM E DERIVADOS DE LEITE, DE SOJA E DE OVO. PODE CONTER AMÊNDOA, AVELÃ, CASTANHA-DE-CAJU, CASTANHA-DO-PARÁ, TRIGO, CENTEIO, CEVADA, AVEIA E LÁTEX NATURAL. CONTÉM LACTOSE. CONTÉM GLÚTEN. CHOKITOⓇ - BOMBOM RECHEADO COBERTO COM FLOCOS E CHOCOLATE. Ingredientes: açúcar, leite condensado, xarope de glicose, gordura vegetal, massa de cacau, flocos de arroz, manteiga de cacau, açúcar invertido, leite em pó, gordura anidra de leite, sal, extrato de malte, albumina de ovo, umectante glicerol, emulsificantes lecitina de soja e poliglicerol polirricinoleato e aromatizantes. ALÉRGICOS: CONTÉM DERIVADOS DE LEITE, DE SOJA, DE OVO E DE CEVADA. PODE CONTER AMENDOIM, AVELA, TRIGO, CENTEIO, AVEIA E LÁTEX NATURAL. CONTÉM LACTOSE. CONTÉM GLÚTEN. Contém aromatizante sintético idêntico ao natural. CLASSIC-BOMBOM DE CHOCOLATE AO LEITE. Ingredientes: açúcar, leite em pó, manteiga de cacau, massa de cacau, gordura vegetal, permeado de soro de leite em pó, emulsificantes lecitina de soja e poliglicerol polirricinoleato e aromatizante. ALÉRGICOS: CONTÉM DERIVADOS DE LEITE E DE SOJA. PODE CONTER AMENDOIM, CASTANHA-DE-CAJU, AVELA, TRIGO, CENTEIO, CEVADA, AVEIA E LÁTEX NATURAL. CONTÉM LACTOSE. CONTÉM GLÚTEN. GALAK® - BOMBOM DE CHOCOLATE BRANCO COM RECHEIO DE CREME. Ingredientes: açúcar, leite em pó, gordura vegetal, manteiga de cacau, gordura anidra de leite, emulsificantes lecitina de soja e poliglicerol polirricinoleato e aromatizante. ALÉRGICOS: CONTÉM DERIVADOS DE LEITE E DE SOJA. PODE CONTER AMENDOIM, CASTANHA-DE-CAJU, AVELÃ, TRIGO, CENTEIO, CEVADA, AVEIA E LÁTEX NATURAL. CONTÉM LACTOSE. CONTÉM GLÚTEN.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:eggs",
+          "en:gluten",
+          "en:milk",
+          "en:nuts",
+          "en:peanuts",
+          "en:soybeans"
+        ],
+        "traces_tags": [
+          "en:eggs",
+          "en:gluten",
+          "en:milk",
+          "en:peanuts",
+          "en:soybeans"
+        ],
+        "traces": "ovos, glúten, leite, amendoins, soja",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "milk": "leite em pó",
+          "soy": "lecitina de soja",
+          "peanut": "CONTÉM AMENDOIM",
+          "egg": "albumina de ovo",
+          "gluten": "extrato de malte"
+        },
+        "traco": {
+          "nuts": "PODE CONTER AMÊNDOA, AVELÃ, CASTANHA-DE-CAJU"
+        },
+        "negacoes": [],
+        "notas": "Caixa com varios bombons, cada um com a sua lista. CONTÉM GLÚTEN declarado. As tags da OFF poem castanhas como CONTEM.",
+        "conferidoContra": "f20fc94abd8151ea87df8a927dccb45b2113bd6674d2bbad70667d6294d14bc4"
+      }
+    },
+    {
+      "codigo": "7896066301778",
+      "grupo": "traco",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "traco"
+      ],
+      "nome": "Pão de Fôrma Integral - Wickbold - 550g",
+      "marcas": "WICKBOLD",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Farinha de trigo integral, farinha de trigo enriquecida com ferro e acido folico, gluten, fibra de trigo, açúcar, óleo de soja, sal sal hipossódico e conservadores propionato de calcio e sorbato de potássio ALERGICOS: CONTÉM DERIVADOS DE SOJA É DERIVADOS DE TRIGO. PODE CONTER AMENDOA, AMENDOIM, AVEIA, AVELAS CASTANHA-DE-CAJU, CASTANHA-DO-PARA CENTEIO, CEVADA, ÉSPELTA, FARRO, FREEKEH LEITE MACADAMIAS, NOZES, OVOS, PECĀS, PISTACHES E TRITICALE. CONTÉM GLUTEN.",
+        "ingredients_text": "Farinha de trigo integral, farinha de trigo enriquecida com ferro e acido folico, gluten, fibra de trigo, açúcar, óleo de soja, sal sal hipossódico e conservadores propionato de calcio e sorbato de potássio ALERGICOS: CONTÉM DERIVADOS DE SOJA É DERIVADOS DE TRIGO. PODE CONTER AMENDOA, AMENDOIM, AVEIA, AVELAS CASTANHA-DE-CAJU, CASTANHA-DO-PARA CENTEIO, CEVADA, ÉSPELTA, FARRO, FREEKEH LEITE MACADAMIAS, NOZES, OVOS, PECĀS, PISTACHES E TRITICALE. CONTÉM GLUTEN.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:eggs",
+          "en:gluten",
+          "en:nuts",
+          "en:soybeans"
+        ],
+        "traces_tags": [
+          "en:eggs",
+          "en:gluten",
+          "en:nuts",
+          "en:peanuts"
+        ],
+        "traces": "ovos, glúten, nozes, amendoins",
+        "labels_tags": [
+          "en:contains-gluten"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "gluten": "Farinha de trigo integral",
+          "soy": "óleo de soja"
+        },
+        "traco": {
+          "nuts": "PODE CONTER AMENDOA",
+          "peanut": "AMENDOA, AMENDOIM",
+          "milk": "FREEKEH LEITE",
+          "egg": "NOZES, OVOS"
+        },
+        "negacoes": [],
+        "notas": "Lista do PODE CONTER sem algumas virgulas (OCR): FREEKEH LEITE MACADAMIAS. As tags da OFF poem ovo e castanhas como CONTEM e nao trazem leite.",
+        "conferidoContra": "600013228a8faccfb77e16b50581f3969e0de2782c27e8a19438a9e0b9b93b48"
+      }
+    },
+    {
+      "codigo": "7622300990732",
+      "grupo": "traco",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "traco"
+      ],
+      "nome": "Biscoito Salgado Club Social Original",
+      "marcas": "CLUB SOCIAL",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "farinha de trigo enriquecida com ferro e ácido fólico, óleo vegetal, açúcar, açúcar invertido, sal, fermentos químicos: bicarbonato de amônio. di-hidrogenofosfato de cálcio e bicarbonato de sódio \r\n\r\nALÉRGICOS: CONTÉM DERIVADOS DE TRIGO E SOJA. PODE CONTER LEITE, CENTEIO, CEVADA E AVEIA. \r\n\r\nCONTÉM GLÚTEN.",
+        "ingredients_text": "farinha de trigo enriquecida com ferro e ácido fólico, óleo vegetal, açúcar, açúcar invertido, sal, fermentos químicos: bicarbonato de amônio. di-hidrogenofosfato de cálcio e bicarbonato de sódio \r\n\r\nALÉRGICOS: CONTÉM DERIVADOS DE TRIGO E SOJA. PODE CONTER LEITE, CENTEIO, CEVADA E AVEIA. \r\n\r\nCONTÉM GLÚTEN.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:gluten",
+          "en:soybeans"
+        ],
+        "traces_tags": [
+          "en:gluten"
+        ],
+        "traces": "glúten",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "gluten": "farinha de trigo",
+          "soy": "DERIVADOS DE TRIGO E SOJA"
+        },
+        "traco": {
+          "milk": "PODE CONTER LEITE"
+        },
+        "negacoes": [],
+        "notas": "As tags da OFF nao trazem o leite em traco.",
+        "conferidoContra": "a54407829df8b8e9e047d0c31242129e502786a3eb63a25fe6dd54b048efeff9"
+      }
+    },
+    {
+      "codigo": "7622210999634",
+      "grupo": "traco",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "traco",
+        "grafia"
+      ],
+      "nome": "MILKA Chocolate Milka Branco",
+      "marcas": "Milka",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "",
+        "ingredients_text": "Açúcar, manteiga de cacau, leite em pó integral, soro de leite em pó, gordura vegetal (palma), emulsificante (lecitina de soja), aromatizante, pode conter nozes.",
+        "ingredients_text_en": "Açúcar, manteiga de cacau, leite em pó integral, soro de leite em pó, gordura vegetal (palma), emulsificante (lecitina de soja), aromatizante, pode conter nozes.",
+        "allergens_tags": [
+          "en:milk"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:cocoa-life",
+          "en:contains-gluten",
+          "en:contains-milk",
+          "en:contains-soy",
+          "pt:Pode conter nozes"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "milk": "leite em pó integral",
+          "soy": "lecitina de soja"
+        },
+        "traco": {
+          "nuts": "pode conter nozes"
+        },
+        "negacoes": [],
+        "notas": "O selo contains-gluten da OFF nao tem fonte no texto: gluten ausente. Manteiga de cacau nao e leite. As tags da OFF nao trazem soja nem castanhas.",
+        "conferidoContra": "e01dff83a2ab3f14ba9f72f1bcece771e2780d92ec7910be3bc441e48033f3aa"
+      }
+    },
+    {
+      "codigo": "7894321711171",
+      "grupo": "traco",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "traco"
+      ],
+      "nome": "Toddy Original",
+      "marcas": "Toddy",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "AÇÚCAR, CACAU, CARBONATO DE CALCIO (CALCIO), MALTODEXTRINA, EXTRATO DE MALTE DE CEVADA, SAL, VITAMINAS (MALTODEXTRINA, NITRATO DE TIAMINA (VITAMINA B1) E CLORIDRATO DE PIRIDOXINA (VITAMINA B6)], AROMATIZANTES E EMULSIFICANTE LECITINA. ALERGICOS: CONTEM DERIVADOS DE SOJA E DE CEVADA. PODE CONTER LEITE, AVEIA, CENTEIO E TRIGO. CONTÉM GLÚTEN.",
+        "ingredients_text": "AÇÚCAR, CACAU, CARBONATO DE CALCIO (CALCIO), MALTODEXTRINA, EXTRATO DE MALTE DE CEVADA, SAL, VITAMINAS (MALTODEXTRINA, NITRATO DE TIAMINA (VITAMINA B1) E CLORIDRATO DE PIRIDOXINA (VITAMINA B6)], AROMATIZANTES E EMULSIFICANTE LECITINA. ALERGICOS: CONTEM DERIVADOS DE SOJA E DE CEVADA. PODE CONTER LEITE, AVEIA, CENTEIO E TRIGO. CONTÉM GLÚTEN.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:gluten"
+        ],
+        "traces_tags": [
+          "en:gluten"
+        ],
+        "traces": "glúten",
+        "labels_tags": [
+          "en:contains-gluten",
+          "en:contains-lactose",
+          "en:contains-milk",
+          "en:contains-soy",
+          "en:no-palm-oil",
+          "pt:Contem-aveia",
+          "pt:Contem-centeio",
+          "pt:Contem-cevada",
+          "pt:Contem-trigo"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "gluten": "EXTRATO DE MALTE DE CEVADA",
+          "soy": "CONTEM DERIVADOS DE SOJA"
+        },
+        "traco": {
+          "milk": "PODE CONTER LEITE"
+        },
+        "negacoes": [],
+        "notas": "Os selos contains-milk e contains-lactose da OFF contradizem o texto, que so traz leite no PODE CONTER.",
+        "conferidoContra": "e4de58be8c11d9954d1cac73b1bbdb183b8a007b91f5200a36b70539f3bf1728"
+      }
+    },
+    {
+      "codigo": "7896066304571",
+      "grupo": "traco",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "traco"
+      ],
+      "nome": "Pão Integral Maçã, Canela E Passas Wickbold Grão Sabor Pacote 500g",
+      "marcas": "WICKBOLD",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Farinha de trigo integral, farinha de trigo enriquecida com ferro e ácido fólico, uvas-passas, glúten, açúcar, semente de girassol, maçã desidratada, frutose, óleo de soja, sal, canela em pó e conservadores propionato de cálcio e ácido sórbico. ALÉRGICOS: CONTÉM DERIVADOS DE TRIGO E SOJA. PODE CONTER AMENDOA, AMENDOIM, AVEIA, AVELAS, CASTANHA-DE-CAJU, CASTANHA-DO-PARA, CENTEIO, CEVADA, LEITE, MACADAMIAS, NOZES, OVOS, PECĀS, PISTACHES E TRITICALE. CONTEM GLÚTEN: O GLUTEN É PREJUDICIAL AOS PORTADORES DE DOENÇA CELÍACA.",
+        "ingredients_text": "Farinha de trigo integral, farinha de trigo enriquecida com ferro e ácido fólico, uvas-passas, glúten, açúcar, semente de girassol, maçã desidratada, frutose, óleo de soja, sal, canela em pó e conservadores propionato de cálcio e ácido sórbico. ALÉRGICOS: CONTÉM DERIVADOS DE TRIGO E SOJA. PODE CONTER AMENDOA, AMENDOIM, AVEIA, AVELAS, CASTANHA-DE-CAJU, CASTANHA-DO-PARA, CENTEIO, CEVADA, LEITE, MACADAMIAS, NOZES, OVOS, PECĀS, PISTACHES E TRITICALE. CONTEM GLÚTEN: O GLUTEN É PREJUDICIAL AOS PORTADORES DE DOENÇA CELÍACA.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:eggs",
+          "en:gluten",
+          "en:milk",
+          "en:nuts",
+          "en:soybeans"
+        ],
+        "traces_tags": [
+          "en:eggs",
+          "en:gluten",
+          "en:milk",
+          "en:nuts",
+          "en:peanuts"
+        ],
+        "traces": "ovos, glúten, leite, nozes, amendoins",
+        "labels_tags": [
+          "en:vegetarian",
+          "en:no-gluten",
+          "en:no-preservatives",
+          "en:vegan",
+          "en:no-added-sugar",
+          "en:no-lactose",
+          "pt:Canela",
+          "pt:Contém Passas",
+          "pt:Maçã",
+          "pt:Produto artesanal"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "gluten": "Farinha de trigo integral",
+          "soy": "óleo de soja"
+        },
+        "traco": {
+          "nuts": "PODE CONTER AMENDOA",
+          "peanut": "AMENDOA, AMENDOIM",
+          "milk": "CEVADA, LEITE",
+          "egg": "NOZES, OVOS"
+        },
+        "negacoes": [],
+        "notas": "Os selos no-gluten, no-lactose e vegan da OFF contradizem o texto, que declara CONTEM GLÚTEN. As tags da OFF poem leite, ovo e castanhas como CONTEM; o texto, como PODE CONTER.",
+        "conferidoContra": "c3e67b07fbee933ac875de31d38128bd151fc018f004e4d77b7b04292881261c"
+      }
+    },
+    {
+      "codigo": "7896481130137",
+      "grupo": "traco",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "negacao",
+        "traco"
+      ],
+      "nome": "Farinha De Milho Flocada, Pronto",
+      "marcas": "coringa",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Farinha de milho flocada (geneticamente modificada a partir de Bacillus thuringiensis e/ou Streptomyces viridochromogenes e/ou Zea mays e/ou Agrobacterium tumefaciens). ALÉRGICOS: PODE CONTER SOJA. NÃO CONTÉM GLÚTEN.",
+        "ingredients_text": "Farinha de milho flocada (geneticamente modificada a partir de Bacillus thuringiensis e/ou Streptomyces viridochromogenes e/ou Zea mays e/ou Agrobacterium tumefaciens). ALÉRGICOS: PODE CONTER SOJA. NÃO CONTÉM GLÚTEN.",
+        "ingredients_text_en": "Flogged cornmeal (genetically modified from bacillus thuringiensis and/or streptomyces viridochromogenes and/or zea mays and/or agrobacterium tumefaciens), allergic: may contain soy, contains no gluten,",
+        "allergens_tags": [],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:contains-gmos"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {},
+        "traco": {
+          "soy": "PODE CONTER SOJA"
+        },
+        "negacoes": [
+          {
+            "alergeno": "gluten",
+            "trecho": "NÃO CONTÉM GLÚTEN"
+          }
+        ],
+        "notas": "O campo en repete: may contain soy, contains no gluten. As tags da OFF nao trazem a soja em traco.",
+        "conferidoContra": "6b3cdcbb67faa5cf5f9423277244dc784378a1ef5427e2485ada62037eead8e0"
+      }
+    },
+    {
+      "codigo": "78909434",
+      "grupo": "dentro-de-outro",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "dentro-de-outro",
+        "grafia"
+      ],
+      "nome": "Bombom Ferrero Rocher Pacote 37,5g",
+      "marcas": "Ferrero Rocher",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Chocolate ao leite (30%) (açúcar, mantelga de cacau, leite em pó, massa de cacau, emulsificante lecitinas, aromatizante), avelās (28,5%), açücar, óleo vegetal (palma), farinha de trigo fortificada com ferro e ácido ERO fólico, soro de leite em pó, cacau em pó parcialmente desengordurado, şal, emulsificante lecidnas, fermento químico MOSO, GAR Dicarbonato de sódio, aromatizante. ALERGICOS: CONTÉM AVELÂSE DERIVADOS DE DE LEITE, TRIGO0 E SOJA. CONTÉM GLÚTEN - CONTÉM LACTOSE. TENTE DF Fabricado no Brasil por FERRERO do BRASIL Indústria Doceirae Alimentar Ltda. - Av. Ferrero 555-Bortolan Drocifeira",
+        "ingredients_text": "Chocolate ao leite (30%) (açúcar, mantelga de cacau, leite em pó, massa de cacau, emulsificante lecitinas, aromatizante), avelās (28,5%), açücar, óleo vegetal (palma), farinha de trigo fortificada com ferro e ácido ERO fólico, soro de leite em pó, cacau em pó parcialmente desengordurado, şal, emulsificante lecidnas, fermento químico MOSO, GAR Dicarbonato de sódio, aromatizante. ALERGICOS: CONTÉM AVELÂSE DERIVADOS DE DE LEITE, TRIGO0 E SOJA. CONTÉM GLÚTEN - CONTÉM LACTOSE. TENTE DF Fabricado no Brasil por FERRERO do BRASIL Indústria Doceirae Alimentar Ltda. - Av. Ferrero 555-Bortolan Drocifeira",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:gluten",
+          "en:milk",
+          "en:soybeans"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:contains-gluten"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "nuts": "avelās (28,5%)",
+          "milk": "leite em pó",
+          "gluten": "farinha de trigo",
+          "soy": "TRIGO0 E SOJA"
+        },
+        "traco": {},
+        "negacoes": [],
+        "notas": "OCR com erros (avelās, AVELÂSE, TRIGO0, lecidnas). As tags da OFF nao trazem castanhas, que sao ingrediente e estao na declaracao.",
+        "conferidoContra": "6347b90487644b9b117b37fcd01732557403731f3e6f3d9434740c4a5ee86e63"
+      }
+    },
+    {
+      "codigo": "7891167011779",
+      "grupo": "dentro-de-outro",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "dentro-de-outro"
+      ],
+      "nome": "Atum Ralado Ao Natural",
+      "marcas": "Gomes da Costa",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Atum, água, caldo vegetal (água, flocos de soja, extrato de cenoura, extrato de aipo), sal.",
+        "ingredients_text": "Atum, água, caldo vegetal (água, flocos de soja, extrato de cenoura, extrato de aipo), sal.",
+        "ingredients_text_en": "tuna, vegetable broth (water, soy flakes, carrot extract, celery extract), water, salt,",
+        "allergens_tags": [
+          "en:celery",
+          "en:fish",
+          "en:soybeans"
+        ],
+        "traces_tags": [
+          "en:eggs"
+        ],
+        "traces": "ovos",
+        "labels_tags": [
+          "en:no-gluten",
+          "en:omega-3",
+          "en:source-of-proteins",
+          "en:high-proteins",
+          "en:source-of-omega-3"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "fish": "Atum",
+          "soy": "flocos de soja",
+          "celery": "extrato de aipo"
+        },
+        "traco": {},
+        "negacoes": [],
+        "notas": "Soja e aipo dentro do caldo vegetal. A OFF tem ovo em traco; o texto nao traz traco.",
+        "conferidoContra": "56b9746b73e605a5b4250607ecf2f70479f97ac1976f35e72e913bb3436fab2a"
+      }
+    },
+    {
+      "codigo": "7896030519611",
+      "grupo": "dentro-de-outro",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "dentro-de-outro",
+        "grafia"
+      ],
+      "nome": "Creme de ricota light",
+      "marcas": "Tirolez",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Ricota fresca (soro de leite, leite pasteurizado, acidulante ácido lático e conservador sorbato de potássio), creme de leite pasteurizado, massa coalhada (leite pasteurizado e fermento lácteo), cloreto de sódio (sal), concentrado proteico de soro de leite, estabilizantes goma guar e goma xantana e acidulante ácido cítrico.",
+        "ingredients_text": "Ricota fresca (soro de leite, leite pasteurizado, acidulante ácido lático e conservador sorbato de potássio), creme de leite pasteurizado, massa coalhada (leite pasteurizado e fermento lácteo), cloreto de sódio (sal), concentrado proteico de soro de leite, estabilizantes goma guar e goma xantana e acidulante ácido cítrico.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:milk"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:no-gluten",
+          "en:no-colorings",
+          "en:no-palm-oil",
+          "en:non-vegetarian",
+          "en:contains-lactose",
+          "en:no-added-sugar",
+          "en:non-organic",
+          "en:non-vegan",
+          "pt:pode conter leite"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "milk": "soro de leite"
+        },
+        "traco": {},
+        "negacoes": [],
+        "notas": "Leite dentro da ricota e da massa coalhada.",
+        "conferidoContra": "63825e40513b57eba5fbd310b171ecdde70041571a71e45f1adcb655a5348d93"
+      }
+    },
+    {
+      "codigo": "7891000336373",
+      "grupo": "dentro-de-outro",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "dentro-de-outro",
+        "grafia"
+      ],
+      "nome": "Chocolate ao leite Alpino",
+      "marcas": "Nestlé",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Açúcar, leite em pó, manteiga de cacau, massa de cacau, gordura vegetal, permeado de soro de leite em pó, emulsificantes (lecitina de soja, poliglicerol polirricinoleato), aromatizante.",
+        "ingredients_text": "Açúcar, leite em pó, manteiga de cacau, massa de cacau, gordura vegetal, permeado de soro de leite em pó, emulsificantes (lecitina de soja, poliglicerol polirricinoleato), aromatizante.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:milk",
+          "en:soybeans"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "milk": "leite em pó",
+          "soy": "lecitina de soja"
+        },
+        "traco": {},
+        "negacoes": [],
+        "notas": "",
+        "conferidoContra": "b632e15223b096882cf71bb778b40f7ece1de46824d2bfe9235af6518a3e1b6a"
+      }
+    },
+    {
+      "codigo": "7899970402852",
+      "grupo": "dentro-de-outro",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "traco",
+        "dentro-de-outro",
+        "grafia"
+      ],
+      "nome": "Chocolate Branco Cookies N Creme Hersheys Pacote 77g",
+      "marcas": "HERSHEYS",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "AÇUCAR, BISCOITO SABOR CHOCOLATE (FARINHA DE TRIGO ENRIQUECIDA COM FERRO E ÁCIDO FÓLICO, AÇÚCAR, GORDURA VEGETAL, FÉCULA DE MANDIOCA, CACAU EM PÓ, SAL, EMULSIFICANTE LECITINA DE SOJA, FERMENTOS QUÍMICOS BICARBONATO DE AMONIO E BICARBONATO DE SODIO E AROMATIZANTE), MANTEIGA DE CACAU, LEITE INTEGRAL EM PÓ, PERMEADO DE SORO DE LEITE EM PÓ, GORDURA VEGETAL, LEITE DESNATADO EM PÓ, SORO DE LEITE EM PÓ, EMULSIFICANTES LECITINA DE SOJA E POLIGLICEROL, POLIRRICINOLEATO E AROMATIZANTE CONTÉM GLUTEN. CONTÉM LACTOSE. ALÉRGICOS: CONTÉM DERIVADOS DE TRIGO E SOJA, LEITE E DERIVADOS. PODE CONTER CENTEIO, CEVADA, AVEIA, AMENDOIM, AMENDOA, AVELA, CASTANHA-DE-CAJU, CASTANHA-DO-PARÁ, MACADAMIA, NOZES E LÁTEX NATURAL",
+        "ingredients_text": "AÇUCAR, BISCOITO SABOR CHOCOLATE (FARINHA DE TRIGO ENRIQUECIDA COM FERRO E ÁCIDO FÓLICO, AÇÚCAR, GORDURA VEGETAL, FÉCULA DE MANDIOCA, CACAU EM PÓ, SAL, EMULSIFICANTE LECITINA DE SOJA, FERMENTOS QUÍMICOS BICARBONATO DE AMONIO E BICARBONATO DE SODIO E AROMATIZANTE), MANTEIGA DE CACAU, LEITE INTEGRAL EM PÓ, PERMEADO DE SORO DE LEITE EM PÓ, GORDURA VEGETAL, LEITE DESNATADO EM PÓ, SORO DE LEITE EM PÓ, EMULSIFICANTES LECITINA DE SOJA E POLIGLICEROL, POLIRRICINOLEATO E AROMATIZANTE CONTÉM GLUTEN. CONTÉM LACTOSE. ALÉRGICOS: CONTÉM DERIVADOS DE TRIGO E SOJA, LEITE E DERIVADOS. PODE CONTER CENTEIO, CEVADA, AVEIA, AMENDOIM, AMENDOA, AVELA, CASTANHA-DE-CAJU, CASTANHA-DO-PARÁ, MACADAMIA, NOZES E LÁTEX NATURAL",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:milk",
+          "en:nuts",
+          "en:soybeans"
+        ],
+        "traces_tags": [
+          "en:gluten",
+          "en:nuts",
+          "en:peanuts"
+        ],
+        "traces": "glúten, nozes, amendoins",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "gluten": "FARINHA DE TRIGO",
+          "soy": "LECITINA DE SOJA",
+          "milk": "LEITE INTEGRAL EM PÓ"
+        },
+        "traco": {
+          "peanut": "AVEIA, AMENDOIM",
+          "nuts": "AMENDOA, AVELA"
+        },
+        "negacoes": [],
+        "notas": "Trigo e soja dentro do biscoito. As tags da OFF nao trazem gluten como CONTEM e poem castanhas como CONTEM.",
+        "conferidoContra": "4c61eebeddcf9afcc49c02fd79220ee6c1a85be80d024632841a703650b27bdd"
+      }
+    },
+    {
+      "codigo": "7898755180084",
+      "grupo": "dentro-de-outro",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "dentro-de-outro",
+        "grafia"
+      ],
+      "nome": "Barrinha Trufa De Chocolate",
+      "marcas": "Bold",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Blend proteico (caseinato de cálcio, proteína concentrada do leite, proteína de soro do leite concentrada, colágeno hidrolisado), cobertura de chocolate branco diet (gordura vegetal, leite em pó desnatado, proteína de soro do leite concentrada, polidextrose, emulsificante INS 476), caramelo de chocolate diet, polidextrose, gordura de palma, colágeno hidrolisado, cacau em pó, crispies proteicos, cloreto de sódio, aromatizante idêntico ao natural, edulcorantes INS 965i e INS 960a, umectante INS 422, emulsificante INS 3221, conservante INS 202 e antioxidante 307b.",
+        "ingredients_text": "Blend proteico (caseinato de cálcio, proteína concentrada do leite, proteína de soro do leite concentrada, colágeno hidrolisado), cobertura de chocolate branco diet (gordura vegetal, leite em pó desnatado, proteína de soro do leite concentrada, polidextrose, emulsificante INS 476), caramelo de chocolate diet, polidextrose, gordura de palma, colágeno hidrolisado, cacau em pó, crispies proteicos, cloreto de sódio, aromatizante idêntico ao natural, edulcorantes INS 965i e INS 960a, umectante INS 422, emulsificante INS 3221, conservante INS 202 e antioxidante 307b.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:milk"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "milk": "caseinato de cálcio"
+        },
+        "traco": {},
+        "negacoes": [],
+        "notas": "Colageno hidrolisado e crispies proteicos sem origem declarada; nenhuma soja nomeada.",
+        "conferidoContra": "054f6cee967f04c7d85f7536c41f6bb2ccec5bbf5de6f40a4392c5960a0887f5"
+      }
+    },
+    {
+      "codigo": "7891000248829",
+      "grupo": "dentro-de-outro",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "dentro-de-outro",
+        "grafia"
+      ],
+      "nome": "Chocolate KitKat Dark",
+      "marcas": "Nestlé",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Açúcar, massa de cacu, gordura vegetal, farinha de trigo enriquecida (ferro 0,0030%, ácido fólico 0,00022%, tiamina 0,00063%, riboflavina 0,00013%, niacina 0,0013%, zinco), leite em pó, manteiga de cacau, cacau em pó, gordura anidra de leite, sal, emulsificantes (lecitina de soja, poliglicerol polirricinoleato), aromatizantes, fermento químico (bicarbonato de sódio), melhorador de farinha (sulfato de cálcio).",
+        "ingredients_text": "Açúcar, massa de cacu, gordura vegetal, farinha de trigo enriquecida (ferro 0,0030%, ácido fólico 0,00022%, tiamina 0,00063%, riboflavina 0,00013%, niacina 0,0013%, zinco), leite em pó, manteiga de cacau, cacau em pó, gordura anidra de leite, sal, emulsificantes (lecitina de soja, poliglicerol polirricinoleato), aromatizantes, fermento químico (bicarbonato de sódio), melhorador de farinha (sulfato de cálcio).",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:gluten",
+          "en:milk",
+          "en:soybeans"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "gluten": "farinha de trigo",
+          "milk": "leite em pó",
+          "soy": "lecitina de soja"
+        },
+        "traco": {},
+        "negacoes": [],
+        "notas": "sulfato de calcio nao e sulfito.",
+        "conferidoContra": "dd28be1e762389d07ae7fe65974bc3eba5c50cc3539b10305a4981aa1044dc67"
+      }
+    },
+    {
+      "codigo": "7891330016068",
+      "grupo": "dentro-de-outro",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "traco",
+        "dentro-de-outro",
+        "grafia"
+      ],
+      "nome": "Amor Carioca",
+      "marcas": "Neugebauer",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Acúcar, Gordura Vegetal Hidrogenada, Farinha de Trigo Enriquecida com Ferro e Acido Fólico, Soro de Leite em Pó, Farinha de Castanha de Caju, Gordura Vegetal, Pasta de Cacau, Manteiga de Cacau, Cacau em Pó, Flocos de Arroz (Farinha de Arroz, Açúcar, Extrato de Malte e Sal), Leite em Pó Integral, Sal, Óleo de Soja, Emulsificantes Lecitina de Soja e Poliglicerol, Polirricinoleato, Aromatizante e Fermento Químico Bicarbonato de Sódio. ALÉRGICOS: CONTÉM CASTANHA-DE-CAJU, DERIVADOS DE LEITE, SOJA, TRIGO E CEVADA. PODE CONTER AMENDOIM E AVELÃ. CONTÉM LACTOSE.CONTEM GLÚTEN.",
+        "ingredients_text": "Acúcar, Gordura Vegetal Hidrogenada, Farinha de Trigo Enriquecida com Ferro e Acido Fólico, Soro de Leite em Pó, Farinha de Castanha de Caju, Gordura Vegetal, Pasta de Cacau, Manteiga de Cacau, Cacau em Pó, Flocos de Arroz (Farinha de Arroz, Açúcar, Extrato de Malte e Sal), Leite em Pó Integral, Sal, Óleo de Soja, Emulsificantes Lecitina de Soja e Poliglicerol, Polirricinoleato, Aromatizante e Fermento Químico Bicarbonato de Sódio. ALÉRGICOS: CONTÉM CASTANHA-DE-CAJU, DERIVADOS DE LEITE, SOJA, TRIGO E CEVADA. PODE CONTER AMENDOIM E AVELÃ. CONTÉM LACTOSE.CONTEM GLÚTEN.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:gluten",
+          "en:milk",
+          "en:nuts",
+          "en:soybeans"
+        ],
+        "traces_tags": [
+          "en:gluten",
+          "en:milk",
+          "en:nuts",
+          "en:peanuts",
+          "en:soybeans",
+          "pt:Castanha de caju"
+        ],
+        "traces": "glúten, leite, nozes, amendoins, soja, Castanha de caju",
+        "labels_tags": [
+          "es:sistema-de-etiquetado-frontal-de-alimentos-y-bebidas",
+          "es:exceso-azucares",
+          "es:exceso-calorias",
+          "es:exceso-grasas-saturadas",
+          "es:exceso-grasas-totales"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "gluten": "Farinha de Trigo",
+          "milk": "Soro de Leite em Pó",
+          "nuts": "Farinha de Castanha de Caju",
+          "soy": "Óleo de Soja"
+        },
+        "traco": {
+          "peanut": "PODE CONTER AMENDOIM"
+        },
+        "negacoes": [],
+        "notas": "Extrato de malte dentro dos flocos de arroz. As tags da OFF repetem gluten, leite, castanhas e soja tambem em traco.",
+        "conferidoContra": "6027585ad4b97f602c302fbb885b6dff8b11837e8368dd2da6be890038e7cbb7"
+      }
+    },
+    {
+      "codigo": "7891000248768",
+      "grupo": "grafia",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "grafia"
+      ],
+      "nome": "Kit Kat",
+      "marcas": "Nestlé",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "AÇÚCAR, LEITE EM PÓ, FARINHA DE TRIGO ENRIQUECIDA COM FERRO, ÁCIDO FÓLICO, TIAMINA, RIBOFLAVINA, NIACINA E ZINCO, MANTEIGA DE CACAU, GORDURA VEGETAL, MASSA DE CACAU, GORDURA ANIDRA DE LEITE, CACAU EM PÓ, SAL, EMULSIFICANTES LECITINA E POLIGLICEROL, POLIRRICINOLEATO, FERMENTO QUÍMICO BICARBONATO DE SÓDIO, MELHORADOR DE FARINHA SULFATO DE CALCIO E AROMATIZANTE.",
+        "ingredients_text": "AÇÚCAR, LEITE EM PÓ, FARINHA DE TRIGO ENRIQUECIDA COM FERRO, ÁCIDO FÓLICO, TIAMINA, RIBOFLAVINA, NIACINA E ZINCO, MANTEIGA DE CACAU, GORDURA VEGETAL, MASSA DE CACAU, GORDURA ANIDRA DE LEITE, CACAU EM PÓ, SAL, EMULSIFICANTES LECITINA E POLIGLICEROL, POLIRRICINOLEATO, FERMENTO QUÍMICO BICARBONATO DE SÓDIO, MELHORADOR DE FARINHA SULFATO DE CALCIO E AROMATIZANTE.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:gluten",
+          "en:milk"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:sustainable-farming",
+          "en:nestle-cocoa-plan",
+          "en:utz-certified",
+          "en:utz-certified-cocoa"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "milk": "LEITE EM PÓ",
+          "gluten": "FARINHA DE TRIGO"
+        },
+        "traco": {},
+        "negacoes": [],
+        "notas": "Lecitina sem origem declarada: soja nao entra. Sulfato de calcio nao e sulfito.",
+        "conferidoContra": "ddad81c83402bfb1e688e51a97e93d94d975e2fdc499f29dd83cee35702702ab"
+      }
+    },
+    {
+      "codigo": "7898215152002",
+      "grupo": "grafia",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "grafia"
+      ],
+      "nome": "leite condensado Piracanjuba",
+      "marcas": "Piracanjuba",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Leite semidesnatado, açúcar, leite em pó desnatado, lactose.",
+        "ingredients_text": "Leite semidesnatado, açúcar, leite em pó desnatado, lactose.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:milk"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:fsc",
+          "en:contains-lactose",
+          "en:contains-milk",
+          "en:fsc-mix"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "milk": "Leite semidesnatado"
+        },
+        "traco": {},
+        "negacoes": [],
+        "notas": "",
+        "conferidoContra": "292bae90a3bfd0d7fd09e583d008a51ed158cba234a51c993d9a352c5a1691d2"
+      }
+    },
+    {
+      "codigo": "7891000379585",
+      "grupo": "grafia",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "grafia"
+      ],
+      "nome": "Nescau",
+      "marcas": "Nestlé",
+      "idioma": "en",
+      "campos": {
+        "ingredients_text_pt": "Açúcar, cacau em pó, maltodextrina, minerais [cálcio (carbonato de cálcio) e ferro (fumarato ferroso)], soro de leite em pó, vitaminas [vitamina C (ácido L-ascórbico), vitamina B3 (nicotinamida), vitamina B6 (cloridrato de 20g %VD* piridoxina), vitamina B2 (riboflavina), vitamina A (acetato de retinila), vitamina D (colecalciferol) e vitamina B12 (cianocobalamina)], emulsificante lecitina e aromatizante.",
+        "ingredients_text": "Açúcar, cacau em pó, maltodextrina, minerais [cálcio (carbonato de cálcio) e ferro (fumarato ferroso)], soro de leite em pó, vitaminas [vitamina C (ácido L-ascórbico), vitamina B3 (nicotinamida), vitamina B6 (cloridrato de 20g %VD* piridoxina), vitamina B2 (riboflavina), vitamina A (acetato de retinila), vitamina D (colecalciferol) e vitamina B12 (cianocobalamina)], emulsificante lecitina e aromatizante.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:milk"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "milk": "soro de leite em pó"
+        },
+        "traco": {},
+        "negacoes": [],
+        "notas": "Lecitina sem origem declarada.",
+        "conferidoContra": "de138d9c09325e26adb8a7083e3a438bbf4c3f75c1b4231e1cacc7f91a64af6d"
+      }
+    },
+    {
+      "codigo": "7622210575975",
+      "grupo": "grafia",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "grafia"
+      ],
+      "nome": "Wafer recheado com cobertura sabor chocolate",
+      "marcas": "BIS",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "AÇÚCAR, GORDURA VEGETAL, WAFER, CACAU EM PÓ, MASSA DE CACAU, FARINHA DE SOJA, PERMEADO DE SORO DE LEITE EM PÓ, AMENDOIM, FLOCOS DE ARROZ, SORO DE LEITE EM PÓ, LEITE EM PÓ INTEGRAL, MANTEIGA DE CACAU, EXTRATO DE MALTE, GORDURA DE MANTEIGA DESIDRATADA, EMULSIFICANTES: LECITINA E POLIGLICEROL POLIRRICINOLEATO E AROMATIZANTE.",
+        "ingredients_text": "AÇÚCAR, GORDURA VEGETAL, WAFER, CACAU EM PÓ, MASSA DE CACAU, FARINHA DE SOJA, PERMEADO DE SORO DE LEITE EM PÓ, AMENDOIM, FLOCOS DE ARROZ, SORO DE LEITE EM PÓ, LEITE EM PÓ INTEGRAL, MANTEIGA DE CACAU, EXTRATO DE MALTE, GORDURA DE MANTEIGA DESIDRATADA, EMULSIFICANTES: LECITINA E POLIGLICEROL POLIRRICINOLEATO E AROMATIZANTE.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:gluten",
+          "en:milk",
+          "en:peanuts",
+          "en:soybeans"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "soy": "FARINHA DE SOJA",
+          "milk": "SORO DE LEITE EM PÓ",
+          "peanut": "AMENDOIM, FLOCOS",
+          "gluten": "EXTRATO DE MALTE"
+        },
+        "traco": {},
+        "negacoes": [],
+        "notas": "WAFER sem composicao; o gluten vem do extrato de malte.",
+        "conferidoContra": "773d1c1b32434f4014dc5af8f1af4b973582945748ce78fab46e9473127f5bea"
+      }
+    },
+    {
+      "codigo": "7898080640413",
+      "grupo": "grafia",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "grafia"
+      ],
+      "nome": "Leite Condensado",
+      "marcas": "Italac",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Leite semidesnatado, açúcar, leite em pó integral, lactose",
+        "ingredients_text": "Leite semidesnatado, açúcar, leite em pó integral, lactose",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:milk"
+        ],
+        "traces_tags": [
+          "en:milk"
+        ],
+        "traces": "leite",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "milk": "Leite semidesnatado"
+        },
+        "traco": {},
+        "negacoes": [],
+        "notas": "A OFF tambem poe leite em traco.",
+        "conferidoContra": "3570a56b05de4a7a931930ca601dae81e6188259ccf0ac5ab0a0fecf355dbe5d"
+      }
+    },
+    {
+      "codigo": "8691066267050",
+      "grupo": "grafia",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "grafia"
+      ],
+      "nome": "Hay Hay Biscoito com creme de caramelo coberto de Cacau",
+      "marcas": "Cizmeci Time",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Farinha de trigo, açúcar, óleo vegetal de palma, leite em pó, cacau em pó, soro de leite em pó, glicose, fermentos químicos (bicarbonato de sódio, pirofosfato de ácido de sódio, bicarbonato de amônio), emulsificantes lecitina de soja e polirricinoleato de poliglicerol, melaço, sal, aromatizantes e corante caramelo. ALÉRGICOS: CONTÉM LEITE E DERIVADOS, CONTÉM DERIVADOS DE SOJA. CONTÉM LACTOSE. CONTÉM GLUTEN.",
+        "ingredients_text": "Farinha de trigo, açúcar, óleo vegetal de palma, leite em pó, cacau em pó, soro de leite em pó, glicose, fermentos químicos (bicarbonato de sódio, pirofosfato de ácido de sódio, bicarbonato de amônio), emulsificantes lecitina de soja e polirricinoleato de poliglicerol, melaço, sal, aromatizantes e corante caramelo. ALÉRGICOS: CONTÉM LEITE E DERIVADOS, CONTÉM DERIVADOS DE SOJA. CONTÉM LACTOSE. CONTÉM GLUTEN.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:gluten",
+          "en:milk",
+          "en:soybeans"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:contains-gluten"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "gluten": "Farinha de trigo",
+          "milk": "leite em pó",
+          "soy": "lecitina de soja"
+        },
+        "traco": {},
+        "negacoes": [],
+        "notas": "",
+        "conferidoContra": "e61f6a603f19b84f3731b7cf33077f0faabd0d6ca7ce06c038a5bfa7361f7e57"
+      }
+    },
+    {
+      "codigo": "7896024761651",
+      "grupo": "grafia",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "grafia"
+      ],
+      "nome": "Biscoito doce maizena",
+      "marcas": "piraquê",
+      "idioma": "en",
+      "campos": {
+        "ingredients_text_pt": "farinha de trigo enriquecida com ferro e ácido fólico, açúcar, gordura vegetal, amido de milho*, açúcar invertido, extrato de malte, sal, leite em pó desnatado, fermentos químicos: bicarbonato de sódio, bicarbonato de amônio e di-hidrogenofosfato de cálcio, emulsificante lecitina de soja*, melhorador de farinha metabissulfito de sódio e aromatizantes. CONTEM GLUTEN.",
+        "ingredients_text": "farinha de trigo enriquecida com ferro e ácido fólico, açúcar, gordura vegetal, amido de milho*, açúcar invertido, extrato de malte, sal, leite em pó desnatado, fermentos químicos: bicarbonato de sódio, bicarbonato de amônio e di-hidrogenofosfato de cálcio, emulsificante lecitina de soja*, melhorador de farinha metabissulfito de sódio e aromatizantes. CONTEM GLUTEN.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:gluten",
+          "en:milk",
+          "en:soybeans",
+          "en:CONTEM GLUTEN",
+          "en:extrato de malte"
+        ],
+        "traces_tags": [
+          "en:gluten",
+          "en:milk",
+          "en:soybeans",
+          "fr:avoine",
+          "fr:triticale"
+        ],
+        "traces": "gluten, milk, soybeans, fr:avoine, fr:triticale",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "gluten": "farinha de trigo",
+          "milk": "leite em pó desnatado",
+          "soy": "lecitina de soja",
+          "sulphite": "metabissulfito de sódio"
+        },
+        "traco": {},
+        "negacoes": [],
+        "notas": "As tags da OFF nao trazem o sulfito.",
+        "conferidoContra": "dbff45ecd87fe0db58e332c2116ab4e2a341b7b06cc905e3520534d22da4c03e"
+      }
+    },
+    {
+      "codigo": "7891000379691",
+      "grupo": "grafia",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "grafia"
+      ],
+      "nome": "Nescau",
+      "marcas": "Nestlé",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Açúcar, cacau em pó, maltodextrina, minerais (cálcio, ferro), soro de leite em pó, vitaminas (vitamina C, vitamina B3, vitamina B6, vitamina B2, vitamina A, vitamina D, vitamina B12), lecitina de soja, aromatizante.",
+        "ingredients_text": "Açúcar, cacau em pó, maltodextrina, minerais (cálcio, ferro), soro de leite em pó, vitaminas (vitamina C, vitamina B3, vitamina B6, vitamina B2, vitamina A, vitamina D, vitamina B12), lecitina de soja, aromatizante.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:milk",
+          "en:soybeans"
+        ],
+        "traces_tags": [
+          "en:gluten"
+        ],
+        "traces": "glúten",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "milk": "soro de leite em pó",
+          "soy": "lecitina de soja"
+        },
+        "traco": {},
+        "negacoes": [],
+        "notas": "A OFF tem gluten em traco; o texto nao traz traco.",
+        "conferidoContra": "3f0191faff53e13b9efcd7b684c554b005050f3ef06e2aa1fd2093b00bee31fa"
+      }
+    },
+    {
+      "codigo": "7622210596413",
+      "grupo": "vazio",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "vazio"
+      ],
+      "nome": "Wafers, barras recheadas e tabletes sortidos",
+      "marcas": "Lacta, Mondelez, Mondelez International",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "",
+        "ingredients_text": "",
+        "ingredients_text_en": "",
+        "allergens_tags": [],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": true,
+        "contem": {},
+        "traco": {},
+        "negacoes": [],
+        "notas": "Sem lista de ingredientes na base.",
+        "conferidoContra": "d9ccd6168f2fab9ba2209e1c6fe07c255bb77ef626ab9f9d2af62f720516422c"
+      }
+    },
+    {
+      "codigo": "7896004006277",
+      "grupo": "vazio",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "vazio"
+      ],
+      "nome": "Salgadinho De Batata Original Pringles Tubo 104g",
+      "marcas": "Pringles",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "",
+        "ingredients_text": "",
+        "ingredients_text_en": "",
+        "allergens_tags": [],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": true,
+        "contem": {},
+        "traco": {},
+        "negacoes": [],
+        "notas": "Sem lista de ingredientes na base.",
+        "conferidoContra": "d9ccd6168f2fab9ba2209e1c6fe07c255bb77ef626ab9f9d2af62f720516422c"
+      }
+    },
+    {
+      "codigo": "07117815",
+      "grupo": "vazio",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "vazio"
+      ],
+      "nome": "",
+      "marcas": "Renata",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "",
+        "ingredients_text": "",
+        "ingredients_text_en": "",
+        "allergens_tags": [],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": true,
+        "contem": {},
+        "traco": {},
+        "negacoes": [],
+        "notas": "Sem lista de ingredientes na base.",
+        "conferidoContra": "d9ccd6168f2fab9ba2209e1c6fe07c255bb77ef626ab9f9d2af62f720516422c"
+      }
+    },
+    {
+      "codigo": "7891008116632",
+      "grupo": "vazio",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "vazio"
+      ],
+      "nome": "Garoto garotices 250g",
+      "marcas": "Garoto",
+      "idioma": "es",
+      "campos": {
+        "ingredients_text_pt": "",
+        "ingredients_text": "",
+        "ingredients_text_en": "",
+        "allergens_tags": [],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": true,
+        "contem": {},
+        "traco": {},
+        "negacoes": [],
+        "notas": "Sem lista de ingredientes na base.",
+        "conferidoContra": "d9ccd6168f2fab9ba2209e1c6fe07c255bb77ef626ab9f9d2af62f720516422c"
+      }
+    },
+    {
+      "codigo": "7896004006239",
+      "grupo": "vazio",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "vazio"
+      ],
+      "nome": "Salgadinho De Batata Creme E Cebola Pringles Tubo 109g",
+      "marcas": "Pringles",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "",
+        "ingredients_text": "",
+        "ingredients_text_en": "",
+        "allergens_tags": [],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": true,
+        "contem": {},
+        "traco": {},
+        "negacoes": [],
+        "notas": "Sem lista de ingredientes na base.",
+        "conferidoContra": "d9ccd6168f2fab9ba2209e1c6fe07c255bb77ef626ab9f9d2af62f720516422c"
+      }
+    },
+    {
+      "codigo": "11117780",
+      "grupo": "so-ingles",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "so-ingles",
+        "ingles-eua"
+      ],
+      "nome": "Dark chocolate covered pretzels with peppermint pieces, peppermint",
+      "marcas": "Nestlé",
+      "idioma": "en",
+      "campos": {
+        "ingredients_text_pt": "",
+        "ingredients_text": "Dark chocolate coating (sugar, chocolate liquor processed with alkali, cocoa butter, butterfat [milk], soy lecithin, and vanilla), pretzels (unbleached enriched wheat flour [flour, niacin, reduced iron, thiamine mononitrate-b1, riboflavin-b2, folic acid], malt, salt, soybean and/or canola oil, and yeast), peppermint flakes (sugar, corn syrup, vegetable juice concentrate, caramel color, natural peppermint oil).",
+        "ingredients_text_en": "Dark chocolate coating (sugar, chocolate liquor processed with alkali, cocoa butter, butterfat [milk], soy lecithin, and vanilla), pretzels (unbleached enriched wheat flour [flour, niacin, reduced iron, thiamine mononitrate-b1, riboflavin-b2, folic acid], malt, salt, soybean and/or canola oil, and yeast), peppermint flakes (sugar, corn syrup, vegetable juice concentrate, caramel color, natural peppermint oil).",
+        "allergens_tags": [
+          "en:gluten",
+          "en:milk",
+          "en:soybeans"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "milk": "butterfat [milk]",
+          "soy": "soy lecithin",
+          "gluten": "wheat flour"
+        },
+        "traco": {},
+        "negacoes": [],
+        "notas": "Texto so em ingles. Malte (malt) tambem e gluten.",
+        "conferidoContra": "86162a764f1543eb0d65033099d6cdd57d6940d337ab5ff3e52ece181adbd700"
+      }
+    },
+    {
+      "codigo": "8718989002640",
+      "grupo": "so-ingles",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "so-ingles"
+      ],
+      "nome": "Bio+",
+      "marcas": "Bio",
+      "idioma": "en",
+      "campos": {
+        "ingredients_text_pt": "",
+        "ingredients_text": "afel 0,3%, hazelnoot - -) lantaardige vetten Ikpoeder* (13,1%), azelnoten (9,2%), (7%), botervet* cacao, emulgator: poeder* (0,4%), zetmeel, natuurlij - triumwaterstofcar - ten/pinda's. meinddelen. ndere noten er ei Gaufrette fourrée (fourrage au lait 30,3 %, fourrage à la pate de noisettes 29,4%) poudre* (13,1%), 12,7%), noisettes Ingrédients: sucre, grases végétales (palme, karité), lait écrémé farine de frome (9,2%), farine de graisse butyrique maigre, émulsifia en poudre* (0,4% nent complète (7%), *(2,7%), cacao, cacao ithines (soja), crème produit à base de lactosérum, amidon e blé, arômes naturels, poudre à lever: carbonate acide de sodium, arachides moulues. *correspond à une proportion de 10 % de lait. OFyldt vaffels (Mælkecremefyld 3 fyld 29,4%) Ingredienser sukker, (palme, shea), sku (13,1%), hvedemel ( (9,2%), fuldkornsh fedt* (2,7 %), kakao gator: lecithiner (soja salt, vallepulver (fra naturlige aromaer, hæ gencarbonat, malec *svarende til 10% Kan også indehol der og æg. Peut aussi contenir de l'amande, d'autres fruits à coque (dure) et de l'œuf. taardig cacgla Couverture de la gaufrette: glaçage à la Vaffelovertræk: I aise veetale contenant du cacao",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:nuts",
+          "en:peanuts",
+          "en:soybeans"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:organic",
+          "en:eu-organic",
+          "en:nutriscore",
+          "en:nl-bio-01",
+          "en:nutriscore-grade-a"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "milk": "lait écrémé",
+          "nuts": "noisettes",
+          "peanut": "arachides moulues",
+          "soy": "ithines (soja)",
+          "gluten": "hvedemel"
+        },
+        "traco": {
+          "egg": "et de l'œuf"
+        },
+        "negacoes": [],
+        "notas": "lang=en na OFF, mas o texto e holandes, frances e dinamarques misturados pelo OCR. Leitura: leite (lait, lactosérum, botervet), avela (noisettes, hazelnoot), amendoim (arachides, pinda's), soja (lécithines (soja)), trigo (amidon de blé, hvedemel) e ovo no 'Peut aussi contenir'.",
+        "conferidoContra": "64910e5e50750b27c96f0b09627c9a515fdae6d9248afb005be068e00f1ded3e"
+      }
+    },
+    {
+      "codigo": "7891000071786",
+      "grupo": "so-ingles",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "so-ingles"
+      ],
+      "nome": "Nescafe Classic",
+      "marcas": "Nescafe",
+      "idioma": "en",
+      "campos": {
+        "ingredients_text_pt": "",
+        "ingredients_text": "*100% püre coffee good life good food, good to talk amount per 1,6g portion/ouantidade por porção 1,6g/ quantité par portion de 1,69 nestlé consumer services kenya:  254 (020) 399800 angola:  264 934-764604 mocambique: 258 800 637053 mauritius:  230 8001118 roc:  243 999949009 zimbabwe:  263 (4) 702393/7 zambia:  260 965 038000 www,facebook,com/nescafe,ke consumersake,nestle,com www,nescafe,com okcal calries/valar caldrico/energie cabobydrae/cabhidrates/hydrates de carbone ,lt,1g probin proteinas/proteines fat /gorduras/matieres grasses satum/sidi /sodum antinitants/antonidanes/antiorydants 0g nestlē, 0g omg 0,344g good to know/ é bom saber/bon à savoir antioxidants help fight against free radicals, one of the main reasons for aging, coffee is naturally rich in antioxidants,, os antioxidantes ajudam a combater os radicais livres , uma das principais razes para o envelhecimento, o café ed naturalmente rico em antioxidants, antiorydants help fight free radicals that are one of the reasons for aging, coffee is naturally rich in antioxidants nutritional compass® kebs ®reg, trademark of company of nestlé products sstlé, a, tion: use one teaspoon per teaspoon cup, add hot water sugar and milk to taste, ceo: use uma colher de cha por chàvena, acrescente a 'gua quente o açacar e o leite para saborear, 0n: use one teaspoon per cup, add hot water, sugar and milk as you see fit, before/ mr de prod 21 11 2016 yionbe 11 2018 mer pence l: 63261210 17:44 bc : 7 ,quot,891000 071786 eina cool dry place/conservar em local fresco e seco /",
+        "ingredients_text_en": "*100% püre coffee good life good food, good to talk amount per 1,6g portion/ouantidade por porção 1,6g/ quantité par portion de 1,69 nestlé consumer services kenya:  254 (020) 399800 angola:  264 934-764604 mocambique: 258 800 637053 mauritius:  230 8001118 roc:  243 999949009 zimbabwe:  263 (4) 702393/7 zambia:  260 965 038000 www,facebook,com/nescafe,ke consumersake,nestle,com www,nescafe,com okcal calries/valar caldrico/energie cabobydrae/cabhidrates/hydrates de carbone ,lt,1g probin proteinas/proteines fat /gorduras/matieres grasses satum/sidi /sodum antinitants/antonidanes/antiorydants 0g nestlē, 0g omg 0,344g good to know/ é bom saber/bon à savoir antioxidants help fight against free radicals, one of the main reasons for aging, coffee is naturally rich in antioxidants,, os antioxidantes ajudam a combater os radicais livres , uma das principais razes para o envelhecimento, o café ed naturalmente rico em antioxidants, antiorydants help fight free radicals that are one of the reasons for aging, coffee is naturally rich in antioxidants nutritional compass® kebs ®reg, trademark of company of nestlé products sstlé, a, tion: use one teaspoon per teaspoon cup, add hot water sugar and milk to taste, ceo: use uma colher de cha por chàvena, acrescente a 'gua quente o açacar e o leite para saborear, 0n: use one teaspoon per cup, add hot water, sugar and milk as you see fit, before/ mr de prod 21 11 2016 yionbe 11 2018 mer pence l: 63261210 17:44 bc : 7 ,quot,891000 071786 eina cool dry place/conservar em local fresco e seco /",
+        "allergens_tags": [],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {},
+        "traco": {},
+        "negacoes": [],
+        "notas": "O texto e o painel da embalagem, nao a lista de ingredientes: 100% cafe. Leite (milk, leite) so aparece no modo de preparo ('acrescente o acucar e o leite a gosto') - nao e ingrediente.",
+        "conferidoContra": "4a81c199d02fa9e4d6905d2270628fc0fd5152541f81acc3b562807cd18b4035"
+      }
+    },
+    {
+      "codigo": "7896002311274",
+      "grupo": "so-ingles",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "so-ingles"
+      ],
+      "nome": "Pão Integral Aveia",
+      "marcas": "Nutrella",
+      "idioma": "en",
+      "campos": {
+        "ingredients_text_pt": "",
+        "ingredients_text": "Ingredientes: farinha de trigo integral, farinha de trigo enriquecida com ferro e ácido fólico, glúten, floco integral de aveia, semente de girassol, açúcar, semente de linhaça marrom, grão integral de aveia, farinha de trigo fermentada desidratada, óleo vegetal de soja, vinagre, sal e acerola em pó. ALÉRGICOS: CONTÉM AVEIA E DERIVADOS DE TRIGO E DE SOJA. PODE CONTER AMÊNDOA, AMENDOIM, AVELĀS, MACADAMIAS, NOZES, PECĀS, PISTACHES, CENTEIO, CEVADA, TRITICALE, OVO, LEITE, CASTANHA-DE-CAJUE CASTANHA-DO-PARA. CONTÉM GLÚTEN. Cuidados no armazenamento: este produto deve ser armazenado em local fresco, seco, arejado e longe de produtos de limpeza. Esta embalagem vazia é lixo seco.",
+        "ingredients_text_en": "Ingredientes: farinha de trigo integral, farinha de trigo enriquecida com ferro e ácido fólico, glúten, floco integral de aveia, semente de girassol, açúcar, semente de linhaça marrom, grão integral de aveia, farinha de trigo fermentada desidratada, óleo vegetal de soja, vinagre, sal e acerola em pó. ALÉRGICOS: CONTÉM AVEIA E DERIVADOS DE TRIGO E DE SOJA. PODE CONTER AMÊNDOA, AMENDOIM, AVELĀS, MACADAMIAS, NOZES, PECĀS, PISTACHES, CENTEIO, CEVADA, TRITICALE, OVO, LEITE, CASTANHA-DE-CAJUE CASTANHA-DO-PARA. CONTÉM GLÚTEN. Cuidados no armazenamento: este produto deve ser armazenado em local fresco, seco, arejado e longe de produtos de limpeza. Esta embalagem vazia é lixo seco.",
+        "allergens_tags": [
+          "en:gluten",
+          "en:nuts"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "gluten": "farinha de trigo integral",
+          "soy": "óleo vegetal de soja"
+        },
+        "traco": {
+          "nuts": "PODE CONTER AMÊNDOA",
+          "peanut": "AMÊNDOA, AMENDOIM",
+          "egg": "TRITICALE, OVO",
+          "milk": "OVO, LEITE"
+        },
+        "negacoes": [],
+        "notas": "lang=en na OFF, mas o texto esta em portugues. As tags da OFF poem castanhas como CONTEM e nao trazem nenhum traco.",
+        "conferidoContra": "7790e59ebcee0eb5de6f1c5e0e0308a10517d110b074f4bdcbff0916fcfcf74d"
+      }
+    },
+    {
+      "codigo": "7891000358764",
+      "grupo": "so-ingles",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "so-ingles",
+        "ingles-eua"
+      ],
+      "nome": "Farinha Láctea",
+      "marcas": "Nestlé",
+      "idioma": "en",
+      "campos": {
+        "ingredients_text_pt": "",
+        "ingredients_text": "Wheat flour enriched with iron and folic acid (55%), sugar, whole milk powder (20%), vitamins C (ascorbic acid), vitamin B5 (calcium pantothenate), vitamin B6 (pyridoxine hydrochloride) and vitamin B1 (thiamine mononitrate), calcium minerals (dibasic calcium phosphate), iron (ferrous fumarate) and zinc (zinc oxide), salt and flavoring",
+        "ingredients_text_en": "Wheat flour enriched with iron and folic acid (55%), sugar, whole milk powder (20%), vitamins C (ascorbic acid), vitamin B5 (calcium pantothenate), vitamin B6 (pyridoxine hydrochloride) and vitamin B1 (thiamine mononitrate), calcium minerals (dibasic calcium phosphate), iron (ferrous fumarate) and zinc (zinc oxide), salt and flavoring",
+        "allergens_tags": [
+          "en:milk"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "gluten": "Wheat flour",
+          "milk": "whole milk powder"
+        },
+        "traco": {},
+        "negacoes": [],
+        "notas": "Texto so em ingles. As tags da OFF nao trazem gluten.",
+        "conferidoContra": "989ae4a71ec30f4092aceef9f00e5824fd3928c79e5b2258692c395e631f7719"
+      }
+    },
+    {
+      "codigo": "7894900011159",
+      "grupo": "so-ingles",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "so-ingles"
+      ],
+      "nome": "Coca cola",
+      "marcas": "Coca cola",
+      "idioma": "en",
+      "campos": {
+        "ingredients_text_pt": "",
+        "ingredients_text": "AGUA GASEIFICADA, ACUCAR, EXTRATO DE NOZ DE COLA, CAFEINA, CORANTE CARAMELO IV, ACIDULANTE ÁCIDO FOSFORICO E AROMA NATURAL.",
+        "ingredients_text_en": "AGUA GASEIFICADA, ACUCAR, EXTRATO DE NOZ DE COLA, CAFEINA, CORANTE CARAMELO IV, ACIDULANTE ÁCIDO FOSFORICO E AROMA NATURAL.",
+        "allergens_tags": [],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {},
+        "traco": {},
+        "negacoes": [],
+        "notas": "Noz-de-cola nao e castanha. Texto em portugues com lang=en.",
+        "conferidoContra": "bc31b924b0a6117ab39b1bf560ccc7be409574ba3577e7f10b1f26261ba6a05c"
+      }
+    },
+    {
+      "codigo": "6111242100992",
+      "grupo": "ingles-eua",
+      "pool": "en",
+      "criteriosQueAtende": [
+        "so-ingles",
+        "ingles-eua"
+      ],
+      "nome": "Perly",
+      "marcas": "Jaouda, Perly",
+      "idioma": "en",
+      "campos": {
+        "ingredients_text_pt": "",
+        "ingredients_text": "milk cream, cream, sugar, banana, bacteria",
+        "ingredients_text_en": "milk cream, cream, sugar, banana, bacteria",
+        "allergens_tags": [
+          "en:banana",
+          "en:milk"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": []
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "milk": "milk cream"
+        },
+        "traco": {},
+        "negacoes": [],
+        "notas": "Texto so em ingles.",
+        "conferidoContra": "975d8f316c6fcfd7743c3d574f7d59fc3b83dce6bc662e26f1b80ae6f5f4de14"
+      }
+    },
+    {
+      "codigo": "6111035000058",
+      "grupo": "ingles-eua",
+      "pool": "en",
+      "criteriosQueAtende": [
+        "so-ingles",
+        "ingles-eua"
+      ],
+      "nome": "Eau minérale naturelle",
+      "marcas": "Sidi Ali",
+      "idioma": "en",
+      "campos": {
+        "ingredients_text_pt": "",
+        "ingredients_text": "100% mineral water",
+        "ingredients_text_en": "100% mineral water",
+        "allergens_tags": [],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:iso-14001",
+          "en:iso-22000",
+          "en:iso-9001",
+          "en:iso-45001"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {},
+        "traco": {},
+        "negacoes": [],
+        "notas": "Agua mineral.",
+        "conferidoContra": "ee72045d55844ab37a8d59fc5928f702bfc38981a9fd99f07237890944088555"
+      }
+    },
+    {
+      "codigo": "6111035003035",
+      "grupo": "ingles-eua",
+      "pool": "en",
+      "criteriosQueAtende": [
+        "so-ingles",
+        "ingles-eua"
+      ],
+      "nome": "Oulmes natural carbonated water",
+      "marcas": "Oulmès",
+      "idioma": "en",
+      "campos": {
+        "ingredients_text_pt": "",
+        "ingredients_text": "Natural carbonated water 100%",
+        "ingredients_text_en": "Natural carbonated water 100%",
+        "allergens_tags": [],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:iso-14001",
+          "en:iso-22000",
+          "en:iso-9001",
+          "en:iso-45001",
+          "en:natural-co2"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {},
+        "traco": {},
+        "negacoes": [],
+        "notas": "Agua gaseificada.",
+        "conferidoContra": "d27145445e72cad792cce3722b472353b571b593d34e3f7105bba39d2dfde339"
+      }
+    },
+    {
+      "codigo": "3256540000698",
+      "grupo": "ingles-eua",
+      "pool": "en",
+      "criteriosQueAtende": [
+        "so-ingles",
+        "ingles-eua"
+      ],
+      "nome": "Pains au lait",
+      "marcas": "Brioche Pasquier",
+      "idioma": "en",
+      "campos": {
+        "ingredients_text_pt": "",
+        "ingredients_text": "wheat flour 43%, sourdough 21%, wheat flour 11%, water, salt, fresh eggs 11%, sugar, pastry butter, rapeseed oil, yeast, skimmed milk powder equivalent to 10% reconstituted skimmed milk, emulsifier: mono and diglycerides of fatty acids, salt, wheat protein, wheat gluten, carrot extract, flavourings, antioxidant: ascorbic acid, milk protein",
+        "ingredients_text_en": "wheat flour 43%, sourdough 21%, wheat flour 11%, water, salt, fresh eggs 11%, sugar, pastry butter, rapeseed oil, yeast, skimmed milk powder equivalent to 10% reconstituted skimmed milk, emulsifier: mono and diglycerides of fatty acids, salt, wheat protein, wheat gluten, carrot extract, flavourings, antioxidant: ascorbic acid, milk protein",
+        "allergens_tags": [
+          "en:eggs",
+          "en:gluten",
+          "en:milk"
+        ],
+        "traces_tags": [
+          "en:nuts",
+          "en:peanuts",
+          "en:soybeans"
+        ],
+        "traces": "nuts, peanuts, soybeans",
+        "labels_tags": [
+          "en:no-preservatives",
+          "en:french-milk",
+          "en:green-dot",
+          "en:made-in-france",
+          "en:nutriscore",
+          "en:nutriscore-grade-c",
+          "fr:farine-de-ble-francais",
+          "fr:triman"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "gluten": "wheat flour",
+          "egg": "fresh eggs",
+          "milk": "skimmed milk powder"
+        },
+        "traco": {},
+        "negacoes": [],
+        "notas": "Texto so em ingles. As tags da OFF trazem castanhas, amendoim e soja em traco; o texto nao traz traco.",
+        "conferidoContra": "c692eeea9d7bff2e1d1d00a1bba55a9a60fac79c37cd8d7b441c17803d3922bb"
+      }
+    },
+    {
+      "codigo": "7898955705490",
+      "grupo": "negacao-lactose",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "negacao",
+        "grafia",
+        "negacao-lactose"
+      ],
+      "nome": "Bebida à Base De Amêndoa A Tal Da Castanha Caixa 1l",
+      "marcas": "A TAL DA CASTANHA",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Água, amêndoas, sal, Vegano, Sem lactose, Sem glúten, Sem conservantes, Sem aditivos",
+        "ingredients_text": "Água, amêndoas, sal, Vegano, Sem lactose, Sem glúten, Sem conservantes, Sem aditivos",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:nuts"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:vegetarian",
+          "en:no-gluten",
+          "en:no-lactose",
+          "en:no-preservatives",
+          "en:vegan",
+          "en:no-additives"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "nuts": "amêndoas"
+        },
+        "traco": {},
+        "negacoes": [
+          {
+            "alergeno": "milk",
+            "trecho": "Sem lactose"
+          },
+          {
+            "alergeno": "gluten",
+            "trecho": "Sem glúten"
+          }
+        ],
+        "notas": "Bebida de amendoa: sem leite de verdade.",
+        "conferidoContra": "a78fdc2dd607dbedbb6a7a600fa5776a4ec0550582a154aa29f53bb9a247bd60"
+      }
+    },
+    {
+      "codigo": "7896102502756",
+      "grupo": "negacao-lactose",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "negacao",
+        "traco",
+        "grafia",
+        "negacao-lactose"
+      ],
+      "nome": "Quero Ketchup Tradicional",
+      "marcas": "Quero",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Tomate, açúcar, vinagre, sal, amido modificado, conservantes (benzoato de sódio, sorbato de potássio), espessante goma xantana, acidulante ácido cítrico, aromatizante, acidulante ácido lático, condimentos\r\nPode conter traços de: Soja, glúten, Contém conservantes químicos, Sem lactose, Vegano",
+        "ingredients_text": "Tomate, açúcar, vinagre, sal, amido modificado, conservantes (benzoato de sódio, sorbato de potássio), espessante goma xantana, acidulante ácido cítrico, aromatizante, acidulante ácido lático, condimentos\r\nPode conter traços de: Soja, glúten, Contém conservantes químicos, Sem lactose, Vegano",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:gluten",
+          "en:soybeans"
+        ],
+        "traces_tags": [
+          "en:gluten",
+          "pt:Não contém glúten"
+        ],
+        "traces": "glúten, Não contém glúten",
+        "labels_tags": [
+          "en:vegetarian",
+          "en:vegan",
+          "en:no-lactose"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {},
+        "traco": {
+          "soy": "Pode conter traços de: Soja",
+          "gluten": "Soja, glúten"
+        },
+        "negacoes": [
+          {
+            "alergeno": "milk",
+            "trecho": "Sem lactose"
+          }
+        ],
+        "notas": "A linha do PODE CONTER continua com alegacoes (Contém conservantes químicos, Sem lactose, Vegano). As tags da OFF poem gluten e soja como CONTEM.",
+        "conferidoContra": "45859a3fb8a9ce6760ad94cd3c2a0ef0170155fff3bddfd4affa1b4cf5d21d6b"
+      }
+    },
+    {
+      "codigo": "7893000502888",
+      "grupo": "negacao-lactose",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "negacao",
+        "grafia",
+        "negacao-lactose"
+      ],
+      "nome": "Light 0% Lactose",
+      "marcas": "Brf, Qualy",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "ÁGUA, ÓLEOS VEGETAIS LÍQUIDOS E MODIFICADOS, SAL, CLORETO DE POTÁSSIO, LEITE EM PÓ INTEGRAL SEM LACTOSE, VITAMINA A, ESTABILIZANTES (MONO E DIGLICERÍDEOS DE ÁCIDOS GRAXOS, ÉSTERES DE POLIGLICEROL DE ÁCIDO RICINOLÉICO), CONSERVADOR (SORBATO DE POTÁSSIO), AROMATIZANTES (AROMA IDÊNTICO AO NATURAL, AROMA NATURAL), ACIDULANTE (ÁCIDO CÍTRICO), ANTIOXIDANTES (EDTA CÁLCIO DISSÓDICO, TBHQ), CORANTE (BETA CAROTENO).",
+        "ingredients_text": "ÁGUA, ÓLEOS VEGETAIS LÍQUIDOS E MODIFICADOS, SAL, CLORETO DE POTÁSSIO, LEITE EM PÓ INTEGRAL SEM LACTOSE, VITAMINA A, ESTABILIZANTES (MONO E DIGLICERÍDEOS DE ÁCIDOS GRAXOS, ÉSTERES DE POLIGLICEROL DE ÁCIDO RICINOLÉICO), CONSERVADOR (SORBATO DE POTÁSSIO), AROMATIZANTES (AROMA IDÊNTICO AO NATURAL, AROMA NATURAL), ACIDULANTE (ÁCIDO CÍTRICO), ANTIOXIDANTES (EDTA CÁLCIO DISSÓDICO, TBHQ), CORANTE (BETA CAROTENO).",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:milk",
+          "en:soybeans"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:contains-gmos",
+          "en:no-lactose",
+          "en:55% fewer calories"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "milk": "LEITE EM PÓ INTEGRAL SEM LACTOSE"
+        },
+        "traco": {},
+        "negacoes": [
+          {
+            "alergeno": "milk",
+            "trecho": "SEM LACTOSE"
+          }
+        ],
+        "notas": "Leite sem lactose continua sendo leite: a negacao e da lactose, nao do leite. Oleos vegetais sem origem: a OFF poe soja como CONTEM, o texto nao nomeia soja.",
+        "conferidoContra": "379f6af79a2a16bd63c71948769d4a052a0388a53ef65a11dbd947ebd5543948"
+      }
+    },
+    {
+      "codigo": "7896038314195",
+      "grupo": "negacao-lactose",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "negacao",
+        "grafia",
+        "negacao-lactose"
+      ],
+      "nome": "URBANO Macarrão Espaguete de Arroz Integral Urbano",
+      "marcas": "Urbano",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Sem glúten, Vegano, Sem lactose, Sem conservantes, Rico em fibras",
+        "ingredients_text": "Sem glúten, Vegano, Sem lactose, Sem conservantes, Rico em fibras",
+        "ingredients_text_en": "",
+        "allergens_tags": [],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:vegetarian",
+          "en:no-gluten",
+          "en:no-preservatives",
+          "en:source-of-fibre",
+          "en:vegan",
+          "en:high-fibres",
+          "en:no-lactose"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {},
+        "traco": {},
+        "negacoes": [
+          {
+            "alergeno": "gluten",
+            "trecho": "Sem glúten"
+          },
+          {
+            "alergeno": "milk",
+            "trecho": "Sem lactose"
+          }
+        ],
+        "notas": "O texto e so a lista de alegacoes, sem a lista de ingredientes (macarrao de arroz).",
+        "conferidoContra": "93a0d730ac4ae8eaf5d60c0d4ddc9109671843f91dbba0d5ab526f70e98377ce"
+      }
+    },
+    {
+      "codigo": "7892999150124",
+      "grupo": "negacao-lactose",
+      "pool": "br",
+      "criteriosQueAtende": [
+        "tipico",
+        "negacao",
+        "grafia",
+        "negacao-lactose"
+      ],
+      "nome": "Leite UHT Integral",
+      "marcas": "Leco",
+      "idioma": "pt",
+      "campos": {
+        "ingredients_text_pt": "Leite integral pasteurizado, Sem glúten, sem lactose.",
+        "ingredients_text": "Leite integral pasteurizado, Sem glúten, sem lactose.",
+        "ingredients_text_en": "",
+        "allergens_tags": [
+          "en:milk"
+        ],
+        "traces_tags": [],
+        "traces": "",
+        "labels_tags": [
+          "en:no-gluten",
+          "en:no-lactose",
+          "en:contains-milk",
+          "en:no-additives",
+          "pt:Lactose. Sem conservantes"
+        ]
+      },
+      "gabarito": {
+        "semTexto": false,
+        "contem": {
+          "milk": "Leite integral pasteurizado"
+        },
+        "traco": {},
+        "negacoes": [
+          {
+            "alergeno": "gluten",
+            "trecho": "Sem glúten"
+          },
+          {
+            "alergeno": "milk",
+            "trecho": "sem lactose"
+          }
+        ],
+        "notas": "Leite sem lactose continua sendo leite.",
+        "conferidoContra": "c26f5cf7a268dc1b947cfc9976ad24c27ba65735e98593a7004eeda4908b0aad"
+      }
+    }
+  ]
+}

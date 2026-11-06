@@ -17,6 +17,11 @@ export const NEGATION_MARKERS = [
   "isenta de",
   "livre de",
   "free of",
+  // Medicao v0.14.0: o texto em ingles do produto 7893000394209 diz "does not
+  // contain gluten" e o do 7896481130137 diz "contains no gluten"; sem estes
+  // marcadores o gluten negado era apontado.
+  "does not contain",
+  "contains no",
 ];
 
 export const DIRECT_NEGATIVE_PATTERNS = ["gluten free", "lactose free"];
@@ -40,7 +45,14 @@ export const NEGATIVE_LABELS = {
   milk: ["en:no-lactose", "en:lactose-free", "en:no-milk", "en:milk-free"],
 };
 
+// Medicao v0.14.0: "extrato de noz de cola" (produtos 7894900701517, 78933873 e
+// 7894900011159) e semente da Cola, nao castanha. Vale para todo id que tem
+// "noz" entre os termos.
+const KOLA_NUT = /noz(es)?[\s-]+de[\s-]+cola(?=$|[^a-z0-9])/g;
+
 export const ALLERGEN_EXCLUSIONS = {
+  nuts: [KOLA_NUT],
+  walnut: [KOLA_NUT],
   milk: [
     /leite\s+de\s+(coco|amendoas?|castanha|soja|aveia|arroz|amendoim)/g,
     /manteiga\s+de\s+(cacau|amendoim|castanha)/g,
@@ -164,12 +176,23 @@ function hasNegativeLabel(labelTags, option) {
   return (NEGATIVE_LABELS[option.id] || []).some((label) => normalizedLabelTags.includes(normalizeText(label)));
 }
 
+// Termos que a leitura do rotulo precisa e o catalogo nao traz. O catalogo
+// (shared/allergens.js) tambem alimenta a busca da tela de alergias, o guia e o
+// assistente; o termo extra fica aqui para mudar so a leitura do rotulo.
+// Medicao v0.14.0: "Wheat flour" (produto 7891000358764) e "wheat flour"
+// (11117780) passavam sem apontar gluten.
+export const EXTRA_LABEL_TERMS = { gluten: ["wheat"] };
+
+function labelTerms(option) {
+  return [...option.terms, ...(EXTRA_LABEL_TERMS[option.id] || [])];
+}
+
 function classifyAllergenText(option, text) {
   const normalizedText = normalizeText(text);
   if (!normalizedText) return null;
 
   let sawTrace = false;
-  for (const term of option.terms) {
+  for (const term of labelTerms(option)) {
     for (const occurrence of findTermOccurrences(normalizedText, term)) {
       const classification = classifyTermOccurrence(normalizedText, occurrence, option);
       if (classification === OCCURRENCE_CLASSIFICATION.CONTAINS) return "contains";
@@ -184,7 +207,7 @@ function hasSectionTerm(option, text) {
   if (!normalizedText) return false;
 
   const exclusionRanges = getExclusionRanges(option, normalizedText);
-  return option.terms.some((term) =>
+  return labelTerms(option).some((term) =>
     findTermOccurrences(normalizedText, term).some((occurrence) => !isInsideRange(occurrence, exclusionRanges)),
   );
 }

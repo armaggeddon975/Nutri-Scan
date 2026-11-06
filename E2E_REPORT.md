@@ -1,6 +1,513 @@
-# E2E Report - NutriScan v0.13.0
+# E2E Report - NutriScan v0.14.0
 
-Data: 2026-10-30
+Data: 2026-11-06
+
+## Resultado geral
+
+```text
+verify:e2e                 PASS, exit code 0 - na primeira execucao
+doctor:e2e                 PASS - "Migrations - 4/4 applied"
+e2e:strict                 PASS, mode=strict, ok=true
+requisitos strict          23 de 23 em PASSED - os mesmos 23 da v0.11.0 a v0.13.0
+subgate novo no E2E        NENHUM - decisao justificada abaixo
+PostgreSQL real            EXECUTADO - banco de producao (o mesmo das versoes anteriores)
+Claude real                EXECUTADO - 2 chamadas pagas
+residuo no banco           0
+
+migration nova             NENHUMA - o schema do banco do gate nao mudou
+verify:deploy simulado     FAIL, exit code 1 - 11 PASS, D2 FAIL (alvo http, sem TLS);
+                           D9 a D12 (app instalavel) em PASS
+verify:deploy REAL         FAIL, exit code 1 - 7 PASS, D1, D9 e D11 FAIL, D10 e D12
+                           NOT_EXECUTED (no ar 0.7.0, sem manifesto nem service worker)
+
+medicao do motor           fora do E2E, no verify:release - decisao abaixo
+validacao clinica          NAO FEITA - nao e escopo
+instalacao em aparelho     NAO VERIFICADO
+leitor de tela real        NAO EXECUTADO
+camera em hardware         NAO EXECUTADO
+deploy real da 0.14.0      NAO EXECUTADO - nada foi publicado
+```
+
+Nenhum resultado foi herdado. Os PASS das versoes anteriores estao preservados
+na secao historica e nao valem para esta versao.
+
+## Por que nao ha subgate novo no E2E
+
+A medicao do motor e offline e deterministica: roda sobre
+`medicao/conjunto-off.json`, sem banco, sem IA e sem rede. O gate E2E prova
+o backend real com PostgreSQL e Claude reais; a medicao nao tem nada a provar
+ali, e la ficaria presa a credencial que ela nao usa. Ela mora no
+`verify:release` (passo "medicao do motor"), que toda entrega roda. O gate
+nao foi alterado: `scripts/verify-e2e.js`, `scripts/e2e-real.js` e
+`scripts/lib/e2eGate.js` tem diff vazio contra a v0.13.0.
+
+As tres correcoes do motor passam pelo gate do mesmo jeito que o motor sempre
+passou: o subgate `deterministicEngine` roda o motor real.
+
+Os 23 requisitos continuam exigidos, um a um - prova abaixo.
+
+## Como rodou
+
+```text
+PORT=3100 RUN_ANTHROPIC_INTEGRATION_TESTS=true npm run verify:e2e
+```
+
+`PORT=3100` pelo mesmo motivo das versoes anteriores: `127.0.0.1:3000` continua
+ocupado por outro projeto do dono, que nao foi tocado. A porta e configuracao de
+ambiente; nenhum arquivo do gate foi alterado para isso. Uma execucao so.
+
+## Saida literal do gate
+
+Os blocos de aviso de SSL do driver `pg` foram suprimidos desta transcricao; sao
+o mesmo aviso registrado desde a v0.7.2, sobre a semantica futura de `sslmode`.
+Todo o resto e literal, inclusive o JSON.
+
+```text
+> nutriscan@0.14.0 verify:e2e
+> node scripts/verify-e2e.js
+
+[OK] pre-requisito - Claude real exigido nesta execucao, contra o backend local
+[RUN] doctor:e2e
+NutriScan Doctor - modo STRICT E2E (C:\Users\diego\OneDrive\Área de Trabalho\PJ)
+[OK] Node.js - 24.19.0
+[OK] npm - 11.17.0
+[OK] Frontend dependencies - installed (3 modules resolved)
+[OK] Backend dependencies - installed (4 modules resolved)
+[OK] backend/.env - found
+[OK] Env loader - backend/src/config/env.js
+[OK] DATABASE_URL - configured
+[OK] PostgreSQL - accessible
+[OK] Migrations - 4/4 applied
+[OK] ANTHROPIC_API_KEY - configured
+[OK] ANTHROPIC_MODEL - claude-sonnet-5
+[OK] RUN_ANTHROPIC_INTEGRATION_TESTS - enabled
+[OK] Backend port - 3100
+[OK] Frontend origin - http://localhost:5173
+[WARN] Docker - unavailable (optional)
+[OK] Doctor strict-e2e - todos os requisitos obrigatorios atendidos
+[OK] doctor:e2e
+[RUN] e2e:strict
+[OK] migrations - aplicadas duas vezes (idempotente)
+[RUN] backend - iniciando API temporaria na porta 3100
+[OK] health - status=ok database=connected ai=configured
+[OK] deterministic engine - contains/traces conforme baseline
+[OK] privacy - payload sem segredos e com snapshot deterministico
+[OK] anthropic real #1 - pergunta generica validada
+[OK] fallback - AI_NOT_CONFIGURED -> source local
+[OK] session schema - token_hash presente e sem coluna de token bruto
+[OK] assistant authority - PostgreSQL vence guestAllergies e snapshot marca conflito
+[OK] anthropic real #2 - produto com conflito validado com sessao autenticada
+[OK] multi-device - alergias sincronizadas entre dispositivos A e B
+[OK] isolation - contas permanecem isoladas
+[OK] history sync - A gravou, B leu, conta isolada nao viu
+[OK] favorites sync - A gravou, B leu, remocao cruzada recusada com 404
+[OK] verdict freshness - item salvo sem veredito; perfil muda sem alterar o registro
+[OK] manual code lookup - digito verificador barra antes da rede; manual e camera dao o mesmo veredito
+[OK] severity verdict - alerta maximo: urgent no declarado, caution no traco; padrao igual a v0.8.0; modelo negando nao derruba o piso
+[OK] product comparison - um veredito por produto, perfil do banco; o limpo nao herda; explicacao amarrada pelo codigo
+[OK] offline cache - perfil do banco e produto guardados, sem veredito nem credencial; perfil novo refeito sem rede; logout real limpa
+[OK] account export - tudo de A, nada do vizinho, nada de senha nem de sessao
+[OK] account deletion - senha errada nao apaga; senha certa apaga tudo; sessoes caem; vizinha intacta
+[OK] auth - register, me, allergies, login, logout idempotente
+{
+  "version": "0.14.0",
+  "mode": "strict",
+  "startedAt": "2026-11-06T11:21:51.889Z",
+  "finishedAt": "2026-11-06T11:23:32.826Z",
+  "baseUrl": "http://127.0.0.1:3100/api",
+  "backendProcess": "STARTED_BY_RUNNER",
+  "database": "EXECUTED",
+  "migrations": "EXECUTED_IDEMPOTENT",
+  "auth": "PASSED",
+  "sessionSchema": "PASSED",
+  "multiDevice": "PASSED",
+  "isolation": "PASSED",
+  "historySync": "PASSED",
+  "favoritesSync": "PASSED",
+  "verdictFreshness": "PASSED",
+  "manualCodeLookup": "PASSED",
+  "accountExport": "PASSED",
+  "accountDeletion": "PASSED",
+  "severityVerdict": "PASSED",
+  "productComparison": "PASSED",
+  "offlineCache": "PASSED",
+  "logout": "PASSED",
+  "deterministicEngine": "PASSED",
+  "assistantGuest": "PASSED",
+  "assistantAuthenticated": "PASSED",
+  "assistantAuthority": "PASSED",
+  "fallback": "PASSED",
+  "privacy": "PASSED",
+  "anthropic": "configured",
+  "anthropicReal": "EXECUTED_GENERIC_AND_PRODUCT",
+  "anthropicCalls": 2,
+  "ok": true,
+  "rateLimitBudget": {
+    "margem": "no maximo 50% do teto",
+    "baldes": [
+      {
+        "balde": "assistente",
+        "usado": 2,
+        "teto": 20,
+        "margemMaxima": 10,
+        "folga": 18,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "auth",
+        "usado": 8,
+        "teto": 40,
+        "margemMaxima": 20,
+        "folga": 32,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "colecoes",
+        "usado": 20,
+        "teto": 300,
+        "margemMaxima": 150,
+        "folga": 280,
+        "tetoPorIp": 3000,
+        "folgaPorIp": 2980,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "comparacao",
+        "usado": 4,
+        "teto": 30,
+        "margemMaxima": 15,
+        "folga": 26,
+        "tetoPorIp": 300,
+        "folgaPorIp": 296,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "exportacao",
+        "usado": 1,
+        "teto": 5,
+        "margemMaxima": 2,
+        "folga": 4,
+        "tetoPorIp": 20,
+        "folgaPorIp": 19,
+        "dentroDaMargem": true
+      }
+    ],
+    "estouraram": []
+  }
+}
+[OK] e2e:strict
+[PASS] verify:e2e - PostgreSQL real e Claude real comprovados
+=== EXIT CODE: 0 ===
+```
+
+## Tabela de subgates
+
+```text
+backendProcess          STARTED_BY_RUNNER
+database                EXECUTED
+migrations              EXECUTED_IDEMPOTENT
+auth                    PASSED
+sessionSchema           PASSED
+multiDevice             PASSED
+isolation               PASSED
+historySync             PASSED
+favoritesSync           PASSED
+verdictFreshness        PASSED
+manualCodeLookup        PASSED
+accountExport           PASSED
+accountDeletion         PASSED
+severityVerdict         PASSED
+productComparison       PASSED
+offlineCache            PASSED
+logout                  PASSED
+deterministicEngine     PASSED
+assistantGuest          PASSED
+assistantAuthenticated  PASSED
+assistantAuthority      PASSED
+fallback                PASSED
+privacy                 PASSED
+anthropicReal           EXECUTED_GENERIC_AND_PRODUCT
+```
+
+`anthropicCalls: 2`, `anthropicReal: EXECUTED_GENERIC_AND_PRODUCT`, `ok: true`.
+
+## Os 23 requisitos continuam exigidos, um a um
+
+Prova por execucao, sobre o `E2E_LAST_RUN.json` desta versao: para cada
+requisito do modo strict, um relatorio com SO aquele requisito em
+`NOT_EXECUTED` tem de reprovar, e reprovar so por ele.
+
+```text
+requisitos no modo strict (flag da IA ligada): 23
+faltando no E2E_LAST_RUN.json desta versao: []
+
+requisito                valor no relatorio   NOT_EXECUTED sozinho reprova
+backendProcess           STARTED_BY_RUNNER    sim, e so ele
+database                 EXECUTED             sim, e so ele
+migrations               EXECUTED_IDEMPOTENT  sim, e so ele
+auth                     PASSED               sim, e so ele
+sessionSchema            PASSED               sim, e so ele
+multiDevice              PASSED               sim, e so ele
+isolation                PASSED               sim, e so ele
+logout                   PASSED               sim, e so ele
+assistantAuthority       PASSED               sim, e so ele
+deterministicEngine      PASSED               sim, e so ele
+fallback                 PASSED               sim, e so ele
+privacy                  PASSED               sim, e so ele
+historySync              PASSED               sim, e so ele
+favoritesSync            PASSED               sim, e so ele
+verdictFreshness         PASSED               sim, e so ele
+manualCodeLookup         PASSED               sim, e so ele
+accountExport            PASSED               sim, e so ele
+accountDeletion          PASSED               sim, e so ele
+severityVerdict          PASSED               sim, e so ele
+anthropicReal            EXECUTED_GENERIC_AND_PRODUCT sim, e so ele
+assistantAuthenticated   PASSED               sim, e so ele
+productComparison        PASSED               sim, e so ele
+offlineCache             PASSED               sim, e so ele
+
+os 23 da v0.11.0 presentes: 23 de 23
+requisitos alem dos 23: []
+falhas: 0
+```
+
+## Contagem de requisicoes do gate por balde
+
+```text
+balde        usado   teto/usuario     teto/IP   margem maxima (50%)   dentro
+assistente       2             20           -              10          sim
+auth             8             40           -              20          sim
+colecoes        20            300        3000             150          sim
+comparacao       4             30         300              15          sim
+exportacao       1              5          20               2          sim
+```
+
+Nenhum balde estourou. Os numeros sao os das versoes anteriores: o gate nao mudou.
+
+## Limpeza do banco depois do gate
+
+Conferida por script proprio, que usa o pool do backend e so imprime contagens -
+a string de conexao nunca e lida nem impressa.
+
+```text
+=== CONTAGEM TOTAL NO BANCO ===
+users              4
+sessions           0
+product_history    0
+product_favorites  0
+
+=== RESIDUO DE TESTE (deve ser 0 em todas as linhas) ===
+gate E2E (e2e-real.js)         nutriscan-e2e-%          0
+suite de colecoes              colecoes-test-%          0
+suite de integracao antiga     e2e-%@example.test       0
+reproducao do E1               repro-e1-%               0
+qualquer @example.test         %@example.test           0
+qualquer @example.com          %@example.com            0
+
+RESIDUO SOMADO (com sobreposicao entre padroes): 0
+
+=== LINHAS ORFAS (cascata da migration) ===
+product_history sem dono    0
+product_favorites sem dono  0
+```
+
+As quatro contas que restam nao batem com nenhum padrao de teste - sao as mesmas
+contagens das versoes anteriores.
+
+## E2E_LAST_RUN.json - conteudo integral
+
+O arquivo esta no `.gitignore`, entao NAO vai no ZIP. Conteudo integral:
+
+```json
+{
+  "version": "0.14.0",
+  "mode": "strict",
+  "startedAt": "2026-11-06T11:21:51.889Z",
+  "finishedAt": "2026-11-06T11:23:32.826Z",
+  "baseUrl": "http://127.0.0.1:3100/api",
+  "backendProcess": "STARTED_BY_RUNNER",
+  "database": "EXECUTED",
+  "migrations": "EXECUTED_IDEMPOTENT",
+  "auth": "PASSED",
+  "sessionSchema": "PASSED",
+  "multiDevice": "PASSED",
+  "isolation": "PASSED",
+  "historySync": "PASSED",
+  "favoritesSync": "PASSED",
+  "verdictFreshness": "PASSED",
+  "manualCodeLookup": "PASSED",
+  "accountExport": "PASSED",
+  "accountDeletion": "PASSED",
+  "severityVerdict": "PASSED",
+  "productComparison": "PASSED",
+  "offlineCache": "PASSED",
+  "logout": "PASSED",
+  "deterministicEngine": "PASSED",
+  "assistantGuest": "PASSED",
+  "assistantAuthenticated": "PASSED",
+  "assistantAuthority": "PASSED",
+  "fallback": "PASSED",
+  "privacy": "PASSED",
+  "anthropic": "configured",
+  "anthropicReal": "EXECUTED_GENERIC_AND_PRODUCT",
+  "anthropicCalls": 2,
+  "ok": true,
+  "rateLimitBudget": {
+    "margem": "no maximo 50% do teto",
+    "baldes": [
+      {
+        "balde": "assistente",
+        "usado": 2,
+        "teto": 20,
+        "margemMaxima": 10,
+        "folga": 18,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "auth",
+        "usado": 8,
+        "teto": 40,
+        "margemMaxima": 20,
+        "folga": 32,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "colecoes",
+        "usado": 20,
+        "teto": 300,
+        "margemMaxima": 150,
+        "folga": 280,
+        "tetoPorIp": 3000,
+        "folgaPorIp": 2980,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "comparacao",
+        "usado": 4,
+        "teto": 30,
+        "margemMaxima": 15,
+        "folga": 26,
+        "tetoPorIp": 300,
+        "folgaPorIp": 296,
+        "dentroDaMargem": true
+      },
+      {
+        "balde": "exportacao",
+        "usado": 1,
+        "teto": 5,
+        "margemMaxima": 2,
+        "folga": 4,
+        "tetoPorIp": 20,
+        "folgaPorIp": 19,
+        "dentroDaMargem": true
+      }
+    ],
+    "estouraram": []
+  }
+}
+```
+
+## `verify:deploy` contra alvo LOCAL simulado
+
+O backend real em `NODE_ENV=production`, servindo o `dist/` desta versao, contra o
+PostgreSQL LOCAL, na porta 3999, sem chave de IA. O alvo e `http://`, entao o D2
+TEM de reprovar: nao ha TLS local.
+
+```text
+[alvo] NutriScan API v0.14.0 ouvindo na porta 3999
+
+verify:deploy - alvo http://127.0.0.1:3999
+versao do repositorio: 0.14.0
+
+[PASS        ] D1  versao no ar igual a do repositorio
+                ambos declaram 0.14.0
+[FAIL        ] D2  resposta por HTTPS, e http:// redireciona
+                o alvo foi informado como http:// - o deploy precisa responder por HTTPS
+[PASS        ] D3  cabecalhos de seguranca (HSTS, CSP, nosniff)
+                HSTS max-age=31536000, CSP e nosniff presentes
+[PASS        ] D4  rota /api inexistente da 404 de API, nao index.html
+                404 de API, em JSON
+[PASS        ] D5  rota autenticada sem sessao da 401
+                4 rotas autenticadas recusam sem sessao com 401
+[PASS        ] D6  erro provocado nao vaza stack, SQL nem caminho
+                erro provocado (HTTP 400) sem stack, SQL, tabela nem caminho
+[PASS        ] D7  o frontend e servido e carrega
+                HTML e 2 asset(s) servidos (1 script(s))
+[PASS        ] D8  nenhuma chave no HTML nem nos bundles
+                3 arquivo(s) inspecionado(s), nenhum segredo
+[PASS        ] D9  manifesto servido e valido
+                /manifest.webmanifest (application/manifest+json), 4 icone(s), display standalone
+[PASS        ] D10  os icones declarados no manifesto existem
+                4 icone(s) servidos como imagem
+[PASS        ] D11  service worker servido como JavaScript
+                /sw.js servido como text/javascript
+[PASS        ] D12  service worker sem cabecalho de cache longo
+                Cache-Control "no-cache"
+
+PASS 11 | FAIL 1 | NOT_EXECUTED 0
+[FAIL] verify:deploy
+
+=== EXIT CODE do verify:deploy: 1 ===
+```
+
+## `verify:deploy` contra o deploy REAL
+
+Somente leitura, contra `https://nutriscan-h1wp.onrender.com`, com
+`DEPLOY_TIMEOUT_MS=60000`.
+
+```text
+verify:deploy - alvo https://nutriscan-h1wp.onrender.com
+versao do repositorio: 0.14.0
+
+[FAIL        ] D1  versao no ar igual a do repositorio
+                repositorio declara 0.14.0 e o deploy anuncia 0.7.0
+[PASS        ] D2  resposta por HTTPS, e http:// redireciona
+                HTTPS responde, e http:// redireciona (301) para https://
+[PASS        ] D3  cabecalhos de seguranca (HSTS, CSP, nosniff)
+                HSTS max-age=31536000, CSP e nosniff presentes
+[PASS        ] D4  rota /api inexistente da 404 de API, nao index.html
+                404 de API, em JSON
+[PASS        ] D5  rota autenticada sem sessao da 401
+                4 rotas autenticadas recusam sem sessao com 401
+[PASS        ] D6  erro provocado nao vaza stack, SQL nem caminho
+                erro provocado (HTTP 500) sem stack, SQL, tabela nem caminho
+[PASS        ] D7  o frontend e servido e carrega
+                HTML e 2 asset(s) servidos (1 script(s))
+[PASS        ] D8  nenhuma chave no HTML nem nos bundles
+                3 arquivo(s) inspecionado(s), nenhum segredo
+[FAIL        ] D9  manifesto servido e valido
+                o HTML nao declara manifesto (<link rel="manifest">)
+[NOT_EXECUTED] D10  os icones declarados no manifesto existem
+                D9 nao obteve o manifesto; nenhum icone foi conferido
+[FAIL        ] D11  service worker servido como JavaScript
+                /sw.js servido como "text/html; charset=UTF-8", e nao como JavaScript
+[NOT_EXECUTED] D12  service worker sem cabecalho de cache longo
+                D11 nao obteve o service worker; o cabecalho nao foi conferido
+
+PASS 7 | FAIL 3 | NOT_EXECUTED 2
+[FAIL] verify:deploy
+=== EXIT CODE: 1 ===
+```
+
+O D1 reprova porque o servico no ar roda a 0.7.0 - as versoes 0.7.1 a 0.14.0
+nunca foram publicadas. Pelo mesmo motivo o D9 nao acha manifesto e o D11 recebe
+a PAGINA do app no lugar do `/sw.js`. D10 e D12 dependem de D9 e D11 e sairam
+NOT_EXECUTED - nunca PASS. Os sete PASS medem a 0.7.0 e **nao provam nada sobre a
+0.14.0**. O `verify:deploy` continua so lendo: o P13 esta verde, e esta versao
+nao mudou o script.
+
+## O que este relatorio NAO prova
+
+- Que o motor acerta fora dos 71 produtos medidos, ou que e seguro: a medicao
+  NAO e validacao clinica.
+- A instalacao num celular de verdade: **NAO VERIFICADO**.
+- O leitor de tela real: **NAO EXECUTADO**.
+- A leitura da camera em aparelho real: **NAO EXECUTADO**.
+- O deploy real da 0.14.0: **NAO EXECUTADO**.
+
+## Historico de auditorias anteriores
+
+## E2E da v0.13.0 - 2026-10-30
 
 ## Resultado geral
 
@@ -501,8 +1008,6 @@ lendo: o P13 esta verde, e os quatro subgates novos so fazem GET.
   TLS, e o deploy real nao foi feito.
 - A leitura da camera em aparelho real: **NAO EXECUTADO**.
 - O deploy real da 0.13.0: **NAO EXECUTADO**.
-
-## Historico de auditorias anteriores
 
 ## E2E da v0.12.0 - 2026-10-30
 

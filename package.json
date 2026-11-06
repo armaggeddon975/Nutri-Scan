@@ -1,7 +1,7 @@
 {
   "name": "nutriscan",
   "private": true,
-  "version": "0.13.0",
+  "version": "0.14.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -22,7 +22,9 @@
     "db:down": "docker compose down",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "verify:deploy": "node scripts/verify-deploy.js"
+    "verify:deploy": "node scripts/verify-deploy.js",
+    "medir:motor": "node scripts/medir-motor.js",
+    "montar:conjunto": "node scripts/montar-conjunto-off.js"
   },
   "dependencies": {
     "@fontsource/cormorant-garamond": "^5.3.0",

@@ -1,5 +1,103 @@
 # Changelog
 
+## NutriScan v0.14.0 - 2026-11-06
+
+Medicao do motor contra produtos reais. Minor: o motor de alergenicos passa a
+ser medido contra rotulos reais, e tres regras dele foram corrigidas pelo que a
+medicao mostrou. Nao ha migration, rota nova nem variavel nova.
+
+Isto e medicao de software contra rotulos. NAO e validacao clinica, nao diz que
+o motor e seguro ou confiavel, e nao e orientacao de saude nem de nutricao.
+
+### O projeto segue NAO PUBLICADO
+
+As versoes 0.7.1 a 0.14.0 nunca foram ao ar. O servico `nutriscan` no Render
+continua rodando a **0.7.0**.
+
+### O problema, pelo que era
+
+Treze versoes provaram que o motor e consistente e autoritativo, e nenhuma
+mediu se ele acerta. `shared/allergenEngine.js` decide se uma pessoa com alergia
+come ou nao um produto, e ninguem tinha contado quantas vezes ele erra contra
+rotulos reais.
+
+### O que entrou
+
+- **Conjunto de 71 produtos reais** da Open Food Facts
+  (`medicao/conjunto-off.json`): 1.000 mais lidos do Brasil e 100 dos EUA,
+  escolhidos por regras fixas - tipicos, negacao, traco, alergenico dentro de
+  outro ingrediente, grafia do leite, lista vazia, texto em ingles e negacao de
+  lactose. Cada produto com o texto e as tags que o app recebe e o gabarito
+  escrito lendo o rotulo, com o trecho que prova cada alergenico.
+- **`npm run medir:motor`**: mede o motor sem rede, por alergenico, nas quatro
+  saidas (acerto+, FALSO-, falso+, acerto-), com declarado lido como traco e
+  traco lido como declarado a parte, os casos de negacao contados e os produtos
+  sem dado (`not_informed`) fora da conta. Dois modos: o do app (texto e tags
+  da OFF) e so o texto.
+- **Montagem do conjunto** (`npm run montar:conjunto`): o unico passo com rede,
+  desligado sem `RUN_OFF_INTEGRATION_TESTS=true`.
+- **Teste de regressao** (`medicao/resultado-registrado.json`): a lista exata
+  de cada tipo de erro. Falha se um erro passar do registrado, se aparecer caso
+  novo ou se um caso registrado sumir sem o registro mudar. Roda na suite e no
+  `verify:release`, que ganhou o passo "medicao do motor".
+
+### A medicao, antes e depois
+
+Medicao inicial com o motor da v0.13.0, sem nenhuma correcao (924 pares):
+
+```text
+                          pipeline (o app)   so texto
+falso negativo                   5               8
+declarado lido como traco        0               0
+falso positivo                  12               6
+traco lido como declarado       19               3
+negacao tratada certo        20 de 22        20 de 22
+```
+
+Tres correcoes em `shared/allergenEngine.js`, cada uma por produtos do conjunto:
+
+- **gluten em ingles**: "wheat" passa a apontar gluten na leitura do rotulo
+  (7891000358764 "Wheat flour", 11117780 "wheat flour").
+- **negacao em ingles**: "does not contain" e "contains no" passam a negar
+  (7893000394209 "does not contain gluten", 7896481130137 "contains no gluten").
+- **noz-de-cola nao e castanha** (7894900701517, 78933873, 7894900011159).
+
+Medicao final:
+
+```text
+                          pipeline (o app)   so texto
+falso negativo                   4               6
+declarado lido como traco        0               0
+falso positivo                   7               1
+traco lido como declarado       19               3
+negacao tratada certo        22 de 22        22 de 22
+```
+
+Nenhum par piorou, e nenhuma correcao trocou falso negativo por falso positivo.
+Os erros que ficaram estao listados, com o motivo, em `docs/MEDICAO_DO_MOTOR.md`:
+erro de leitura da base ("LETE"), texto em frances/holandes/dinamarques, modo
+de preparo lido como ingrediente, tags erradas da OFF e lista do "pode conter"
+quebrada em linhas.
+
+### Decisoes
+
+- **O gabarito vem do texto, nao das tags da OFF**: o motor usa as tags como
+  entrada, e usa-las como gabarito tornaria a medicao quase circular. As 49
+  discordancias tag x texto ficam listadas no relatorio.
+- **Correcao so no motor**: o catalogo (`shared/allergens.js`) tambem alimenta a
+  busca, o guia e o assistente; "wheat" entra so na leitura do rotulo.
+- **Sem subgate novo no E2E**: a medicao e offline e deterministica, e mora no
+  `verify:release`.
+- **Erros do lado seguro ficam**: corrigir a quebra de linha do OCR ou fazer o
+  texto vencer a tag da OFF trocaria falso positivo por risco de declarado lido
+  como traco.
+
+### Nao comprovado
+
+- Validacao clinica: nao foi feita e nao e escopo.
+- Produtos fora do conjunto.
+- O deploy real da 0.14.0: nada foi publicado.
+
 ## NutriScan v0.13.0 - 2026-10-30
 
 App instalavel e service worker. Minor: o app passa a abrir sem rede e a poder

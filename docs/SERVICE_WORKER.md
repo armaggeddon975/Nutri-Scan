@@ -200,3 +200,12 @@ cache longo). Ver `docs/DEPLOY.md`.
 - **Mesma versao, build diferente**: o nome do cache e a versao. Um build
   republicado sem subir a versao reaproveita o mesmo cache - as regras do
   projeto mandam subir a versao a cada entrega.
+
+## Na v0.14.0
+
+Nada mudou no service worker nem no cache. A regressao desta parte rodou de novo
+pelo codigo real em `backend/tests/medicaoDoMotor.test.js` (R5: o cache offline
+sem veredito e o logout limpando; R6: nenhuma rota de `/api/` interceptada nem
+gravada, nem com a rota na lista do shell), e `serviceWorker.test.js` segue
+verde. A correcao do motor desta versao chega a quem instalou o app pelo caminho
+de sempre: o aviso de versao nova.

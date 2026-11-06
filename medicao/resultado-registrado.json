@@ -1,0 +1,79 @@
+{
+  "descricao": "Resultado registrado da medicao do motor (v0.14.0), por modo. O teste de regressao (backend/tests/medicaoDoMotor.test.js) e o verify:release falham se um tipo de erro passar do numero desta lista, se aparecer um caso que nao esta aqui, ou se um caso daqui deixar de acontecer. Atualizar este arquivo e decisao revisada, nunca automatica.",
+  "registradoEm": "2026-11-06",
+  "produtos": 71,
+  "pipeline": {
+    "paresMedidos": 924,
+    "naoInformado": [
+      "7622210596413",
+      "7896004006277",
+      "07117815",
+      "7891008116632",
+      "7896004006239"
+    ],
+    "falsosNegativos": [
+      "7892840819507:milk",
+      "8718989002640:milk",
+      "8718989002640:gluten",
+      "8718989002640:egg"
+    ],
+    "declaradoComoTraco": [],
+    "falsosPositivos": [
+      "7891167011779:egg",
+      "7891000379691:gluten",
+      "7891000071786:milk",
+      "3256540000698:soy",
+      "3256540000698:peanut",
+      "3256540000698:nuts",
+      "7893000502888:soy"
+    ],
+    "tracoComoDeclarado": [
+      "8480000603067:egg",
+      "8480000603067:fish",
+      "8480000603067:crustacean",
+      "8480000603067:mollusc",
+      "8480000603067:mustard",
+      "7891203010056:egg",
+      "7891203010056:peanut",
+      "7891203010056:nuts",
+      "78939318:nuts",
+      "7891000325131:nuts",
+      "7896066301778:egg",
+      "7896066301778:nuts",
+      "7896066304571:milk",
+      "7896066304571:egg",
+      "7896066304571:nuts",
+      "7899970402852:nuts",
+      "7896002311274:nuts",
+      "7896102502756:gluten",
+      "7896102502756:soy"
+    ]
+  },
+  "so-texto": {
+    "paresMedidos": 924,
+    "naoInformado": [
+      "7622210596413",
+      "7896004006277",
+      "07117815",
+      "7891008116632",
+      "7896004006239"
+    ],
+    "falsosNegativos": [
+      "7892840819507:milk",
+      "8718989002640:milk",
+      "8718989002640:gluten",
+      "8718989002640:egg",
+      "8718989002640:peanut",
+      "8718989002640:nuts"
+    ],
+    "declaradoComoTraco": [],
+    "falsosPositivos": [
+      "7891000071786:milk"
+    ],
+    "tracoComoDeclarado": [
+      "7891203010056:egg",
+      "7891203010056:peanut",
+      "7891203010056:nuts"
+    ]
+  }
+}

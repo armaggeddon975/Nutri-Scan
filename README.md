@@ -1,4 +1,4 @@
-# NutriScan v0.13.0
+# NutriScan v0.14.0
 
 NutriScan e um app web para consultar alimentos por nome ou codigo de barras,
 ver tabela nutricional, identificar ingredientes sensiveis e conversar com um
@@ -134,8 +134,9 @@ impressos: chave e banco aparecem apenas como `configured` ou `not_configured`.
 npm run verify:release
 ```
 
-Escopo: doctor normal, build, testes do backend, `npm audit` do frontend e do
-backend e secret scan. Isso valida o codigo. **Nao e E2E aprovado**: nao prova
+Escopo: doctor normal, build, testes do backend, medicao do motor contra o
+resultado registrado (v0.14.0), `npm audit` do frontend e do backend e secret
+scan. Isso valida o codigo. **Nao e E2E aprovado**: nao prova
 PostgreSQL real, Claude real nem o fluxo autenticado.
 
 Comandos individuais:
@@ -334,6 +335,28 @@ informacao de seguranca errada em abril, quando a pessoa marca uma alergia nova.
 O veredito e sempre recalculado pelo motor deterministico na hora de exibir, com
 o perfil atual.
 
+## Medicao do motor contra produtos reais (v0.14.0)
+
+O motor de alergenicos e medido contra 71 produtos reais da Open Food Facts,
+com o gabarito escrito lendo cada rotulo. **E medicao de software contra
+rotulos, nao validacao clinica.** Metodo, numeros por alergenico e limitacoes
+em [docs/MEDICAO_DO_MOTOR.md](docs/MEDICAO_DO_MOTOR.md).
+
+```bash
+npm run medir:motor                 # o relatorio, sem rede
+npm run medir:motor -- --conferir   # e compara com o resultado registrado
+```
+
+O conjunto fica em `medicao/conjunto-off.json`; o resultado registrado, em
+`medicao/resultado-registrado.json`. O `--conferir` (e o `verify:release`, que o
+roda) falha se um tipo de erro passar do registrado, se aparecer um caso novo ou
+se um caso registrado deixar de acontecer. Montar ou atualizar o conjunto e o
+unico passo com rede:
+
+```bash
+RUN_OFF_INTEGRATION_TESTS=true npm run montar:conjunto -- --atualizar
+```
+
 ## Instalar o app e abrir sem internet (v0.13.0)
 
 O NutriScan pode ficar na tela inicial do celular e abre mesmo sem internet - com
@@ -527,7 +550,7 @@ escrito para quem publica: o que preencher no painel, como as migrations
 entram, como verificar o resultado e o que fazer quando um subgate falha. As
 decisoes de HTTPS, cookie e migrations tambem estao la.
 
-As versoes 0.7.1 a 0.13.0 ainda nao foram publicadas; o servico no ar roda a
+As versoes 0.7.1 a 0.14.0 ainda nao foram publicadas; o servico no ar roda a
 0.7.0.
 
 ### Variaveis obrigatorias em producao
@@ -705,6 +728,7 @@ como `sem proteinas do leite`. Se o rotulo tambem trouxer `leite`, `whey`,
 - [Usar o app sem internet](docs/OFFLINE.md)
 - [Acessibilidade do alerta de alergia](docs/ACESSIBILIDADE.md)
 - [App instalavel e service worker](docs/SERVICE_WORKER.md)
+- [Medicao do motor contra produtos reais](docs/MEDICAO_DO_MOTOR.md)
 - [Nutri Assistente IA](docs/AI_ASSISTANT.md)
 - [Relatorio de auditoria](AUDIT_REPORT.md)
 - [Relatorio E2E](E2E_REPORT.md)

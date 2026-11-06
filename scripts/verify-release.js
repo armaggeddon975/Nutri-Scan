@@ -69,6 +69,11 @@ async function main() {
     ["doctor", () => npmCommand(["run", "doctor"], { inherit: true })],
     ["frontend build", () => npmCommand(["run", "build"], { inherit: true })],
     ["backend tests", () => npmCommand(["--prefix", "backend", "test"], { inherit: true })],
+    // v0.14.0: a medicao do motor contra produtos reais. Offline e
+    // deterministica, por isso mora aqui e nao no gate E2E. Falha se um tipo de
+    // erro passar do registrado em medicao/resultado-registrado.json, se
+    // aparecer caso novo ou se um caso registrado sumir sem o registro mudar.
+    ["medicao do motor", () => npmCommand(["run", "medir:motor", "--", "--conferir"], { inherit: true })],
     // Limiar `moderate`, e nao `high`.
     //
     // Na v0.6.9 o backend acumulou tres avisos moderate em `qs`, puxado por

@@ -1,4 +1,4 @@
-# API NutriScan v0.13.0
+# API NutriScan v0.14.0
 
 Base local: `http://localhost:3000/api`
 
@@ -18,7 +18,7 @@ Exemplo:
   "status": "ok",
   "database": "not_configured",
   "ai": "not_configured",
-  "version": "0.13.0"
+  "version": "0.14.0"
 }
 ```
 
@@ -772,6 +772,16 @@ Erros, alem dos de `POST /api/compare`:
 ```
 
 Os demais codigos `AI_*` sao os do assistente.
+
+## Medicao do motor (v0.14.0) - nenhuma rota nova
+
+A v0.14.0 nao muda nenhuma rota, nenhum corpo e nenhum codigo de erro. Tres
+regras do motor de alergenicos foram corrigidas pela medicao contra produtos
+reais ("wheat" aponta gluten; "does not contain" e "contains no" negam;
+noz-de-cola nao e castanha). O `allergyVerdict` que o assistente e a comparacao
+devolvem tem o mesmo formato; para um produto com esses textos, o conteudo pode
+mudar - e o motor que decide, como antes. Detalhes em
+[MEDICAO_DO_MOTOR.md](MEDICAO_DO_MOTOR.md).
 
 ## App instalavel (v0.13.0) - nenhuma rota nova, e a API nunca e guardada
 

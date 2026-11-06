@@ -242,6 +242,15 @@ do texto do modelo (A6t), alvo abaixo de 24 px (A11).
 - **Telas fora do escopo** (conta, exportacao, exclusao, historico, favoritos,
   entrar, cadastrar): nao auditadas.
 
+## Na v0.14.0
+
+Nada mudou na apresentacao do alerta. A v0.14.0 mexeu em tres regras do motor
+(o que ele aponta, nao como o veredito chega a pessoa). A regressao desta parte
+rodou de novo pelo codigo real em `backend/tests/medicaoDoMotor.test.js` (R7:
+os quatro estados do veredito distintos sem cor, o veredito antes do texto do
+modelo, anuncio `polite`), e as suites `accessibility.test.js` seguem verdes. O
+teste com leitor de tela real continua NAO EXECUTADO.
+
 ## Roteiro para a verificacao humana
 
 Com um leitor de tela ligado (NVDA no Windows, TalkBack no Android ou VoiceOver

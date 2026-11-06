@@ -1,0 +1,216 @@
+MEDICAO DO MOTOR CONTRA PRODUTOS REAIS
+Medicao de software contra rotulos. NAO e validacao clinica.
+conjunto: 71 produtos da Open Food Facts (paginas de busca de 2026-10-30, produtos lidos em 2026-11-06)
+grupos: tipico 15, negacao 10, traco 10, dentro-de-outro 8, grafia 8, vazio 5, so-ingles 6, ingles-eua 4, negacao-lactose 5
+alergenicos medidos: 14 (leite, gluten, ovo, soja, amendoim, castanhas, peixe, crustaceos, moluscos, gergelim, mostarda, aipo, tremoco, sulfito)
+motor: shared/allergenEngine.js sha256 4fa4b7538d2fa8250c8ba9acf2535d10a730bbd29dcc76615a9ffd1b988c35b6 (fim de linha LF)
+
+== modo pipeline ==
+pares medidos: 924 | produtos sem dado para o motor (not_informed): 5 | produtos sem texto para o gabarito: 0
+
+alergenico   pares  no rotulo (contem+traco)  acerto+  FALSO-  falso+  acerto-   contem->traco  traco->contem
+leite           66         44 (36+8)             42       2       1       21               0              1
+gluten          66         27 (26+1)             25       2       3       36               0              1
+ovo             66          8 (2+6)               7       1       1       57               0              4
+soja            66         35 (31+4)             35       0       2       29               0              1
+amendoim        66         10 (4+6)              10       0       1       55               0              1
+castanhas       66         13 (5+8)              13       0       4       49               0              7
+peixe           66          2 (1+1)               2       0       0       64               0              1
+crustaceos      66          1 (0+1)               1       0       0       65               0              1
+moluscos        66          1 (0+1)               1       0       0       65               0              1
+gergelim        66          0 (0+0)               0       0       0       66               0              0
+mostarda        66          1 (0+1)               1       0       0       65               0              1
+aipo            66          1 (1+0)               1       0       0       65               0              0
+tremoco         66          0 (0+0)               0       0       0       66               0              0
+sulfito         66          1 (1+0)               1       0       0       65               0              0
+TOTAL          924        144 (107+37)          139       5      12      768               0             19
+
+ERROS GRAVES: 5 falso(s) negativo(s) + 0 declarado(s) lido(s) como traco
+falsos negativos (no rotulo, o motor nao aponta): 5
+  7892840819507  leite       gabarito traco    motor -         "PODE CONTER LETE"
+  8718989002640  leite       gabarito contem   motor -         "lait écrémé"
+  8718989002640  gluten      gabarito contem   motor -         "hvedemel"
+  8718989002640  ovo         gabarito traco    motor -         "et de l'œuf"
+  7891000358764  gluten      gabarito contem   motor -         "Wheat flour"
+declarado classificado como traco (falso negativo parcial, grave): 0
+falsos positivos (fora do rotulo, o motor aponta): 12
+  7893000394209  gluten      gabarito ausente  motor contains 
+  7894900701517  castanhas   gabarito ausente  motor contains 
+  78933873       castanhas   gabarito ausente  motor contains 
+  7896481130137  gluten      gabarito ausente  motor traces   
+  7891167011779  ovo         gabarito ausente  motor traces   
+  7891000379691  gluten      gabarito ausente  motor traces   
+  7891000071786  leite       gabarito ausente  motor contains 
+  7894900011159  castanhas   gabarito ausente  motor contains 
+  3256540000698  soja        gabarito ausente  motor traces   
+  3256540000698  amendoim    gabarito ausente  motor traces   
+  3256540000698  castanhas   gabarito ausente  motor traces   
+  7893000502888  soja        gabarito ausente  motor contains 
+traco classificado como declarado (falso positivo): 19
+  8480000603067  ovo         gabarito traco    motor contains  "Pode conter vestigios de: crustáceos, ovo, peixe, mostarda, moluscos"
+  8480000603067  peixe       gabarito traco    motor contains  "Pode conter vestigios de: crustáceos, ovo, peixe, mostarda, moluscos"
+  8480000603067  crustaceos  gabarito traco    motor contains  "Pode conter vestigios de: crustáceos, ovo, peixe, mostarda, moluscos"
+  8480000603067  moluscos    gabarito traco    motor contains  "Pode conter vestigios de: crustáceos, ovo, peixe, mostarda, moluscos"
+  8480000603067  mostarda    gabarito traco    motor contains  "Pode conter vestigios de: crustáceos, ovo, peixe, mostarda, moluscos"
+  7891203010056  ovo         gabarito traco    motor contains  "TRITICALE, OVO"
+  7891203010056  amendoim    gabarito traco    motor contains  "CASTANHA DE BARU E AMENDOIM"
+  7891203010056  castanhas   gabarito traco    motor contains  "CASTANHA-DE-CAJU, CASTANHA-DO-PARA"
+  78939318       castanhas   gabarito traco    motor contains  "PODE CONTER AMÊNDOA, CASTANHA-DE-CAJU, AVELA"
+  7891000325131  castanhas   gabarito traco    motor contains  "PODE CONTER AMÊNDOA, AVELÃ, CASTANHA-DE-CAJU"
+  7896066301778  ovo         gabarito traco    motor contains  "NOZES, OVOS"
+  7896066301778  castanhas   gabarito traco    motor contains  "PODE CONTER AMENDOA"
+  7896066304571  leite       gabarito traco    motor contains  "CEVADA, LEITE"
+  7896066304571  ovo         gabarito traco    motor contains  "NOZES, OVOS"
+  7896066304571  castanhas   gabarito traco    motor contains  "PODE CONTER AMENDOA"
+  7899970402852  castanhas   gabarito traco    motor contains  "AMENDOA, AVELA"
+  7896002311274  castanhas   gabarito traco    motor contains  "PODE CONTER AMÊNDOA"
+  7896102502756  gluten      gabarito traco    motor contains  "Soja, glúten"
+  7896102502756  soja        gabarito traco    motor contains  "Pode conter traços de: Soja"
+
+negacao: 22 casos, 20 tratados certo
+  certo  0611269991000:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  ERRADO 7893000394209:gluten     "does not contain gluten" gabarito ausente motor contains
+  certo  7898215151708:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7898215151784:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  78933873:gluten          "NÃO CONTEM GLUTEN" gabarito ausente motor -
+  certo  7898024396529:gluten     "NAO CONTÉM GLUTEN" gabarito ausente motor -
+  certo  7891150027848:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7891025115656:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  5601989003126:gluten     "Sem glúten" gabarito ausente motor -
+  certo  78938816:gluten          "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7898215151807:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7891095031115:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  0070847022206:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  ERRADO 7896481130137:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor traces
+  certo  7898955705490:milk       "Sem lactose" gabarito ausente motor -
+  certo  7898955705490:gluten     "Sem glúten" gabarito ausente motor -
+  certo  7896102502756:milk       "Sem lactose" gabarito ausente motor -
+  certo  7893000502888:milk       "SEM LACTOSE" gabarito contem motor contains
+  certo  7896038314195:gluten     "Sem glúten" gabarito ausente motor -
+  certo  7896038314195:milk       "Sem lactose" gabarito ausente motor -
+  certo  7892999150124:gluten     "Sem glúten" gabarito ausente motor -
+  certo  7892999150124:milk       "sem lactose" gabarito contem motor contains
+
+not_informed (fora da conta, nao e erro): 7622210596413, 7896004006277, 07117815, 7891008116632, 7896004006239
+sem texto para o gabarito (fora da conta): nenhum
+
+== modo so-texto ==
+pares medidos: 924 | produtos sem dado para o motor (not_informed): 5 | produtos sem texto para o gabarito: 0
+
+alergenico   pares  no rotulo (contem+traco)  acerto+  FALSO-  falso+  acerto-   contem->traco  traco->contem
+leite           66         44 (36+8)             42       2       1       21               0              0
+gluten          66         27 (26+1)             24       3       2       37               0              0
+ovo             66          8 (2+6)               7       1       0       58               0              1
+soja            66         35 (31+4)             35       0       0       31               0              0
+amendoim        66         10 (4+6)               9       1       0       56               0              1
+castanhas       66         13 (5+8)              12       1       3       50               0              1
+peixe           66          2 (1+1)               2       0       0       64               0              0
+crustaceos      66          1 (0+1)               1       0       0       65               0              0
+moluscos        66          1 (0+1)               1       0       0       65               0              0
+gergelim        66          0 (0+0)               0       0       0       66               0              0
+mostarda        66          1 (0+1)               1       0       0       65               0              0
+aipo            66          1 (1+0)               1       0       0       65               0              0
+tremoco         66          0 (0+0)               0       0       0       66               0              0
+sulfito         66          1 (1+0)               1       0       0       65               0              0
+TOTAL          924        144 (107+37)          136       8       6      774               0              3
+
+ERROS GRAVES: 8 falso(s) negativo(s) + 0 declarado(s) lido(s) como traco
+falsos negativos (no rotulo, o motor nao aponta): 8
+  7892840819507  leite       gabarito traco    motor -         "PODE CONTER LETE"
+  11117780       gluten      gabarito contem   motor -         "wheat flour"
+  8718989002640  leite       gabarito contem   motor -         "lait écrémé"
+  8718989002640  gluten      gabarito contem   motor -         "hvedemel"
+  8718989002640  ovo         gabarito traco    motor -         "et de l'œuf"
+  8718989002640  amendoim    gabarito contem   motor -         "arachides moulues"
+  8718989002640  castanhas   gabarito contem   motor -         "noisettes"
+  7891000358764  gluten      gabarito contem   motor -         "Wheat flour"
+declarado classificado como traco (falso negativo parcial, grave): 0
+falsos positivos (fora do rotulo, o motor aponta): 6
+  7893000394209  gluten      gabarito ausente  motor contains 
+  7894900701517  castanhas   gabarito ausente  motor contains 
+  78933873       castanhas   gabarito ausente  motor contains 
+  7896481130137  gluten      gabarito ausente  motor traces   
+  7891000071786  leite       gabarito ausente  motor contains 
+  7894900011159  castanhas   gabarito ausente  motor contains 
+traco classificado como declarado (falso positivo): 3
+  7891203010056  ovo         gabarito traco    motor contains  "TRITICALE, OVO"
+  7891203010056  amendoim    gabarito traco    motor contains  "CASTANHA DE BARU E AMENDOIM"
+  7891203010056  castanhas   gabarito traco    motor contains  "CASTANHA-DE-CAJU, CASTANHA-DO-PARA"
+
+negacao: 22 casos, 20 tratados certo
+  certo  0611269991000:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  ERRADO 7893000394209:gluten     "does not contain gluten" gabarito ausente motor contains
+  certo  7898215151708:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7898215151784:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  78933873:gluten          "NÃO CONTEM GLUTEN" gabarito ausente motor -
+  certo  7898024396529:gluten     "NAO CONTÉM GLUTEN" gabarito ausente motor -
+  certo  7891150027848:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7891025115656:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  5601989003126:gluten     "Sem glúten" gabarito ausente motor -
+  certo  78938816:gluten          "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7898215151807:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  7891095031115:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  certo  0070847022206:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor -
+  ERRADO 7896481130137:gluten     "NÃO CONTÉM GLÚTEN" gabarito ausente motor traces
+  certo  7898955705490:milk       "Sem lactose" gabarito ausente motor -
+  certo  7898955705490:gluten     "Sem glúten" gabarito ausente motor -
+  certo  7896102502756:milk       "Sem lactose" gabarito ausente motor -
+  certo  7893000502888:milk       "SEM LACTOSE" gabarito contem motor contains
+  certo  7896038314195:gluten     "Sem glúten" gabarito ausente motor -
+  certo  7896038314195:milk       "Sem lactose" gabarito ausente motor -
+  certo  7892999150124:gluten     "Sem glúten" gabarito ausente motor -
+  certo  7892999150124:milk       "sem lactose" gabarito contem motor contains
+
+not_informed (fora da conta, nao e erro): 7622210596413, 7896004006277, 07117815, 7891008116632, 7896004006239
+sem texto para o gabarito (fora da conta): nenhum
+
+discordancias tag da OFF x texto (registradas, fora da conta): 49
+  8480000603067  ovo         tag contem   texto traco
+  8480000603067  peixe       tag contem   texto traco
+  8480000603067  crustaceos  tag contem   texto traco
+  8480000603067  moluscos    tag contem   texto traco
+  8480000603067  mostarda    tag contem   texto traco
+  7892840819507  leite       tag ausente  texto traco
+  7892840819507  soja        tag ausente  texto contem
+  7891095911486  soja        tag ausente  texto contem
+  7891203010056  leite       tag traco    texto contem
+  7892840819170  leite       tag ausente  texto traco
+  7892840819170  soja        tag ausente  texto contem
+  7896002360326  soja        tag ausente  texto contem
+  7891025115656  soja        tag ausente  texto traco
+  7896094910959  leite       tag ausente  texto traco
+  78939318       castanhas   tag contem   texto traco
+  7891000325131  castanhas   tag contem   texto traco
+  7896066301778  leite       tag ausente  texto traco
+  7896066301778  ovo         tag contem   texto traco
+  7896066301778  castanhas   tag contem   texto traco
+  7622300990732  leite       tag ausente  texto traco
+  7622210999634  soja        tag ausente  texto contem
+  7622210999634  castanhas   tag ausente  texto traco
+  7894321711171  leite       tag ausente  texto traco
+  7894321711171  soja        tag ausente  texto contem
+  7896066304571  leite       tag contem   texto traco
+  7896066304571  ovo         tag contem   texto traco
+  7896066304571  castanhas   tag contem   texto traco
+  7896481130137  soja        tag ausente  texto traco
+  78909434       castanhas   tag ausente  texto contem
+  7891167011779  ovo         tag traco    texto ausente
+  7899970402852  gluten      tag traco    texto contem
+  7899970402852  castanhas   tag contem   texto traco
+  7896024761651  sulfito     tag ausente  texto contem
+  7891000379691  gluten      tag traco    texto ausente
+  8718989002640  leite       tag ausente  texto contem
+  8718989002640  gluten      tag ausente  texto contem
+  8718989002640  ovo         tag ausente  texto traco
+  7896002311274  leite       tag ausente  texto traco
+  7896002311274  ovo         tag ausente  texto traco
+  7896002311274  soja        tag ausente  texto contem
+  7896002311274  amendoim    tag ausente  texto traco
+  7896002311274  castanhas   tag contem   texto traco
+  7891000358764  gluten      tag ausente  texto contem
+  3256540000698  soja        tag traco    texto ausente
+  3256540000698  amendoim    tag traco    texto ausente
+  3256540000698  castanhas   tag traco    texto ausente
+  7896102502756  gluten      tag contem   texto traco
+  7896102502756  soja        tag contem   texto traco
+  7893000502888  soja        tag contem   texto ausente

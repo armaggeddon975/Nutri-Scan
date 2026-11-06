@@ -1,9 +1,9 @@
-# Publicar o NutriScan - v0.13.0
+# Publicar o NutriScan - v0.14.0
 
 Este documento e para **quem vai publicar**, nao para quem escreveu o codigo.
 Siga na ordem. Nenhum passo pede para adivinhar.
 
-**Situacao hoje:** as versoes 0.7.1 a 0.13.0 nunca foram publicadas. O servico
+**Situacao hoje:** as versoes 0.7.1 a 0.14.0 nunca foram publicadas. O servico
 `nutriscan` no Render ainda roda a 0.7.0.
 
 Nenhum valor real de credencial aparece aqui. Onde houver `<...>`, troque pelo
@@ -408,6 +408,17 @@ Depois de publicar, para conferir a mao (sem conta, ou com uma descartavel):
 
 O `verify:deploy` nao toca nisso: ele so le, e as rotas de comparacao sao
 `POST`.
+
+### Medicao do motor (v0.14.0)
+
+A v0.14.0 **nao traz migration**, **nao tem variavel nova** e **nao muda
+nenhuma rota**. Tres regras do motor de alergenicos mudaram, e o motor roda no
+aparelho e no backend: a correcao so chega a quem usa o app depois do deploy -
+e, para quem instalou o app, depois do aviso "Há uma versão nova do NutriScan".
+
+Antes de publicar, o `npm run verify:release` ja roda a medicao do motor contra
+o resultado registrado (passo "medicao do motor"). Ela e offline: nao depende
+da Open Food Facts nem do deploy, e o `verify:deploy` nao a repete.
 
 ### App instalavel e service worker (v0.13.0)
 
