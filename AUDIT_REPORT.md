@@ -36,9 +36,12 @@ shared/                        sem mudanca - motor de alergenicos e veredito int
 - **Publicar antes do parecer do auditor sobre a v0.14.0.** O combinado era
   parar depois do ZIP da v0.14.0 ate o parecer; o dono decidiu publicar mesmo
   assim.
-- **`FRONTEND_ORIGIN`**: o dono confirmou que ja esta preenchida no painel do
-  Render. Nao foi conferida daqui - o painel nao e acessivel a quem escreveu o
-  codigo.
+- **`FRONTEND_ORIGIN`**: o dono respondeu que ja estava preenchida no painel do
+  Render, e a resposta foi aceita sem conferencia - o painel nao e acessivel a
+  quem escreveu o codigo. **Nao estava**: a primeira tentativa de deploy falhou
+  por isso, e a 0.7.0 ficou no ar. Com a variavel preenchida, a segunda
+  tentativa subiu, e o `verify:deploy` real passou com 12 de 12. Detalhes e
+  linhas do log no E2E_REPORT.
 
 ## De onde vem cada numero
 
@@ -144,6 +147,8 @@ suite com PostgreSQL LOCAL                          exit 0
                                                     NAO EXECUTADOS sem as flags de integracao
 
 verify:deploy contra alvo LOCAL simulado            11 PASS, D2 FAIL (alvo http, sem TLS), exit 1
+verify:deploy contra o deploy REAL, depois          12 PASS, 0 FAIL, 0 NOT_EXECUTED, exit 0
+  (2a tentativa; a 1a falhou por FRONTEND_ORIGIN ausente no painel - E2E_REPORT)
 verify:e2e                                          NAO EXECUTADO - motivo no E2E_REPORT
 validacao por mutacao                               NAO EXECUTADA nesta versao
 ```
@@ -175,9 +180,8 @@ CHANGELOG.md (entrada mais recente)                ## NutriScan v0.15.0 - 2026-1
 - **Mutacao das regras novas**: NAO EXECUTADA.
 - **Leitor de tela real** com o botao de menu e o selo: NAO EXECUTADO.
 - **Instalacao em aparelho real e camera em hardware**: NAO EXECUTADOS.
-- **O deploy real**: o `verify:deploy` contra o Render roda DEPOIS do push, e
-  este relatorio e o ZIP sao gerados ANTES dele. O resultado pos-publicacao nao
-  esta neste pacote.
+- **O que o `verify:deploy` nao le**: ele prova cabecalhos, rotas e arquivos do
+  deploy real (12 de 12 em PASS), nao o fluxo com conta, banco e IA.
 
 ## Historico de auditorias anteriores
 

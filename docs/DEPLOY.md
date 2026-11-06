@@ -3,9 +3,15 @@
 Este documento e para **quem vai publicar**, nao para quem escreveu o codigo.
 Siga na ordem. Nenhum passo pede para adivinhar.
 
-**Situacao hoje:** ate a v0.14.0, o servico `nutriscan` no Render rodava a
-0.7.0. A v0.15.0 e a primeira enviada desde entao (06/11/2026) e leva junto as
-versoes 0.7.1 a 0.14.0 - inclusive a `FRONTEND_ORIGIN` obrigatoria da v0.7.5.
+**Situacao hoje:** o servico `nutriscan` no Render roda a **v0.15.0**, desde
+06/11/2026 - antes, rodava a 0.7.0. O `verify:deploy` contra o deploy real
+passou com 12 de 12.
+
+**Licao da publicacao de 06/11:** a primeira tentativa falhou porque a
+`FRONTEND_ORIGIN` nao estava no painel, embora se achasse que estava. O log do
+deploy mostrou "NutriScan NAO subiu ... - FRONTEND_ORIGIN: ausente ou vazia", e
+o Render manteve a versao anterior no ar. Antes do push, **abra o painel e
+confira** as obrigatorias da tabela abaixo; nao confie na lembranca.
 
 Nenhum valor real de credencial aparece aqui. Onde houver `<...>`, troque pelo
 seu valor.

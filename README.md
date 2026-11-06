@@ -590,8 +590,9 @@ escrito para quem publica: o que preencher no painel, como as migrations
 entram, como verificar o resultado e o que fazer quando um subgate falha. As
 decisoes de HTTPS, cookie e migrations tambem estao la.
 
-Ate a v0.14.0, o servico no ar rodava a 0.7.0. A v0.15.0 e a primeira enviada
-ao Render desde entao, em 06/11/2026, e leva junto as versoes 0.7.1 a 0.14.0.
+Ate a v0.14.0, o servico no ar rodava a 0.7.0. A v0.15.0 esta no ar desde
+06/11/2026 e trouxe junto as versoes 0.7.1 a 0.14.0; o `verify:deploy` contra o
+deploy real passou com 12 de 12.
 
 ### Variaveis obrigatorias em producao
 

@@ -10,9 +10,11 @@ suite com PostgreSQL LOCAL 539 testes: 536 pass, 0 fail, 3 skipped (Claude e OFF
 verify:deploy simulado     FAIL, exit code 1 - 11 PASS, D2 FAIL (alvo http, sem TLS)
 verify:deploy REAL (antes) FAIL, exit code 1 - 7 PASS, D1, D9 e D11 FAIL, D10 e D12
                            NOT_EXECUTED (no ar 0.7.0, sem manifesto nem service worker)
-verify:deploy REAL (depois do push)
-                           FORA DESTE PACOTE - roda depois do push, e este relatorio
-                           e o ZIP sao gerados antes dele
+deploy no Render, 1a vez   FALHOU - o processo saiu com status 1: FRONTEND_ORIGIN
+                           ausente no painel. O Render manteve a 0.7.0 no ar
+deploy no Render, 2a vez   SUCESSO - depois de o dono preencher a variavel
+verify:deploy REAL (depois)
+                           PASS, exit code 0 - 12 PASS, 0 FAIL, 0 NOT_EXECUTED
 
 migration nova             NENHUMA
 rota / variavel nova       NENHUMA
@@ -118,10 +120,88 @@ exit 1
 
 Os sete PASS medem a 0.7.0 que esta no ar e **nao provam nada sobre a 0.15.0**.
 
+## A publicacao: a primeira tentativa falhou
+
+Push `641aa5f..42870ca` para o `main`. O Render comecou o deploy as 14:16:21
+UTC; o build passou, e o processo saiu ao subir. Linhas do log do Render, que o
+dono copiou do painel (horario de Brasilia):
+
+```text
+11:17:09 AM [g5bn8] > nutriscan@0.15.0 start
+11:17:09 AM [g5bn8] > node backend/src/server.js
+11:17:12 AM [g5bn8] NutriScan NAO subiu: configuracao de producao incompleta.
+11:17:12 AM [g5bn8]   - FRONTEND_ORIGIN: ausente ou vazia
+11:17:12 AM [g5bn8] Defina as variaveis no painel da hospedagem. Nenhum valor e impresso aqui.
+11:17:16 AM         ==> Exited with status 1
+11:17:38 AM [n4nsb] NutriScan API v0.7.0 ouvindo na porta 10000
+```
+
+A checagem da v0.7.5 fez o que devia: com a variavel faltando, o processo nao
+abriu a porta, saiu com codigo 1 e disse qual variavel, sem valor nenhum. O
+Render manteve a 0.7.0 no ar - o `/api/health` respondeu `0.7.0` com o banco
+`connected` durante todo o tempo.
+
+**Erro de processo, nao de codigo:** antes do push, o dono respondeu que a
+`FRONTEND_ORIGIN` ja estava no painel, e a resposta foi aceita sem conferencia.
+Nao estava. O aviso de `sslmode` do `pg` que aparece nos mesmos logs e da 0.7.0
+(a versao da biblioteca e a mesma desde entao) e nao tem relacao com a falha.
+
+Reproducao local, num clone limpo do commit `42870ca`, sem `.env`: o comando de
+build do `render.yaml` passou em 31 s, e o start mostrou a mesma mensagem sem a
+variavel, e subiu com ela.
+
+## A publicacao: segunda tentativa, com a variavel
+
+O dono preencheu `FRONTEND_ORIGIN` no painel e mandou o deploy manual. O Render
+marcou sucesso as 14:51:32 UTC. `/api/health` depois:
+`{"status":"ok","database":"connected","ai":"configured","version":"0.15.0"}`.
+
+## `verify:deploy` contra o deploy REAL, depois da publicacao
+
+Somente leitura, contra `https://nutriscan-h1wp.onrender.com`.
+
+```text
+verify:deploy - alvo https://nutriscan-h1wp.onrender.com
+versao do repositorio: 0.15.0
+
+[PASS        ] D1  versao no ar igual a do repositorio
+                ambos declaram 0.15.0
+[PASS        ] D2  resposta por HTTPS, e http:// redireciona
+                HTTPS responde, e http:// redireciona (301) para https://
+[PASS        ] D3  cabecalhos de seguranca (HSTS, CSP, nosniff)
+                HSTS max-age=31536000, CSP e nosniff presentes
+[PASS        ] D4  rota /api inexistente da 404 de API, nao index.html
+                404 de API, em JSON
+[PASS        ] D5  rota autenticada sem sessao da 401
+                4 rotas autenticadas recusam sem sessao com 401
+[PASS        ] D6  erro provocado nao vaza stack, SQL nem caminho
+                erro provocado (HTTP 400) sem stack, SQL, tabela nem caminho
+[PASS        ] D7  o frontend e servido e carrega
+                HTML e 2 asset(s) servidos (1 script(s))
+[PASS        ] D8  nenhuma chave no HTML nem nos bundles
+                3 arquivo(s) inspecionado(s), nenhum segredo
+[PASS        ] D9  manifesto servido e valido
+                /manifest.webmanifest (application/manifest+json), 4 icone(s), display standalone
+[PASS        ] D10  os icones declarados no manifesto existem
+                4 icone(s) servidos como imagem
+[PASS        ] D11  service worker servido como JavaScript
+                /sw.js servido como text/javascript
+[PASS        ] D12  service worker sem cabecalho de cache longo
+                Cache-Control "no-cache"
+
+PASS 12 | FAIL 0 | NOT_EXECUTED 0
+[PASS] verify:deploy
+=== EXIT CODE: 0 ===
+```
+
+Primeira vez que o `verify:deploy` passa inteiro contra o deploy real desde que
+existe (v0.7.5). Conferencia a mao, no navegador, no site publicado: a maionese
+`7894000050034` mostra "Os números não batem" e "As gorduras saturadas estão
+muito abaixo do normal para maionese. Confira a embalagem."; o botao de menu
+esta na pagina.
+
 ## O que este relatorio NAO prova
 
-- O deploy real da 0.15.0: o `verify:deploy` depois do push nao esta neste
-  pacote.
 - O fluxo autenticado com PostgreSQL de producao e Claude real: `verify:e2e`
   **NAO EXECUTADO**.
 - O leitor de tela real: **NAO EXECUTADO**.

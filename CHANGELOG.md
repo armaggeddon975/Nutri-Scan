@@ -15,6 +15,12 @@ Por decisao do dono (06/11/2026), a v0.15.0 vai ao Render - e leva junto as
 versoes 0.7.1 a 0.14.0, que nunca tinham ido ao ar. A v0.14.0 ainda nao tinha
 parecer do auditor externo; publicar antes dele foi decisao do dono.
 
+**Publicada em 06/11/2026.** A primeira tentativa falhou: `FRONTEND_ORIGIN`
+ausente no painel, e o processo saiu com "NutriScan NAO subiu" - a checagem da
+v0.7.5 funcionando; a 0.7.0 ficou no ar. Com a variavel preenchida, a segunda
+subiu, e o `verify:deploy` contra o deploy real passou com **12 de 12**, pela
+primeira vez desde que o comando existe.
+
 ### O problema, pelo que era
 
 O app mostrava toda tabela nutricional do mesmo jeito. Medido em 06/11/2026 nos
@@ -98,7 +104,8 @@ faixa, a base local e o cache sem rede.
 ### Nao comprovado
 
 - `verify:e2e`: NAO EXECUTADO nesta versao - o backend nao mudou, e o gate faz
-  chamada paga ao Claude e grava no banco de producao, o que nao foi pedido.
+  chamada paga ao Claude e grava no banco de producao, o que nao foi pedido. O
+  `verify:deploy` real (12 de 12) prova o deploy, nao o fluxo com conta e IA.
 - Validacao por mutacao das regras novas: NAO EXECUTADA.
 - Leitor de tela real com o botao de menu e o selo: NAO EXECUTADO.
 - Produtos fora dos conjuntos medidos.
