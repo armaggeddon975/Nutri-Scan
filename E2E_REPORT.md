@@ -1,4 +1,135 @@
-# E2E Report - NutriScan v0.14.0
+# E2E Report - NutriScan v0.15.0
+
+Data: 2026-11-06
+
+## Resultado geral
+
+```text
+verify:e2e                 NAO EXECUTADO - motivo abaixo
+suite com PostgreSQL LOCAL 539 testes: 536 pass, 0 fail, 3 skipped (Claude e OFF reais)
+verify:deploy simulado     FAIL, exit code 1 - 11 PASS, D2 FAIL (alvo http, sem TLS)
+verify:deploy REAL (antes) FAIL, exit code 1 - 7 PASS, D1, D9 e D11 FAIL, D10 e D12
+                           NOT_EXECUTED (no ar 0.7.0, sem manifesto nem service worker)
+verify:deploy REAL (depois do push)
+                           FORA DESTE PACOTE - roda depois do push, e este relatorio
+                           e o ZIP sao gerados antes dele
+
+migration nova             NENHUMA
+rota / variavel nova       NENHUMA
+backend                    sem mudanca de codigo
+leitor de tela real        NAO EXECUTADO
+camera em hardware         NAO EXECUTADO
+```
+
+Nenhum resultado foi herdado. Os PASS das versoes anteriores estao preservados
+na secao historica e nao valem para esta versao.
+
+## Por que o `verify:e2e` nao rodou nesta versao
+
+O gate prova o backend real com PostgreSQL e Claude reais. A v0.15.0 nao muda o
+backend - nenhuma rota, migration, variavel ou regra do servidor; o selo e as
+faixas rodam so no aparelho, sobre o produto que o app ja recebia. E o gate faz
+chamadas PAGAS ao Claude e grava (e limpa) no banco de producao: essas duas
+coisas nao estavam no que o dono pediu para esta entrega ("fechar a v0.15.0 e
+subir"). Por isso: **NAO EXECUTADO**, e nao aprovado. O que esta versao mexe e
+provado pela suite (com o PostgreSQL local, 0 falhas) e pelo `verify:deploy`.
+
+## `verify:deploy` contra alvo LOCAL simulado
+
+O backend real em `NODE_ENV=production`, servindo o `dist/` desta versao, contra o
+PostgreSQL LOCAL, na porta 3999, sem chave de IA (`ANTHROPIC_API_KEY` vazia, que
+o carregador do `.env` nao sobrescreve). O alvo e `http://`, entao o D2 TEM de
+reprovar: nao ha TLS local.
+
+```text
+[alvo] NutriScan API v0.15.0 ouvindo na porta 3999
+
+verify:deploy - alvo http://127.0.0.1:3999
+versao do repositorio: 0.15.0
+
+[PASS        ] D1  versao no ar igual a do repositorio
+                ambos declaram 0.15.0
+[FAIL        ] D2  resposta por HTTPS, e http:// redireciona
+                o alvo foi informado como http:// - o deploy precisa responder por HTTPS
+[PASS        ] D3  cabecalhos de seguranca (HSTS, CSP, nosniff)
+                HSTS max-age=31536000, CSP e nosniff presentes
+[PASS        ] D4  rota /api inexistente da 404 de API, nao index.html
+                404 de API, em JSON
+[PASS        ] D5  rota autenticada sem sessao da 401
+                4 rotas autenticadas recusam sem sessao com 401
+[PASS        ] D6  erro provocado nao vaza stack, SQL nem caminho
+                erro provocado (HTTP 400) sem stack, SQL, tabela nem caminho
+[PASS        ] D7  o frontend e servido e carrega
+                HTML e 2 asset(s) servidos (1 script(s))
+[PASS        ] D8  nenhuma chave no HTML nem nos bundles
+                3 arquivo(s) inspecionado(s), nenhum segredo
+[PASS        ] D9  manifesto servido e valido
+                /manifest.webmanifest (application/manifest+json), 4 icone(s), display standalone
+[PASS        ] D10  os icones declarados no manifesto existem
+                4 icone(s) servidos como imagem
+[PASS        ] D11  service worker servido como JavaScript
+                /sw.js servido como text/javascript
+[PASS        ] D12  service worker sem cabecalho de cache longo
+                Cache-Control "no-cache"
+
+PASS 11 | FAIL 1 | NOT_EXECUTED 0
+[FAIL] verify:deploy
+
+=== EXIT CODE do verify:deploy: 1 ===
+```
+
+## `verify:deploy` contra o deploy REAL, antes do push
+
+Somente leitura, contra `https://nutriscan-h1wp.onrender.com`.
+
+```text
+verify:deploy - alvo https://nutriscan-h1wp.onrender.com
+versao do repositorio: 0.15.0
+
+[FAIL        ] D1  versao no ar igual a do repositorio
+                repositorio declara 0.15.0 e o deploy anuncia 0.7.0
+[PASS        ] D2  resposta por HTTPS, e http:// redireciona
+                HTTPS responde, e http:// redireciona (301) para https://
+[PASS        ] D3  cabecalhos de seguranca (HSTS, CSP, nosniff)
+                HSTS max-age=31536000, CSP e nosniff presentes
+[PASS        ] D4  rota /api inexistente da 404 de API, nao index.html
+                404 de API, em JSON
+[PASS        ] D5  rota autenticada sem sessao da 401
+                4 rotas autenticadas recusam sem sessao com 401
+[PASS        ] D6  erro provocado nao vaza stack, SQL nem caminho
+                erro provocado (HTTP 500) sem stack, SQL, tabela nem caminho
+[PASS        ] D7  o frontend e servido e carrega
+                HTML e 2 asset(s) servidos (1 script(s))
+[PASS        ] D8  nenhuma chave no HTML nem nos bundles
+                3 arquivo(s) inspecionado(s), nenhum segredo
+[FAIL        ] D9  manifesto servido e valido
+                o HTML nao declara manifesto (<link rel="manifest">)
+[NOT_EXECUTED] D10  os icones declarados no manifesto existem
+                D9 nao obteve o manifesto; nenhum icone foi conferido
+[FAIL        ] D11  service worker servido como JavaScript
+                /sw.js servido como "text/html; charset=UTF-8", e nao como JavaScript
+[NOT_EXECUTED] D12  service worker sem cabecalho de cache longo
+                D11 nao obteve o service worker; o cabecalho nao foi conferido
+
+PASS 7 | FAIL 3 | NOT_EXECUTED 2
+[FAIL] verify:deploy
+exit 1
+```
+
+Os sete PASS medem a 0.7.0 que esta no ar e **nao provam nada sobre a 0.15.0**.
+
+## O que este relatorio NAO prova
+
+- O deploy real da 0.15.0: o `verify:deploy` depois do push nao esta neste
+  pacote.
+- O fluxo autenticado com PostgreSQL de producao e Claude real: `verify:e2e`
+  **NAO EXECUTADO**.
+- O leitor de tela real: **NAO EXECUTADO**.
+- A camera em aparelho real: **NAO EXECUTADO**.
+
+## Historico de auditorias anteriores
+
+## E2E da v0.14.0 - 2026-11-06
 
 Data: 2026-11-06
 
@@ -504,8 +635,6 @@ nao mudou o script.
 - O leitor de tela real: **NAO EXECUTADO**.
 - A leitura da camera em aparelho real: **NAO EXECUTADO**.
 - O deploy real da 0.14.0: **NAO EXECUTADO**.
-
-## Historico de auditorias anteriores
 
 ## E2E da v0.13.0 - 2026-10-30
 

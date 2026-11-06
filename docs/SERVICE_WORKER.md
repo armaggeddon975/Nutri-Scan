@@ -209,3 +209,13 @@ sem veredito e o logout limpando; R6: nenhuma rota de `/api/` interceptada nem
 gravada, nem com a rota na lista do shell), e `serviceWorker.test.js` segue
 verde. A correcao do motor desta versao chega a quem instalou o app pelo caminho
 de sempre: o aviso de versao nova.
+
+## Na v0.15.0
+
+Nada mudou no service worker nem nas regras de cache. O selo da tabela, as
+faixas da TACO e o botao de menu sao codigo do bundle: entram no shell com o
+build, e a versao nova troca o nome do cache, como sempre. As faixas valem sem
+rede porque a lista fechada do cache offline (`src/services/offlineCache.js`) ja
+guardava `categories_tags` - conferido em `backend/tests/faixasPorCategoria.test.js`
+("sem rede: o produto guardado no aparelho mantem a categoria").
+`serviceWorker.test.js` segue verde.

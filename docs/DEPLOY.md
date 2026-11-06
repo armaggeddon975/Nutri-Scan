@@ -1,10 +1,11 @@
-# Publicar o NutriScan - v0.14.0
+# Publicar o NutriScan - v0.15.0
 
 Este documento e para **quem vai publicar**, nao para quem escreveu o codigo.
 Siga na ordem. Nenhum passo pede para adivinhar.
 
-**Situacao hoje:** as versoes 0.7.1 a 0.14.0 nunca foram publicadas. O servico
-`nutriscan` no Render ainda roda a 0.7.0.
+**Situacao hoje:** ate a v0.14.0, o servico `nutriscan` no Render rodava a
+0.7.0. A v0.15.0 e a primeira enviada desde entao (06/11/2026) e leva junto as
+versoes 0.7.1 a 0.14.0 - inclusive a `FRONTEND_ORIGIN` obrigatoria da v0.7.5.
 
 Nenhum valor real de credencial aparece aqui. Onde houver `<...>`, troque pelo
 seu valor.
@@ -408,6 +409,21 @@ Depois de publicar, para conferir a mao (sem conta, ou com uma descartavel):
 
 O `verify:deploy` nao toca nisso: ele so le, e as rotas de comparacao sao
 `POST`.
+
+### Selo da tabela nutricional e menu recolhivel (v0.15.0)
+
+A v0.15.0 **nao traz migration**, **nao tem variavel nova** e **nao muda
+nenhuma rota**. Tudo roda no aparelho: o selo de confianca da tabela, as faixas
+por tipo de produto (numeros da TACO dentro do proprio bundle, sem chamada de
+rede) e o botao que abre e fecha o menu lateral do computador. Para quem
+instalou o app, chega pelo aviso "Há uma versão nova do NutriScan", porque o
+nome do cache e a versao.
+
+O `verify:deploy` nao confere o selo: ele so le cabecalhos, rotas e arquivos.
+Para conferir a mao, abra um produto cuja tabela a Open Food Facts guarda
+errada, por exemplo `7894000050034` (maionese com 0 g de gordura saturada): o
+selo deve dizer "Os números não batem" e "As gorduras saturadas estão muito
+abaixo do normal para maionese. Confira a embalagem."
 
 ### Medicao do motor (v0.14.0)
 

@@ -1,4 +1,4 @@
-# API NutriScan v0.14.0
+# API NutriScan v0.15.0
 
 Base local: `http://localhost:3000/api`
 
@@ -18,7 +18,7 @@ Exemplo:
   "status": "ok",
   "database": "not_configured",
   "ai": "not_configured",
-  "version": "0.14.0"
+  "version": "0.15.0"
 }
 ```
 
@@ -772,6 +772,14 @@ Erros, alem dos de `POST /api/compare`:
 ```
 
 Os demais codigos `AI_*` sao os do assistente.
+
+## Selo da tabela nutricional (v0.15.0) - nenhuma rota nova
+
+A v0.15.0 nao muda nenhuma rota, nenhum corpo e nenhum codigo de erro. O selo de
+confianca da tabela e as faixas por tipo de produto rodam so no aparelho, sobre
+o produto que o app ja recebe da Open Food Facts (`nutriments` e
+`categories_tags`, que ja estavam entre os campos pedidos e guardados sem rede).
+O backend nao calcula nem devolve o selo.
 
 ## Medicao do motor (v0.14.0) - nenhuma rota nova
 

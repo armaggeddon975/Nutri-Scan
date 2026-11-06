@@ -9,7 +9,7 @@ import { BrandSignature } from "../common/BrandSignature";
 // de cima e para o rodape do conteudo.
 export function NavRail({ navItems, activePage, allergyCount, onNavigate }) {
   return (
-    <nav className="rail" aria-label="Navegação principal">
+    <nav id="menu-lateral" className="rail" aria-label="Navegação principal">
       <button
         type="button"
         className="rail-brand"

@@ -1,4 +1,4 @@
-# Arquitetura NutriScan v0.14.0
+# Arquitetura NutriScan v0.15.0
 
 ## Visao geral
 
@@ -75,6 +75,15 @@ mantem regras paralelas de alergia.
 
 `src/services/aiAssistantService.js` envia ao backend apenas contexto controlado
 do produto, incluindo ingredientes, tags de alergenicos, tags de tracos e labels.
+
+Selo de confianca da tabela nutricional (v0.15.0): `src/utils/confiancaDaTabela.js`
+confere a tabela (itens presentes e contas internas) e chama
+`src/utils/faixasPorCategoria.js`, que compara os numeros com a faixa do tipo de
+produto. O tipo vem de `categories_tags`; as faixas, de `src/data/faixasTaco.js`
+(TACO 4a edicao, NEPA-UNICAMP). Os tres leem os valores por
+`getNutrientValue`, o mesmo caminho da tabela da tela, entao o selo fala dos
+numeros que a pessoa ve. `src/components/food/SeloDaTabela.jsx` so mostra. O
+selo nao entra no veredito de alergia nem no backend.
 
 ## Backend
 

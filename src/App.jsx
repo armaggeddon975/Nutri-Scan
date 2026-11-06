@@ -14,6 +14,7 @@ import {
 import { DEFAULT_ALLERGIES } from "./data/allergens";
 import { BrandSignature } from "./components/common/BrandSignature";
 import { ProductAnalysis } from "./components/food/ProductAnalysis";
+import { MenuToggle } from "./components/navigation/MenuToggle";
 import { NavRail } from "./components/navigation/NavRail";
 import { TabBar } from "./components/navigation/TabBar";
 import { TopBar } from "./components/navigation/TopBar";
@@ -259,6 +260,9 @@ function App() {
   // Versao nova do app esperando (v0.13.0) e convite para instalar.
   const [versaoNova, setVersaoNova] = useState(false);
   const [conviteInstalar, setConviteInstalar] = useState(() => conviteDeInstalacao.estado());
+  // Menu lateral do computador: comeca fechado e abre pelo botao de tres
+  // barrinhas, no canto (pedido do dono em 06/11/2026). No celular nao muda nada.
+  const [menuAberto, setMenuAberto] = useState(false);
   const anunciar = useCallback((texto) => {
     if (!texto) return;
     setAnuncio((atual) => ({ texto, vez: atual.vez + 1 }));
@@ -1889,11 +1893,13 @@ function App() {
   };
 
   return (
-    <div className="app">
+    <div className={menuAberto ? "app" : "app menu-fechado"}>
       <a className="skip-link" href="#conteudo">
         Pular para o conteúdo
       </a>
       <AnuncioDoVeredito texto={anuncio.texto} vez={anuncio.vez} />
+
+      <MenuToggle aberto={menuAberto} onAlternar={() => setMenuAberto((aberto) => !aberto)} />
 
       <TopBar
         query={query}

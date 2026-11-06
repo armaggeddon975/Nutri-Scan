@@ -1,7 +1,7 @@
 {
   "name": "nutriscan",
   "private": true,
-  "version": "0.14.0",
+  "version": "0.15.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -24,6 +24,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "verify:deploy": "node scripts/verify-deploy.js",
     "medir:motor": "node scripts/medir-motor.js",
+    "medir:tabelas": "node scripts/medir-tabelas.js",
     "montar:conjunto": "node scripts/montar-conjunto-off.js"
   },
   "dependencies": {

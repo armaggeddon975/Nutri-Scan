@@ -887,3 +887,235 @@ input[aria-disabled="true"]:not(:focus-visible) {
   align-self: flex-start;
   margin-top: 8px;
 }
+
+/* -------------------------------------------------------------------------
+   AJUSTE PEDIDO PELO DONO - menu lateral menor
+   -------------------------------------------------------------------------
+   Pedido em 06/11/2026: "essa parte esta muito grande, diminua ela um pouco".
+
+   Medido a 1360px, antes: coluna de 256px, logo de 56px, itens de 52px (os
+   oito somavam 444px). Encolhe o ESPACO, nao a letra: os rotulos continuam em
+   `--t-md` (17px), porque o publico do app tem mais idade.
+
+   - coluna de 256 para 224px;
+   - logo de 56 para 46px, e a folga abaixo dela de 36 para 22px;
+   - item de 52 para 44px de altura, com 2px entre eles (era 4px). 44px fica
+     acima dos 40px medidos como menor alvo do app na v0.12.0;
+   - recuo do menu de 28/20 para 18/14px. O recuo continua 4px maior a
+     esquerda, e os 4px de margem a direita da marca mantem a logo no centro
+     da coluna (o ajuste de 19/09 usava 8px para a diferenca de 8px). */
+:root {
+  --rail-w: 224px;
+}
+
+@media (min-width: 960px) {
+  .rail {
+    padding: 24px 14px 20px 18px;
+  }
+
+  .rail-brand {
+    margin: 0 4px 22px 0;
+  }
+
+  .rail-brand .brand-logo {
+    height: 46px;
+  }
+
+  .rail ul {
+    gap: 2px;
+  }
+
+  .rail-item {
+    gap: 12px;
+    min-height: 44px;
+    padding: 0 14px;
+  }
+
+  .rail .brand-signature {
+    margin-top: 16px;
+    padding-top: 14px;
+  }
+}
+
+/* -------------------------------------------------------------------------
+   AJUSTE PEDIDO PELO DONO - barra de cima menor no computador
+   -------------------------------------------------------------------------
+   Pedido em 06/11/2026, junto com o menu lateral: "diminua esse tmb".
+
+   Medida antes: 93px de altura (busca e "Entrar" com 56px, 18px de folga em
+   cima e embaixo). Agora: busca e "Entrar" com 44px e 10px de folga - a barra
+   fica com 65px. A letra nao muda: a busca segue em `--t-lg` e o "Entrar" em
+   `--t-md`. 44px fica acima dos 40px medidos como menor alvo do app.
+
+   A folga de rolagem do computador (`--folga-do-topo: 7rem`, 112px) foi feita
+   para a barra de 93px e continua cobrindo a de 65px; nao mudou. */
+@media (min-width: 960px) {
+  .topbar-inner {
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  .topbar-search {
+    height: 44px;
+  }
+
+  .topbar-account {
+    height: 44px;
+    padding: 0 18px 0 14px;
+  }
+}
+
+/* -------------------------------------------------------------------------
+   AJUSTE PEDIDO PELO DONO - menu lateral que abre e fecha
+   -------------------------------------------------------------------------
+   Pedido em 06/11/2026: um botao com tres barrinhas no canto de cima, a
+   esquerda; apertar abre o menu lateral, apertar de novo fecha. So no
+   computador - no celular a navegacao e a barra de abas, e o botao nao aparece.
+
+   O botao fica preso no canto (`position: fixed`), no mesmo lugar com o menu
+   aberto ou fechado, e na mesma linha da busca da barra de cima (10px do topo,
+   44px de altura). O menu comeca fechado.
+
+   - Aberto: a logo fica na MESMA linha do botao e da busca (10px do topo, 44px
+     de altura), centrada na coluna e sem encostar no botao. A primeira versao
+     deste ajuste empurrava a logo 36px para baixo do botao, e numa janela de
+     600px de altura os nomes da assinatura saiam cortados embaixo (o menu
+     pedia 650px). Com a logo na linha do botao, folga menor sob a logo e sobre
+     a assinatura, o menu cabe numa janela de 600px. Abaixo disso, ele rola em
+     vez de cortar - com a barra de rolagem escondida: visivel, ela tirava 15px
+     da coluna e quebrava "Escanear codigo" e outros rotulos em duas linhas. A
+     roda do mouse, o toque e o Tab continuam rolando o menu.
+   - A pilula da marca deixa de ocupar a coluna inteira (era `stretch` desde o
+     ajuste de 19/09): esticada, ela passaria por baixo do botao. Centrada, com
+     4px de margem a direita, o centro da logo continua no centro da coluna.
+   - Fechado: a coluna do menu vai a zero, e a barra de cima e o conteudo
+     comecam 70px da borda (10 + 44 do botao + 16), alinhados entre si. */
+.menu-toggle {
+  display: none;
+}
+
+@media (min-width: 960px) {
+  .menu-toggle {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 45;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 1px solid var(--chrome-line);
+    border-radius: var(--r-pill);
+    background: var(--chrome-field);
+    color: var(--chrome-ink);
+  }
+
+  .menu-toggle:hover {
+    background: rgba(245, 242, 234, 0.18);
+  }
+
+  /* O anel de foco em oliva sumiria no chrome escuro, como nas barras. */
+  .menu-toggle:focus-visible {
+    outline-color: var(--chrome-ink);
+  }
+
+  .rail {
+    padding-top: 10px;
+    padding-bottom: 14px;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+
+  .rail::-webkit-scrollbar {
+    display: none;
+  }
+
+  .rail-brand {
+    align-self: center;
+    height: 44px;
+    margin: 0 4px 16px 0;
+    padding: 2px 8px;
+  }
+
+  .rail-brand .brand-logo {
+    height: 40px;
+  }
+
+  .rail .brand-signature {
+    margin-top: 8px;
+  }
+
+  .app.menu-fechado {
+    grid-template-columns: 0 minmax(0, 1fr);
+  }
+
+  .app.menu-fechado .rail {
+    display: none;
+  }
+
+  .app.menu-fechado .topbar-inner,
+  .app.menu-fechado .content {
+    padding-left: 70px;
+  }
+}
+
+@media print {
+  .menu-toggle {
+    display: none !important;
+  }
+}
+
+/* -------------------------------------------------------------------------
+   Selo de confianca da tabela nutricional (pedido do dono em 06/11/2026)
+   -------------------------------------------------------------------------
+   Fica no topo do bloco "Tabela nutricional" e diz se a tabela esta completa e
+   se as contas dela batem (src/utils/confiancaDaTabela.js). O estado esta no
+   titulo escrito; a cor so reforca. Os tons sao os das linhas de status do
+   design, e o vermelho fica de fora de proposito: ele e do conflito de alergia.
+
+   Contraste do texto (WCAG, minimo 4,5:1):
+     completa    --ok sobre --ok-soft          5,38:1
+     nao bate    --warn sobre --warn-soft      5,17:1
+     incompleta  --ink-2 sobre --brand-soft    7,99:1 */
+.selo-da-tabela {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--brand-line);
+  border-radius: var(--r-block);
+  background: var(--brand-soft);
+  color: var(--ink-2);
+  font-size: var(--t-lg);
+  line-height: 1.45;
+}
+
+.selo-da-tabela svg {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+
+.selo-da-tabela p {
+  min-width: 0;
+  margin: 0;
+}
+
+.selo-da-tabela strong {
+  display: block;
+  font-weight: 700;
+}
+
+.selo-completa {
+  border-color: var(--ok-line);
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.selo-nao-bate {
+  border-color: var(--warn-line);
+  background: var(--warn-soft);
+  color: var(--warn);
+}

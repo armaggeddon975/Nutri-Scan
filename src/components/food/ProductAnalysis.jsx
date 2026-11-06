@@ -2,6 +2,7 @@ import { Barcode, CircleGauge, Heart, Scale, Utensils } from "lucide-react";
 
 import { AllergyVerdict } from "../assistant/AllergyVerdict";
 import { OfflineNotice } from "../common/OfflineNotice";
+import { SeloDaTabela } from "./SeloDaTabela";
 import { dataDoAparelho, REDE_LENTA, SEM_INTERNET } from "../../services/offlineLookup";
 import { formatTag } from "../../utils/formatting";
 import { getIngredients, getProductName } from "../../utils/product";
@@ -148,6 +149,7 @@ export function ProductAnalysis({
               {product.nutrition_data_per ? `Por ${product.nutrition_data_per}` : "Por 100 g"}
             </span>
           </div>
+          {nutrientRows.length ? <SeloDaTabela product={product} /> : null}
           {nutrientRows.length ? (
             <table>
               <thead>

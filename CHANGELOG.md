@@ -1,5 +1,108 @@
 # Changelog
 
+## NutriScan v0.15.0 - 2026-11-06
+
+Selo de confianca da tabela nutricional, com faixas por tipo de produto tiradas
+da TACO, e menu lateral recolhivel no computador. Minor: tudo roda no aparelho.
+Nao ha migration, rota nova nem variavel nova; o backend nao mudou.
+
+Isto descreve o que o software confere. NAO e validacao nutricional, nao diz
+que um numero esta certo, e nao e orientacao de saude nem de nutricao.
+
+### Primeira publicacao desde a 0.7.0
+
+Por decisao do dono (06/11/2026), a v0.15.0 vai ao Render - e leva junto as
+versoes 0.7.1 a 0.14.0, que nunca tinham ido ao ar. A v0.14.0 ainda nao tinha
+parecer do auditor externo; publicar antes dele foi decisao do dono.
+
+### O problema, pelo que era
+
+O app mostrava toda tabela nutricional do mesmo jeito. Medido em 06/11/2026 nos
+200 produtos mais lidos do Brasil na Open Food Facts: so 28,5% tinham todos os
+itens e 5% tinham conta que nao fecha. Medido contra a foto do rotulo de 30
+produtos: 7 com numero errado - o pior, achocolatado gravado com a coluna do
+produto preparado com leite (86 kcal "por 100 g" de Nescau, quando o po tem
+380), coerente consigo mesmo e por isso invisivel para qualquer conta interna.
+
+### O que entrou
+
+- **Selo de confianca da tabela** (`src/utils/confiancaDaTabela.js`,
+  `src/components/food/SeloDaTabela.jsx`), no topo do bloco "Tabela
+  nutricional", com o estado escrito: "Tabela completa", "Tabela incompleta"
+  (diz o que falta) ou "Os números não batem" (diz qual conta). Os dois ultimos
+  terminam em "Confira a embalagem", menos nos alimentos da base local. Contas:
+  os oito itens da tela (sal ou sodio contam como um), energia contra 4/4/9
+  (vale com ou sem a fibra, porque na TACO o carboidrato ja a inclui), kcal
+  contra kJ, sal contra sodio, acucar dentro do carboidrato, saturada dentro da
+  gordura, soma ate 100 g, nenhum negativo - com folgas para arredondamento.
+- **Faixas por tipo de produto** (`src/data/faixasTaco.js`,
+  `src/utils/faixasPorCategoria.js`): 12 tipos (achocolatado em po, leite em po,
+  leite condensado, creme de leite, requeijao, maionese, margarina, azeite, oleo
+  vegetal, pao de forma, biscoito recheado, wafer recheado), cada um ligado a
+  itens da TACO 4a edicao revisada e ampliada (NEPA-UNICAMP). 25 itens, copiados
+  por script da planilha oficial e conferidos de volta contra ela: 25 de 25. O
+  tipo vem so de `categories_tags`, nunca do nome ou da marca. Faixa larga, para
+  o light passar: energia entre 40% da menor referencia e 160% da maior; gramas
+  abaixo de um terco da menor (so se ela tem 1 g ou mais) ou acima do dobro da
+  maior mais 3 g. A frase junta os itens: "A energia e os carboidratos estão
+  muito abaixo do normal para achocolatado em pó."
+- **Medicao contra a foto do rotulo** (`npm run medir:tabelas`, sem rede, sobre
+  `medicao/tabelas-com-foto.json`): 30 produtos, 29 com a tabela legivel; 19
+  fieis, 3 com lacuna, 7 com numero errado. A leitura das fotos foi feita por
+  Claude, uma IA, e nao por uma pessoa; cada produto guarda o endereco da foto.
+- **Menu do computador**: o menu lateral e a barra de cima ficaram menores; um
+  botao de tres barrinhas, no canto de cima a esquerda, abre e fecha o menu, que
+  comeca fechado. Os nomes da assinatura deixaram de ser cortados. No celular
+  nada muda.
+
+### O resultado
+
+```text
+                                        so as contas   contas + faixas
+fotos: numeros errados pegos pelo selo      3 de 7          6 de 7
+fotos: fieis marcados "completa"           18 de 19        18 de 19
+200 mais lidos: com tipo                       -               50
+200 mais lidos: acusados pela faixa            -          8, todos reais
+200 mais lidos: completa/incompleta/nao bate/sem tabela
+                                        134/35/19/12     129/34/25/12
+```
+
+O que escapa: o azeite com saturada 13 contra 15 (dentro da faixa). O unico
+"nao bate" em produto fiel e o adocante 7896094910959, cujo proprio rotulo nao
+fecha (15 g de carboidrato e 84 kcal). **O 6 de 7 e otimista**: limites e
+categorias foram escolhidos ja conhecendo os erros das fotos. A conferencia
+mais justa e a dos 200: os 8 acusados sao erro de verdade, 3 deles conferidos
+pela foto (Leite Moca com 47 kcal contra 302; Passatempo com saturada 1 contra 4
+por 100 g; oleo de soja com os numeros de uma porcao de 13 ml).
+
+### Decisoes
+
+- **O selo nao corrige numero.** Para produto embalado, quem sabe e o rotulo; a
+  TACO so aponta o que esta longe demais do tipo.
+- **Dois ajustes de categoria vieram da primeira passada nos 200**, antes do
+  resultado acima: cacau em po puro nao e achocolatado (achocolatado passa a
+  exigir tambem a categoria de bebida instantanea), e torrone, que a OFF marca
+  como wafer, fica fora.
+- **Refrigerante fora das faixas**: a versao zero tem 0 kcal.
+- **TBCA nao usada**: o Jornal da USP (30/08/2019) informa que o uso da base em
+  outra ferramenta exige licenca paga (contato tbca.contato@usp.br). Nenhum dado
+  da TBCA entrou.
+
+### Testes
+
+19 testes novos: 10 do selo (`backend/tests/confiancaDaTabela.test.js`) e 9 das
+faixas (`backend/tests/faixasPorCategoria.test.js`), com os casos reais, os
+produtos certos e os light que nao podem ser acusados, os limites exatos da
+faixa, a base local e o cache sem rede.
+
+### Nao comprovado
+
+- `verify:e2e`: NAO EXECUTADO nesta versao - o backend nao mudou, e o gate faz
+  chamada paga ao Claude e grava no banco de producao, o que nao foi pedido.
+- Validacao por mutacao das regras novas: NAO EXECUTADA.
+- Leitor de tela real com o botao de menu e o selo: NAO EXECUTADO.
+- Produtos fora dos conjuntos medidos.
+
 ## NutriScan v0.14.0 - 2026-11-06
 
 Medicao do motor contra produtos reais. Minor: o motor de alergenicos passa a

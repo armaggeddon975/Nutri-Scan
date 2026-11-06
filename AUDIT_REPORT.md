@@ -1,4 +1,187 @@
-# Relatorio de Auditoria - NutriScan v0.14.0
+# Relatorio de Auditoria - NutriScan v0.15.0
+
+Data: 2026-11-06
+
+## Escopo
+
+Versao de entrada **0.14.0**, de saida **0.15.0**. Selo de confianca da tabela
+nutricional, faixas por tipo de produto tiradas da TACO, medicao da tabela
+contra a foto do rotulo e menu lateral recolhivel no computador. Tudo no
+aparelho: o backend nao mudou.
+
+**Isto descreve o que o software confere. NAO e validacao nutricional.** O selo
+nao diz que um numero esta certo; diz se a tabela esta completa, se as contas
+dela batem e se os numeros cabem no normal do tipo de produto.
+
+```text
+selo (regra)                   src/utils/confiancaDaTabela.js
+selo (tela)                    src/components/food/SeloDaTabela.jsx, chamado em ProductAnalysis.jsx
+faixas (numeros e fonte)       src/data/faixasTaco.js - 12 tipos, 25 itens da TACO 4a edicao
+faixas (regra)                 src/utils/faixasPorCategoria.js
+medicao contra a foto          scripts/medir-tabelas.js (npm run medir:tabelas), sem rede
+conjunto das fotos             medicao/tabelas-com-foto.json - 30 produtos, leitura das fotos por Claude
+menu                           src/components/navigation/MenuToggle.jsx, App.jsx, NavRail.jsx
+estilos                        src/styles-v070.css (o styles.css do design nao foi tocado)
+testes novos                   backend/tests/confiancaDaTabela.test.js (10)
+                               backend/tests/faixasPorCategoria.test.js (9)
+migration / rota / variavel    nenhuma
+backend/                       sem mudanca de codigo (so a versao no package.json)
+shared/                        sem mudanca - motor de alergenicos e veredito intactos
+```
+
+## Decisoes do dono nesta entrega (06/11/2026)
+
+- **Fechar a v0.15.0 e publicar no Render.** E a primeira publicacao desde a
+  0.7.0: vao junto as versoes 0.7.1 a 0.14.0.
+- **Publicar antes do parecer do auditor sobre a v0.14.0.** O combinado era
+  parar depois do ZIP da v0.14.0 ate o parecer; o dono decidiu publicar mesmo
+  assim.
+- **`FRONTEND_ORIGIN`**: o dono confirmou que ja esta preenchida no painel do
+  Render. Nao foi conferida daqui - o painel nao e acessivel a quem escreveu o
+  codigo.
+
+## De onde vem cada numero
+
+- **TACO**: planilha oficial `Taco-4a-Edicao.xlsx` do NEPA-UNICAMP, abas
+  "CMVCol taco3" e "AGtaco3", baixada em 06/11/2026. Os 25 itens foram copiados
+  por script e **conferidos de volta contra a planilha: 25 de 25**. A conferencia
+  achou um erro do proprio script de extracao: 12,35 g de proteina do pao de
+  aveia (item 48) arredondado para 12,3 por ponto flutuante; o arquivo ficou com
+  12,4 e o teste trava o valor. Termos de uso, na pagina ii do PDF: "E permitida
+  a reproducao total ou parcial do material, desde que seja citada a fonte." A
+  fonte esta em `FONTE_DAS_FAIXAS`, no cabecalho do arquivo e no README.
+- **Produtos**: Open Food Facts lida em 06/11/2026 (200 mais lidos do Brasil);
+  os casos usados nos testes foram copiados para o teste, sem rede.
+- **Fotos dos rotulos**: as que a propria Open Food Facts guarda. **A leitura foi
+  feita por Claude, uma IA lendo a imagem, e nao por uma pessoa.** Cada produto
+  guarda o endereco da foto, para conferencia humana.
+- **TBCA: nao usada.** O Jornal da USP (30/08/2019) informa que "e necessario
+  adquirir licenca paga para o uso de sua base de dados em uma outra ferramenta
+  de trabalho" (contato tbca.contato@usp.br). O site tbca.net.br recusou acesso
+  automatico em 06/11/2026, entao os termos atuais nao foram lidos. Nenhum dado
+  da TBCA entrou no codigo.
+
+## O resultado
+
+```text
+                                        so as contas   contas + faixas
+fotos: numeros errados pegos pelo selo      3 de 7          6 de 7
+fotos: fieis marcados "completa"           18 de 19        18 de 19
+200 mais lidos: com tipo                       -               50
+200 mais lidos: acusados pela faixa            -          8, todos reais
+200 mais lidos: completa/incompleta/nao bate/sem tabela
+                                        134/35/19/12     129/34/25/12
+```
+
+Saida de `npm run medir:tabelas` nesta versao:
+
+```text
+selo de hoje x o que a foto mostra:
+  selo completa   | base fiel              18
+  selo completa   | base numero errado     1
+  selo incompleta | base lacuna            2
+  selo nao-bate   | base fiel              1
+  selo nao-bate   | base numero errado     6
+  selo sem-tabela | base lacuna            1
+```
+
+- O que escapa: o azeite 5601252231164, com saturada 13,08 contra 15 no
+  rotulo - dentro da faixa do azeite.
+- O "nao bate" em base fiel e o adocante 7896094910959: o proprio rotulo nao
+  fecha (15 g de carboidrato e 84 kcal).
+- **O 6 de 7 e otimista.** Os limites e as categorias foram escolhidos ja
+  conhecendo os erros das fotos. A conferencia mais justa e a dos 200: os 8
+  acusados sao erro de verdade, 3 deles conferidos pela foto nesta versao (Leite
+  Moca 7891000065440 com 47 kcal contra 302; Passatempo 7891000241356 com
+  saturada 1 contra 4 por 100 g; oleo de soja 7898247780075 com os numeros de
+  uma porcao de 13 ml).
+- **Dois ajustes de categoria vieram da primeira passada nos 200**, antes do
+  resultado acima: cacau em po puro (7891000120095, 23 g de proteina, normal
+  para cacau) caia como achocolatado; torrone (77940131) vem marcado como wafer
+  na OFF. Os dois estao travados por teste.
+
+## Testes novos, verdes
+
+```text
+confiancaDaTabela.test.js
+  tabela inteira e coerente: completa, sem nada faltando
+  falta item: incompleta, e diz quais, na ordem da tabela
+  sal ou sodio contam como o mesmo item
+  sem nenhum numero: sem tabela
+  cada conta errada vira 'nao bate', com a frase dela
+  caso real: o Nescau 7891000412855 traz 86 kcal de uma porcao e 1.606 kJ de 100 g
+  arredondamento do rotulo nao e acusado
+  base local: o selo le o sodio em mg, como a tela, e nenhum dos 8 'nao bate'
+  na tela: o estado esta no titulo escrito, nao so na cor; base local nao manda conferir embalagem
+  contraste do texto do selo: as tres combinacoes passam de 4,5:1
+faixasPorCategoria.test.js
+  a fonte e os numeros sao os da TACO 4a edicao
+  o tipo vem da categoria da OFF, nunca do nome ou da marca
+  cacau puro e torrone nao sao achocolatado nem wafer (ajuste da primeira passada nos 200)
+  erro real: a coluna do produto preparado gravada como se fosse o po (foto)
+  erro real: zero no lugar do numero, numero da porcao, digito a mais (foto)
+  nao acusa o produto certo, nem a versao light (todos com tipo, para o teste valer)
+  onde a faixa corta: 40% e 160% da energia, um terco e o dobro + 3 g
+  base local nao tem categoria da OFF: a faixa nao roda nela
+  sem rede: o produto guardado no aparelho mantem a categoria, e a faixa continua valendo
+```
+
+## Gates
+
+```text
+verify:release (node scripts/verify-release.js)     exit 0
+  doctor                                            OK - Migrations 4/4 applied
+  frontend build                                    OK
+  backend tests                                     539 testes: 464 pass, 0 fail, 75 skipped
+  medicao do motor                                  OK - igual ao registrado (pipeline: 4 FN + 0
+                                                    declarado->traco; so-texto: 6 FN + 0 declarado->traco)
+  frontend audit / backend audit                    found 0 vulnerabilities / found 0 vulnerabilities
+  secret scan                                       0 real secrets
+
+suite com PostgreSQL LOCAL                          exit 0
+  RUN_DB_INTEGRATION_TESTS=true, banco local na porta 5433
+  539 testes: 536 pass, 0 fail, 3 skipped           os 3: Claude real e Open Food Facts real (2),
+                                                    NAO EXECUTADOS sem as flags de integracao
+
+verify:deploy contra alvo LOCAL simulado            11 PASS, D2 FAIL (alvo http, sem TLS), exit 1
+verify:e2e                                          NAO EXECUTADO - motivo no E2E_REPORT
+validacao por mutacao                               NAO EXECUTADA nesta versao
+```
+
+A suite sem banco tem 75 skipped porque os testes de PostgreSQL ficam
+desligados sem `RUN_DB_INTEGRATION_TESTS=true`; com o banco local, sobram so os
+3 de servico externo.
+
+## Versao nos sete pontos
+
+```text
+package.json                                       0.15.0
+backend/package.json                               0.15.0
+package-lock.json (raiz e packages[""])            0.15.0 / 0.15.0
+backend/package-lock.json (raiz e packages[""])    0.15.0 / 0.15.0
+GET /api/health (backend real, alvo local)         0.15.0 (D1 do verify:deploy local: "ambos declaram 0.15.0")
+README.md (titulo)                                 # NutriScan v0.15.0
+CHANGELOG.md (entrada mais recente)                ## NutriScan v0.15.0 - 2026-11-06
+```
+
+## O que esta versao NAO prova
+
+- **Que um numero da tabela esta certo**: o selo so diz se a tabela esta
+  completa, se fecha e se cabe na faixa do tipo.
+- **Produtos fora dos conjuntos medidos**, e tipos de produto fora dos 12.
+- **A leitura das fotos por uma pessoa**: foi feita por Claude, uma IA.
+- **O fluxo real com PostgreSQL de producao e Claude real**: `verify:e2e` NAO
+  EXECUTADO nesta versao.
+- **Mutacao das regras novas**: NAO EXECUTADA.
+- **Leitor de tela real** com o botao de menu e o selo: NAO EXECUTADO.
+- **Instalacao em aparelho real e camera em hardware**: NAO EXECUTADOS.
+- **O deploy real**: o `verify:deploy` contra o Render roda DEPOIS do push, e
+  este relatorio e o ZIP sao gerados ANTES dele. O resultado pos-publicacao nao
+  esta neste pacote.
+
+## Historico de auditorias anteriores
+
+## Auditoria da v0.14.0 - 2026-11-06
 
 Data: 2026-11-06
 
@@ -1294,8 +1477,6 @@ CHANGELOG.md (entrada mais recente)                ## NutriScan v0.14.0 - 2026-1
 - **A camera em hardware**: NAO EXECUTADO.
 - **O deploy real da 0.14.0**: NAO EXECUTADO - nada foi publicado; no ar segue a
   0.7.0.
-
-## Historico de auditorias anteriores
 
 ## Auditoria da v0.13.0 - 2026-10-30
 

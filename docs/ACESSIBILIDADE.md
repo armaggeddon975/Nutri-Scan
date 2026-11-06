@@ -251,6 +251,25 @@ os quatro estados do veredito distintos sem cor, o veredito antes do texto do
 modelo, anuncio `polite`), e as suites `accessibility.test.js` seguem verdes. O
 teste com leitor de tela real continua NAO EXECUTADO.
 
+## Na v0.15.0
+
+Nada mudou na apresentacao do alerta de alergia. Entraram duas coisas na tela:
+
+- **Selo de confianca da tabela nutricional.** O estado esta no titulo escrito
+  ("Tabela completa", "Tabela incompleta", "Os números não batem"), nao so na
+  cor (1.4.1); o icone e `aria-hidden`. O contraste do texto sobre o fundo de
+  cada estado passa de 4,5:1, calculado dos tokens do CSS real em
+  `backend/tests/confiancaDaTabela.test.js`. O selo nao e anunciado sozinho:
+  fica dentro do bloco da tabela, depois do veredito.
+- **Botao de menu no computador** (a partir de 960 px). Nome fixo "Menu", com
+  `aria-expanded` dizendo se o menu esta aberto e `aria-controls` apontando o
+  menu lateral; 44 x 44 px; anel de foco proprio, visivel sobre a barra escura.
+  O menu comeca **fechado**, a pedido do dono: fechado, ele sai da tela e do
+  foco (`display: none`), e as paginas continuam alcancaveis pelo botao. No
+  celular nada muda: a navegacao e a barra de abas, e o botao nao aparece.
+
+O teste com leitor de tela real continua NAO EXECUTADO.
+
 ## Roteiro para a verificacao humana
 
 Com um leitor de tela ligado (NVDA no Windows, TalkBack no Android ou VoiceOver

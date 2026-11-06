@@ -1,4 +1,4 @@
-# NutriScan v0.14.0
+# NutriScan v0.15.0
 
 NutriScan e um app web para consultar alimentos por nome ou codigo de barras,
 ver tabela nutricional, identificar ingredientes sensiveis e conversar com um
@@ -37,6 +37,8 @@ Com isso, `{ traces: "milk" }` e tratado como traco, enquanto
 - Rever sem internet os produtos ja abertos neste aparelho, com o veredito refeito na hora (v0.11.0).
 - Alerta de alergia que chega sem depender de cor, anunciado ao leitor de tela (v0.12.0).
 - App instalavel, que abre sem internet (v0.13.0).
+- Selo de confianca da tabela nutricional: completa, incompleta ou "os numeros nao batem - confira a embalagem", com faixas por tipo de produto tiradas da TACO (v0.15.0).
+- Menu lateral do computador que abre e fecha pelo botao de tres barrinhas (v0.15.0).
 
 ## Requisitos
 
@@ -335,6 +337,44 @@ informacao de seguranca errada em abril, quando a pessoa marca uma alergia nova.
 O veredito e sempre recalculado pelo motor deterministico na hora de exibir, com
 o perfil atual.
 
+## Selo de confianca da tabela nutricional (v0.15.0)
+
+A tabela nutricional vem da Open Food Facts, que e colaborativa. Em 06/11/2026,
+nos 200 produtos mais lidos do Brasil, so 28,5% tinham todos os itens, e 5%
+tinham conta que nao fecha. O selo, no topo do bloco "Tabela nutricional", diz
+em palavras (nao so pela cor) qual e o caso:
+
+- **Tabela completa** - os oito itens da tela estao la e as contas batem;
+- **Tabela incompleta** - diz o que falta, e termina em "Confira a embalagem";
+- **Os numeros nao batem** - diz qual conta, e termina em "Confira a embalagem".
+
+O selo **nao corrige numero e nao diz qual valor e o certo**: para produto
+embalado, quem sabe e o rotulo. As contas (`src/utils/confiancaDaTabela.js`):
+energia contra 4/4/9 (com ou sem a fibra), kcal contra kJ, sal contra sodio,
+acucar dentro do carboidrato, saturada dentro da gordura, soma ate 100 g,
+nenhum negativo - com folgas para nao acusar arredondamento.
+
+**Faixas por tipo de produto.** Uma tabela pode fechar todas as contas e ser de
+outra coisa: achocolatado gravado com a coluna do produto preparado com leite
+(86 kcal "por 100 g" de Nescau, quando o po tem 380). Para 12 tipos de produto
+(achocolatado em po, leite em po, leite condensado, creme de leite, requeijao,
+maionese, margarina, azeite, oleo vegetal, pao de forma, biscoito recheado e
+wafer recheado), o selo confere se os numeros cabem no normal do tipo, pela
+**TACO - Tabela Brasileira de Composicao de Alimentos, 4a edicao revisada e
+ampliada (NEPA-UNICAMP)**. O tipo vem so da categoria que a Open Food Facts da
+ao produto, nunca do nome ou da marca. A faixa e larga de proposito, para o
+produto light passar. Os numeros e a fonte estao em `src/data/faixasTaco.js`;
+a regra, em `src/utils/faixasPorCategoria.js`.
+
+A tabela foi medida contra a foto do rotulo de 30 produtos. **A leitura das
+fotos foi feita por Claude, uma IA, e nao por uma pessoa**; cada leitura guarda
+o endereco da foto, para conferencia humana. E medicao de dado, nao validacao
+nutricional.
+
+```bash
+npm run medir:tabelas   # sem rede, sobre medicao/tabelas-com-foto.json
+```
+
 ## Medicao do motor contra produtos reais (v0.14.0)
 
 O motor de alergenicos e medido contra 71 produtos reais da Open Food Facts,
@@ -550,8 +590,8 @@ escrito para quem publica: o que preencher no painel, como as migrations
 entram, como verificar o resultado e o que fazer quando um subgate falha. As
 decisoes de HTTPS, cookie e migrations tambem estao la.
 
-As versoes 0.7.1 a 0.14.0 ainda nao foram publicadas; o servico no ar roda a
-0.7.0.
+Ate a v0.14.0, o servico no ar rodava a 0.7.0. A v0.15.0 e a primeira enviada
+ao Render desde entao, em 06/11/2026, e leva junto as versoes 0.7.1 a 0.14.0.
 
 ### Variaveis obrigatorias em producao
 
